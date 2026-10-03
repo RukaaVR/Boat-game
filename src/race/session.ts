@@ -13,6 +13,7 @@ import type { Buoy, Difficulty, ModeId, Ramp, StuntRing, WeatherId } from '../co
 import { settleBoat, stepBoat, type PhysicsEnv } from '../boat/boatPhysics';
 import { resolveCollisions, StaticWorld, type CollisionHost } from '../boat/collision';
 import { boatSpec, BOATS, type BoatId } from '../boat/specs';
+import { upgradedSpec, type Upgrades } from '../save/progress';
 import { defaultLivery, type Livery } from '../boat/livery';
 import { AIDriver, type AIRaceView, type Style } from '../ai/aiDriver';
 import { buildLayout, type Layout } from '../environment/layout';
@@ -31,6 +32,8 @@ export interface GhostData {
   time: number;
   /** x, y, z, heading, pitch, roll per sample at GHOST_HZ. */
   samples: number[];
+  /** Set on ghosts imported from a friend's code. */
+  name?: string;
 }
 export const GHOST_HZ = 10;
 
@@ -47,6 +50,27 @@ export interface SessionConfig {
   ghost: GhostData | null;
   /** Existing championship points per opponent slot (championship mode). */
   champPoints?: number[];
+  /** Player boat upgrades (garage). */
+  playerUpgrades?: Upgrades;
+  /** Explicit rival line-up (indices into RIVALS); default = the first `opponents`. */
+  field?: number[];
+  /** Career boss (index into RIVALS) and its engine power multiplier. */
+  boss?: number;
+  bossPower?: number;
+  /** Message bottles already found on this course (bitmask). */
+  bottlesFound?: number;
+  /** Weather may change mid-race. */
+  dynamicWeather?: boolean;
+}
+
+/** Per-event player counters (achievements, challenges). */
+export interface EventStats {
+  tier3: number;
+  clean: number;
+  perfectStart: boolean;
+  itemHits: number;
+  /** Bottles newly found this event (bitmask). */
+  bottles: number;
 }
 
 interface Rival {
@@ -66,7 +90,10 @@ export const RIVALS: Rival[] = [
   { name: 'RUCKUS', style: 'reckless', boat: 'tank', hull: '#7b5cff', accent: '#a6ff3d', number: 66 },
   { name: 'KAI', style: 'balanced', boat: 'speedster', hull: '#2ad4ff', accent: '#ffe14d', number: 9 },
   { name: 'NOVA', style: 'technical', boat: 'speedster', hull: '#c0c8d8', accent: '#ff3b5c', number: 31 },
+  { name: 'MAELSTROM', style: 'aggressive', boat: 'breaker', hull: '#101418', accent: '#26e8ff', number: 1 },
 ];
+/** Rivals used by ordinary races (the career boss MAELSTROM only appears in Career). */
+export const RACE_RIVALS = 7;
 
 export interface ResultRow {
   id: number;
@@ -130,6 +157,9 @@ export class RaceSession {
   endlessLevel = 1;
   ringsTaken = 0;
   results: ResultRow[] = [];
+  readonly stats: EventStats = { tier3: 0, clean: 0, perfectStart: false, itemHits: 0, bottles: 0 };
+  /** Bottles on this course: position + found (this or an earlier event). */
+  readonly bottles: { x: number; y: number; z: number; found: boolean }[];
   newGhost: GhostData | null = null;
   readonly ghost: GhostData | null;
   private ghostRec: number[] = [];
@@ -160,10 +190,11 @@ export class RaceSession {
     for (const g of this.track.gates)
       for (const side of [-1, 1]) this.statics.add({ x: g.x - Math.cos(g.heading) * half * side, z: g.z + Math.sin(g.heading) * half * side, r: 1.8, kind: 'pile' });
     this.buoys = this.layout.buoys;
+    this.bottles = this.layout.bottles.map((b, i) => ({ ...b, found: !!((cfg.bottlesFound ?? 0) & (1 << i)) }));
     this.rings = this.layout.rings;
     this.rng = new Rng(def.seed + 99);
 
-    const racing = cfg.mode === 'quick' || cfg.mode === 'championship';
+    const racing = cfg.mode === 'quick' || cfg.mode === 'championship' || cfg.mode === 'battle' || cfg.mode === 'career';
     this.totalLaps = cfg.mode === 'timetrial' ? cfg.laps : cfg.mode === 'freeride' || cfg.mode === 'stunt' || cfg.mode === 'endless' ? 0 : cfg.laps;
 
     // Weather → sea.
@@ -174,11 +205,12 @@ export class RaceSession {
     setSwellZones(zones);
 
     // Racers: player + rivals.
-    this.player = new Racer(0, cfg.playerName, boatSpec(cfg.playerBoat), cfg.playerLivery, true, null);
+    this.player = new Racer(0, cfg.playerName, upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerLivery, true, null);
     this.racers.push(this.player);
-    const nOpp = racing ? clamp(cfg.opponents, 0, RIVALS.length) : 0;
+    const field = cfg.field ?? Array.from({ length: clamp(cfg.opponents, 0, RACE_RIVALS) }, (_, i) => i);
+    const nOpp = racing ? field.length : 0;
     for (let i = 0; i < nOpp; i++) {
-      const r = RIVALS[i];
+      const r = RIVALS[field[i]];
       const ai = new AIDriver(r.style, cfg.difficulty, def.seed * 31 + i * 977);
       const liv = defaultLivery(r.hull, r.accent, r.number);
       liv.stripe = (['racing', 'twin', 'chevron', 'flame', 'split', 'digital', 'single'] as const)[i % 7];
@@ -186,6 +218,8 @@ export class RaceSession {
       const racer = new Racer(i + 1, r.name, BOATS.find((b) => b.id === r.boat)!, liv, false, ai);
       racer.reaction = this.rng.range(0.0, 0.35);
       racer.points = cfg.champPoints?.[i + 1] ?? 0;
+      racer.rivalIndex = field[i];
+      if (cfg.boss === field[i]) racer.boat.powerScale = cfg.bossPower ?? 1;
       this.racers.push(racer);
     }
     this.player.points = cfg.champPoints?.[0] ?? 0;
@@ -220,7 +254,7 @@ export class RaceSession {
   }
 
   get isRace() {
-    return this.mode === 'quick' || this.mode === 'championship';
+    return this.mode === 'quick' || this.mode === 'championship' || this.mode === 'battle' || this.mode === 'career';
   }
   get hasLaps() {
     return this.totalLaps > 0;
@@ -337,6 +371,7 @@ export class RaceSession {
         p.boat.boostTime = 1.4;
         p.boat.boostStrength = 1;
         this.events.push('perfectStart', p.id);
+        this.stats.perfectStart = true;
       }
       // Some AI nail the start too.
       for (const r of this.racers) {
@@ -554,6 +589,19 @@ export class RaceSession {
       }
     }
     this.updateMines(dt);
+    // Message bottles (any mode).
+    for (let i = 0; i < this.bottles.length; i++) {
+      const bt = this.bottles[i];
+      if (bt.found) continue;
+      const dx = b.position.x - bt.x;
+      const dz = b.position.z - bt.z;
+      const dy = b.position.y - (bt.y < 2 ? b.surfaceY : bt.y);
+      if (dx * dx + dz * dz < 3.2 * 3.2 && Math.abs(dy) < 2.8) {
+        bt.found = true;
+        this.stats.bottles |= 1 << i;
+        this.events.push('collectible', p.id, bt.x, b.position.y, bt.z, i);
+      }
+    }
     if (this.phase !== 'racing') return;
     if (this.mode === 'stunt') {
       this.stuntTimeLeft -= dt;
@@ -719,13 +767,17 @@ export class RaceSession {
       if (e.racer !== 0) continue;
       if (e.type === 'driftTier') {
         this.player.driftScore += e.value * 100;
+        if (e.value === 3) this.stats.tier3++;
         if (this.mode === 'stunt' && this.phase === 'racing') this.stuntScore += e.value * 100;
       }
       if (e.type === 'trick') {
         this.player.tricks++;
         if (this.mode === 'stunt' && this.phase === 'racing') this.stuntScore += e.value;
       }
-      if (e.type === 'land' && e.text === 'clean' && this.mode === 'stunt' && this.phase === 'racing') this.stuntScore += 150;
+      if (e.type === 'land' && e.text === 'clean') {
+        this.stats.clean++;
+        if (this.mode === 'stunt' && this.phase === 'racing') this.stuntScore += 150;
+      }
     }
   }
 

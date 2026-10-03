@@ -60,6 +60,8 @@ export interface Layout {
   buoys: Buoy[];
   signs: Sign[];
   rings: StuntRing[];
+  /** Hidden message-bottle collectibles (BOTTLES_PER_TRACK of them). */
+  bottles: { x: number; y: number; z: number }[];
   /** Island footprints for the shallow-water map: x, z, radius. */
   islands: { x: number; z: number; r: number }[];
   /** World bounds of the playable/visible area. */
@@ -324,5 +326,32 @@ export function buildLayout(track: Track): Layout {
     rings.push({ x: _p.x - _p.tz * lat, y: 2.5, z: _p.z + _p.tx * lat, heading: _p.heading, radius: 3.8, taken: false, respawn: 0 });
   }
 
-  return { theme, props, colliders, buoys, signs, rings, islands, extent };
+  // ── Hidden message bottles: one in the shortcut, one in the air past a ramp,
+  // the rest just outside the buoy line where only explorers go. Own RNG so
+  // adding them leaves the rest of the layout unchanged.
+  const brng = new Rng(track.def.seed * 13 + 5);
+  const bottles: Layout['bottles'] = [];
+  const freeSpot = (x: number, z: number) => !colliders.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + 4);
+  const sc = track.shortcuts[0];
+  if (sc) {
+    const m = Math.floor(sc.pts.length / 4) * 2;
+    bottles.push({ x: sc.pts[m], y: 0.6, z: sc.pts[m + 1] });
+  }
+  const ramp = track.ramps[brng.int(0, Math.max(0, track.ramps.length - 1))];
+  if (ramp) {
+    const d = ramp.length + 22;
+    bottles.push({ x: ramp.x + Math.sin(ramp.heading) * d + Math.cos(ramp.heading) * 3, y: 6.5, z: ramp.z + Math.cos(ramp.heading) * d - Math.sin(ramp.heading) * 3 });
+  }
+  for (let tries = 0; bottles.length < 5 && tries < 200; tries++) {
+    const s = brng.range(0, track.length);
+    track.sample(s, _p);
+    const side = brng.chance(0.5) ? 1 : -1;
+    const lat = side * (W * 0.5 + brng.range(6, 16));
+    const x = _p.x - _p.tz * lat;
+    const z = _p.z + _p.tx * lat;
+    if (!freeSpot(x, z) || bottles.some((b) => Math.hypot(b.x - x, b.z - z) < 120)) continue;
+    bottles.push({ x, y: 0.6, z });
+  }
+
+  return { theme, props, colliders, buoys, signs, rings, bottles, islands, extent };
 }

@@ -306,3 +306,24 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .admin .adm-msg { padding: 6px 10px; color: #ffd21e; border-top: 1px solid #34407a; }
 .admin .adm-lock { font-size: 15px; }
 .admin .adm-stats { color: #a6ff3d; white-space: pre-wrap; }
+
+/* ── Progression screens ─────────────────────────────────────────────── */
+.achs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; align-content: start; }
+.ach { background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; opacity: .55; border-left: 3px solid transparent; }
+.ach.got { opacity: 1; border-left-color: var(--gold); }
+.ach.focus { background: var(--panel2); }
+.ach b { font-family: var(--font); font-style: italic; font-size: 14px; letter-spacing: .5px; }
+.ach.got b { color: var(--gold); }
+.ach span { font-size: 12px; color: var(--dim); }
+.ach em { font-style: normal; font-size: 11px; color: var(--yellow); letter-spacing: 1px; }
+.card.chal canvas { height: 90px; }
+.card.chal.done { filter: saturate(.5); }
+.card.chal .ct { font-size: 15px; line-height: 1.25; min-height: 38px; }
+.upg { margin-bottom: 8px; padding: 10px 14px; }
+.upg .row { margin-bottom: 4px; }
+.pips { display: inline-flex; gap: 4px; margin-left: 10px; }
+.pip { width: 18px; height: 8px; background: rgba(255,255,255,.12); transform: skewX(-20deg); display: inline-block; }
+.pip.on { background: var(--lime); box-shadow: 0 0 6px var(--lime); }
+.sbar { position: relative; }
+.sbar .sbar-up { position: absolute; top: 0; height: 100%; background: var(--yellow) !important; }
+textarea.codebox { width: min(560px, 80vw); height: 110px; font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; background: #0a1230; color: #dff; border: 1px solid var(--line); padding: 8px; word-break: break-all; resize: vertical; }

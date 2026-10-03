@@ -37,6 +37,11 @@ export class Racer {
   bestAir = 0;
   driftScore = 0;
   tricks = 0;
+  /** Index into RIVALS (AI only, -1 for the player). */
+  rivalIndex = -1;
+  /** Battle items: held item and hits taken/landed. */
+  item: string | null = null;
+  itemHits = 0;
   /** Checkpoint respawn location. */
   respawnS = 0;
 

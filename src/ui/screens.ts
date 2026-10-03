@@ -16,8 +16,11 @@ import { drawTrackPreview } from './minimap';
 import { ACTION_LABEL, ACTIONS, DEFAULT_BINDINGS, keyLabel, type Action } from '../input/input';
 import type { ModeId, WeatherId } from '../core/types';
 import { RIVALS } from '../race/session';
-import { t } from './i18n';
-import { endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
+import { t, t as t2 } from './i18n';
+import { ACHIEVEMENTS, BOTTLES_PER_TRACK, bottleCount, CAREER, dayKey, makeChallenge, UPGRADE_INFO, UPGRADE_KINDS, UPGRADE_MAX, upgradeCost, upgradedSpec, weekKey, type Challenge } from '../save/progress';
+import { encodeGhost, decodeGhost } from '../save/ghostCode';
+import { LANG_NAME, LANGS } from './i18n';
+import { checkAchievements, endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
 
 const MODE_SUB: Record<ModeId, string> = { quick: 'quickSub', championship: 'champSub', timetrial: 'ttSub', freeride: 'freeSub', stunt: 'stuntSub', endless: 'endlessSub', battle: 'battleSub', career: 'careerSub', tutorial: 'tutorialSub' };
 const modeName = (m: ModeId) => t(m);
@@ -109,6 +112,44 @@ export class Screens {
       case 'garage':
         a.click('select');
         this.garage();
+        break;
+      case 'modes':
+        a.click('select');
+        this.modes();
+        break;
+      case 'career':
+        a.click('select');
+        this.career();
+        break;
+      case 'careerGo':
+        this.startCareer(Number(arg));
+        break;
+      case 'challenges':
+        a.click('select');
+        this.challenges();
+        break;
+      case 'chalGo':
+        this.startChallenge(Number(arg));
+        break;
+      case 'achievements':
+        a.click('select');
+        this.achievements();
+        break;
+      case 'tutorial':
+        a.click('select');
+        g.startTutorial();
+        break;
+      case 'split':
+        a.click('select');
+        this.splitSetup();
+        break;
+      case 'photo':
+        a.click('select');
+        g.photoMode();
+        break;
+      case 'replay':
+        a.click('select');
+        g.watchReplay();
         break;
       case 'settings':
         a.click('select');
@@ -229,28 +270,182 @@ export class Screens {
     const d = g.save.data;
     const lv = levelFromXp(d.xp);
     const champ = d.champ ? CUPS.find((c) => c.id === d.champ!.cupId) : null;
+    const today = this.todayChallenges();
+    const openCh = today.filter((c) => !d.challengesDone.includes(c.key)).length;
+    const achN = Object.keys(d.achievements).length;
     this.mount(
       'menu',
       `<h1 class="h">RIPTIDE</h1><div class="sub">Arcade Wave Racing</div>
       <div class="menu">
-        <button class="btn big primary" data-nav data-act="mode" data-arg="quick"><span>PLAY</span><span class="k">QUICK RACE</span></button>
-        <button class="btn" data-nav data-act="mode" data-arg="championship"><span>CHAMPIONSHIP</span><span class="k">${champ ? 'CONTINUE ' + champ.name : CUPS.length + ' CUPS'}</span></button>
-        <button class="btn" data-nav data-act="mode" data-arg="timetrial"><span>TIME TRIAL</span><span class="k">BEAT YOUR GHOST</span></button>
-        <button class="btn" data-nav data-act="mode" data-arg="stunt"><span>STUNT RUN</span><span class="k">SCORE ATTACK</span></button>
-        <button class="btn" data-nav data-act="mode" data-arg="endless"><span>ENDLESS WAVE</span><span class="k">SURVIVAL</span></button>
-        <button class="btn" data-nav data-act="mode" data-arg="freeride"><span>FREE RIDE</span><span class="k">EXPLORE</span></button>
-        <button class="btn" data-nav data-act="garage"><span>GARAGE</span><span class="k">BOATS · PAINT</span></button>
-        <button class="btn" data-nav data-act="settings"><span>SETTINGS</span><span class="k"></span></button>
+        <button class="btn big primary" data-nav data-act="mode" data-arg="quick"><span>${t('play')}</span><span class="k">${t('quick')}</span></button>
+        <button class="btn" data-nav data-act="career"><span>${t('career')}</span><span class="k">${d.career.stage >= CAREER.length ? '★ ' + t('completed') : `RIVAL ${d.career.stage + 1}/${CAREER.length}`}</span></button>
+        <button class="btn" data-nav data-act="mode" data-arg="championship"><span>${t('championship')}</span><span class="k">${champ ? 'CONTINUE ' + champ.name : CUPS.length + ' CUPS'}</span></button>
+        <button class="btn" data-nav data-act="challenges"><span>${t('challenges')}</span><span class="k">${openCh ? `${openCh} NEW` : '✓'}</span></button>
+        <button class="btn" data-nav data-act="modes"><span>MORE MODES</span><span class="k">BATTLE · 2P · STUNT · …</span></button>
+        <button class="btn" data-nav data-act="garage"><span>${t('garage')}</span><span class="k">${t('boats')} · ${t('upgrades')}</span></button>
+        <button class="btn" data-nav data-act="achievements"><span>${t('achievements')}</span><span class="k">${achN}/${ACHIEVEMENTS.length}</span></button>
+        <button class="btn" data-nav data-act="settings"><span>${t('settings')}</span><span class="k"></span></button>
       </div>
       <div class="profile">
         <div class="name">${esc(d.playerName)}</div>
-        <div class="lvl">LEVEL ${lv.level}${lv.level >= 20 ? ' · MAX' : ''}</div>
+        <div class="lvl">${t('level')} ${lv.level}${lv.level >= 20 ? ' · MAX' : ''}</div>
         <div class="xpbar"><div style="width:${((lv.into / lv.need) * 100).toFixed(1)}%"></div></div>
-        <div class="stats-line"><span>CREDITS <b class="cr">${d.credits.toLocaleString()}</b></span><span>RACES <b>${d.races}</b></span><span>WINS <b>${d.wins}</b></span></div>
-        <div class="stats-line" style="margin-top:6px"><span>MEDALS <b>${this.medalCount()}</b></span><span>BOATS <b>${d.owned.length}/${BOATS.length}</b></span></div>
+        <div class="stats-line"><span>${t('credits')} <b class="cr">${d.credits.toLocaleString()}</b></span><span>${t('races')} <b>${d.races}</b></span><span>${t('wins')} <b>${d.wins}</b></span></div>
+        <div class="stats-line" style="margin-top:6px"><span>${t('medals')} <b>${this.medalCount()}</b></span><span>${t('boats')} <b>${d.owned.length}/${BOATS.length}</b></span><span>${t('bottles')} <b>${this.bottleTotal()}</b></span></div>
       </div>
-      <div class="footer"><span class="hint"><b>↑↓</b> select · <b>ENTER</b> confirm · <b>ESC</b> back</span>${g.save.error ? `<span class="hint" style="color:var(--pink)">${esc(g.save.error)}</span>` : ''}${g.save.recovered ? '<span class="hint" style="color:var(--yellow)">Save data was unreadable and has been reset.</span>' : ''}</div>`,
+      <div class="footer"><span class="hint">${t('menuHint').replace(/(↑↓|ENTER|ENTRÉE|ESC|ÉCHAP)/g, '<b>$1</b>')}</span>${g.save.error ? `<span class="hint" style="color:var(--pink)">${esc(g.save.error)}</span>` : ''}${g.save.recovered ? '<span class="hint" style="color:var(--yellow)">Save data was unreadable and has been reset.</span>' : ''}</div>`,
       null,
+    );
+    if (!d.tutorialDone && d.races === 0) setTimeout(() => this.current === 'menu' && this.toast('MORE MODES → TUTORIAL', 'NEW HERE?'), 900);
+  }
+
+  // ── More modes ───────────────────────────────────────────────────────────
+  modes() {
+    const g = this.game;
+    const row = (act: string, arg: string, name: string, sub: string) => `<button class="btn" data-nav data-act="${act}" data-arg="${arg}"><span>${name}</span><span class="k">${sub}</span></button>`;
+    this.mount(
+      'modes',
+      `<h1 class="h">MORE MODES</h1><div class="sub">Pick your poison</div>
+      <div class="menu">
+        ${row('mode', 'battle', t('battle'), 'ITEMS · TORPEDOES')}
+        ${row('split', '', t('splitscreen'), 'SPLIT-SCREEN')}
+        ${row('mode', 'timetrial', t('timetrial'), 'BEAT YOUR GHOST')}
+        ${row('mode', 'stunt', t('stunt'), 'SCORE ATTACK')}
+        ${row('mode', 'endless', t('endless'), 'SURVIVAL')}
+        ${row('mode', 'freeride', t('freeride'), 'EXPLORE · BOTTLES')}
+        ${row('tutorial', '', t('tutorial'), g.save.data.tutorialDone ? '✓' : 'START HERE')}
+      </div>
+      <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
+      () => g.enterMenu(),
+    );
+  }
+
+  private bottleTotal() {
+    let n = 0;
+    for (const tr of TRACKS) n += bottleCount(this.game.save.data.bottles[tr.id] ?? 0);
+    return `${n}/${TRACKS.length * BOTTLES_PER_TRACK}`;
+  }
+
+  private todayChallenges(): Challenge[] {
+    const lvl = this.game.save.level;
+    const tracks = TRACKS.filter((tr) => tr.unlockLevel <= lvl && !tr.sprint).map((tr) => tr.id);
+    return [makeChallenge(dayKey(), false, tracks), makeChallenge(weekKey(), true, tracks)];
+  }
+
+  // ── Challenges ───────────────────────────────────────────────────────────
+  challenges() {
+    const g = this.game;
+    const d = g.save.data;
+    const list = this.todayChallenges();
+    const cards = list
+      .map((c, i) => {
+        const done = d.challengesDone.includes(c.key);
+        const tr = trackDef(c.trackId);
+        return `<div class="card chal ${done ? 'done' : ''}" data-nav data-act="chalGo" data-arg="${i}" style="width:min(420px,88vw)">
+          <span class="tag">${c.weekly ? t('weekly') : t('daily')}</span>
+          <canvas data-track="${c.trackId}"></canvas>
+          <div class="ct">${esc(c.text)}</div>
+          <div class="cs">${tr.name} · ${c.mode.toUpperCase()}${c.boat ? ' · ' + boatSpec(c.boat).name + (d.owned.includes(c.boat) ? '' : ' (LOANER)') : ''}</div>
+          <div class="lock" style="color:${done ? 'var(--lime)' : 'var(--yellow)'}">${done ? '✓ ' + t('completed') : `REWARD ${c.credits.toLocaleString()} CR · ${c.xp} XP`}</div>
+        </div>`;
+      })
+      .join('');
+    this.mount(
+      'challenges',
+      `<h1 class="h">${t('challenges')}</h1><div class="sub">New daily challenge every day · weekly every Monday · ${d.challengesDone.length} completed</div>
+      <div class="cards">${cards}</div>
+      <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
+      () => g.enterMenu(),
+    );
+    this.root!.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
+      const tg = trackGeo(c.dataset.track!);
+      drawTrackPreview(c, tg.px, tg.pz, '#ffd21e', trackDef(c.dataset.track!).sprint);
+    });
+  }
+
+  private startChallenge(i: number) {
+    const g = this.game;
+    const c = this.todayChallenges()[i];
+    if (!c) return;
+    if (g.save.data.challengesDone.includes(c.key)) {
+      g.audio.click('deny');
+      this.toast('Already completed — come back tomorrow', t('completed'));
+      return;
+    }
+    g.audio.click('select');
+    const boat = c.boat ?? g.save.data.selectedBoat;
+    g.startEvent({ mode: c.mode, trackId: c.trackId, weather: c.weather, laps: c.laps, difficulty: c.weekly ? 'hard' : g.save.data.settings.difficulty, boat, challenge: c });
+  }
+
+  // ── Career ───────────────────────────────────────────────────────────────
+  career() {
+    const g = this.game;
+    const d = g.save.data;
+    const cur = Math.min(d.career.stage, CAREER.length - 1);
+    const rows = CAREER.map((st, i) => {
+      const r = RIVALS[st.boss];
+      const beaten = d.career.stage > i;
+      const open = i === d.career.stage;
+      const locked = i > d.career.stage;
+      return `<button class="btn ${open ? 'primary' : ''} ${locked ? 'disabled' : ''}" data-nav data-act="careerGo" data-arg="${i}" style="width:100%;margin-bottom:6px">
+        <span><i style="display:inline-block;width:12px;height:12px;background:${r.hull};margin-right:8px;transform:skewX(-10deg)"></i>${i + 1}. ${r.name} — ${st.title}</span>
+        <span class="k">${beaten ? '✓ BEATEN' : locked ? '🔒' : trackDef(st.trackId).name}</span></button>`;
+    }).join('');
+    const st = CAREER[cur];
+    const done = d.career.stage >= CAREER.length;
+    this.mount(
+      'career',
+      `<h1 class="h">${t('career')}</h1><div class="sub">${t('careerSub')}</div>
+      <div class="grid2"><div class="scroll">${rows}</div>
+      <div><div class="panel"><div class="label" style="margin-top:0">${done ? 'CHAMPION' : 'NEXT RIVAL'}</div>
+        <div style="font-family:var(--font);font-style:italic;font-size:30px;color:${RIVALS[st.boss].hull}">${RIVALS[st.boss].name}</div>
+        <div class="hint" style="font-size:15px;margin:8px 0 12px;line-height:1.4">${done ? 'You have beaten every rival on the water. Replay any stage for fun.' : esc(st.intro)}</div>
+        <div class="hint">${trackDef(st.trackId).name} · ${st.weather.toUpperCase()} · ${st.laps} LAPS · ${st.difficulty.toUpperCase()} FIELD</div>
+        <div class="hint" style="margin-top:6px">Finish ahead of ${RIVALS[st.boss].name} to advance · REWARD ${st.credits.toLocaleString()} CR</div></div></div></div>
+      <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
+      () => g.enterMenu(),
+    );
+    g.setBackdrop(st.trackId, st.weather);
+  }
+
+  private startCareer(i: number) {
+    const g = this.game;
+    if (i > g.save.data.career.stage) {
+      g.audio.click('deny');
+      return;
+    }
+    g.audio.click('select');
+    const st = CAREER[i];
+    this.setup.trackId = st.trackId;
+    this.setup.weather = st.weather;
+    this.setup.careerStage = i;
+    this.eventSetup('career', st.trackId);
+  }
+
+  splitSetup() {}
+
+  // ── Achievements ─────────────────────────────────────────────────────────
+  achievements() {
+    const g = this.game;
+    const d = g.save.data;
+    const list = ACHIEVEMENTS.map((a) => {
+      const got = d.achievements[a.id];
+      return `<div class="ach ${got ? 'got' : ''}" data-nav><b>${got ? '★' : '☆'} ${a.name}</b><span>${a.desc}</span><em>${got ? new Date(got).toLocaleDateString() : `+${a.credits} CR`}</em></div>`;
+    }).join('');
+    const st = d.stats;
+    const bottles = TRACKS.map((tr) => `<div class="row hint" style="font-size:13px"><span>${tr.name}</span><span class="spacer"></span><b>${bottleCount(d.bottles[tr.id] ?? 0)}/${BOTTLES_PER_TRACK}</b></div>`).join('');
+    this.mount(
+      'achievements',
+      `<h1 class="h">${t('achievements')}</h1><div class="sub">${Object.keys(d.achievements).length} of ${ACHIEVEMENTS.length} unlocked</div>
+      <div class="grid2"><div class="scroll achs">${list}</div>
+      <div class="scroll"><div class="panel"><div class="label" style="margin-top:0">LIFETIME</div>
+        <div class="hint" style="font-size:14px;line-height:1.8">TRICKS <b>${st.tricks}</b> · PINK DRIFTS <b>${st.tier3}</b> · CLEAN LANDINGS <b>${st.cleanLandings}</b><br>
+        BEST AIR <b>${st.bestAir.toFixed(1)} s</b> · TOP SPEED <b>${Math.round(st.topSpeed * 3.6)} KM/H</b><br>
+        DISTANCE <b>${(st.distance / 1000).toFixed(1)} KM</b> · ITEM HITS <b>${st.itemHits}</b> · PERFECT STARTS <b>${st.perfectStarts}</b></div>
+        <div class="label">MESSAGE BOTTLES ${this.bottleTotal()}</div>${bottles}
+        <div class="hint" style="margin-top:8px">Bottles hide off the racing line, in shortcuts and in the air past ramps. Free Ride is the best way to hunt them.</div></div></div></div>
+      <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
+      () => g.enterMenu(),
     );
   }
 
@@ -275,6 +470,8 @@ export class Screens {
     const g = this.game;
     const s = g.save.data;
     this.setup.mode = mode;
+    if (mode !== 'career') this.setup.careerStage = undefined;
+    this.setup.challenge = null;
     this.setup.boat = s.selectedBoat;
     this.setup.difficulty = s.settings.difficulty;
     this.setup.laps = s.settings.laps;
@@ -289,7 +486,7 @@ export class Screens {
         <span class="spacer"></span>
         <button class="btn big primary" data-nav data-act="go" id="goBtn"><span>${mode === 'championship' ? 'START ROUND' : 'START'}</span><span class="k">ENTER</span></button>
       </div>`,
-      () => (mode === 'championship' ? this.champ() : g.enterMenu()),
+      () => (mode === 'championship' ? this.champ() : mode === 'career' ? this.career() : mode === 'quick' || mode === 'battle' ? g.enterMenu() : this.modes()),
       'screen full',
     );
     this.refreshSetup(fixedTrack);
@@ -307,7 +504,8 @@ export class Screens {
     const rec = g.save.data.records[st.trackId] ?? {};
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
-    const showTracks = st.mode !== 'championship';
+    const showTracks = st.mode !== 'championship' && st.mode !== 'career';
+    const stage = st.mode === 'career' && st.careerStage !== undefined ? CAREER[st.careerStage] : null;
     const tracks = TRACKS.map((t) => {
       const locked = lvl < t.unlockLevel;
       return `<div class="card ${t.id === st.trackId ? 'sel' : ''} ${locked ? 'locked' : ''}" data-nav data-act="track" data-arg="${t.id}">
@@ -327,8 +525,9 @@ export class Screens {
     const spec = boatSpec(st.boat);
     const stats = boatStats(spec);
     const bars = Object.entries(stats).map(([k, v]) => `<span>${k.toUpperCase()}</span><div class="sbar"><div style="width:${v * 10}%"></div></div>`).join('');
-    const laps = st.mode === 'quick' || st.mode === 'timetrial' ? `<div class="label">Laps</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => `<button class="opt ${st.laps === n ? 'on' : ''}" data-nav data-act="laps" data-arg="${n}">${n}</button>`).join('')}</div>` : '';
-    const diff = st.mode === 'quick' || st.mode === 'championship' ? `<div class="label">Opponents</div><div class="opts">${(['easy', 'normal', 'hard'] as const).map((d) => `<button class="opt ${st.difficulty === d ? 'on' : ''}" data-nav data-act="diff" data-arg="${d}">${d.toUpperCase()}</button>`).join('')}</div>` : '';
+    const sprint = !!trackDef(st.trackId).sprint;
+    const laps = (st.mode === 'quick' || st.mode === 'timetrial' || st.mode === 'battle') && !sprint ? `<div class="label">Laps</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => `<button class="opt ${st.laps === n ? 'on' : ''}" data-nav data-act="laps" data-arg="${n}">${n}</button>`).join('')}</div>` : '';
+    const diff = st.mode === 'quick' || st.mode === 'championship' || st.mode === 'battle' ? `<div class="label">Opponents</div><div class="opts">${(['easy', 'normal', 'hard'] as const).map((d) => `<button class="opt ${st.difficulty === d ? 'on' : ''}" data-nav data-act="diff" data-arg="${d}">${d.toUpperCase()}</button>`).join('')}</div>` : '';
     let records = '';
     const ghost = g.save.data.ghosts[st.trackId];
     if (st.mode === 'timetrial') {
@@ -340,17 +539,29 @@ export class Screens {
     } else if (st.mode === 'endless') {
       const [gm, sm, bm] = endlessTargets();
       records = `BEST <b>${rec.endless ?? '—'} m</b> · GOLD ${gm} m · SILVER ${sm} m · BRONZE ${bm} m`;
+    } else if (st.mode === 'career' && stage) {
+      records = '';
     } else if (st.mode !== 'freeride') records = `RECORD <b>${rec.race ? formatTime(rec.race) : '—'}</b> · BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b>`;
+    const dyn = st.mode === 'quick' || st.mode === 'championship' || st.mode === 'battle' || st.mode === 'freeride';
+    const dynHtml = dyn ? `<div class="label">${t('dynWeather')}</div><div class="opts">${[false, true].map((v) => `<button class="opt ${g.save.data.settings.dynamicWeather === v ? 'on' : ''}" data-nav data-act="dynw" data-arg="${v}">${v ? t('on') : t('off')}</button>`).join('')}</div>` : '';
+    const ghostHtml =
+      st.mode === 'timetrial'
+        ? `<div class="label">Ghost sharing</div><div class="opts"><button class="opt ${ghost ? '' : 'disabled'}" data-nav data-act="ghostShare">SHARE MY GHOST</button><button class="opt" data-nav data-act="ghostImport">RACE A FRIEND'S GHOST</button>${ghost?.name ? `<span class="hint" style="align-self:center">Current ghost: <b>${esc(ghost.name)}</b> ${formatTime(ghost.time)}</span>` : ''}</div>`
+        : '';
+    const bossHtml = stage
+      ? `<div class="panel" style="margin:8px 0;border-left:4px solid ${RIVALS[stage.boss].hull}"><div style="font-family:var(--font);font-style:italic;font-size:22px">${RIVALS[stage.boss].name} · ${stage.title}</div><div class="hint" style="font-size:14px;margin-top:6px">${esc(stage.intro)}</div><div class="hint" style="margin-top:6px">${stage.laps} LAPS · ${stage.weather.toUpperCase()} · Finish ahead of ${RIVALS[stage.boss].name}</div></div>`
+      : '';
     body.innerHTML = `
+      ${bossHtml}
       ${showTracks ? `<div class="label">Course</div><div class="cards">${tracks}</div>` : `<div class="label">Course</div><div class="panel"><b style="font-family:var(--font);font-size:22px;font-style:italic">${trackDef(fixedTrack ?? st.trackId).name}</b><div class="hint">${trackDef(st.trackId).blurb}</div></div>`}
       <div class="hint" style="margin:4px 0 4px">${records}</div>
-      <div class="label">Weather</div><div class="opts">${weather}</div>
-      ${laps}${diff}
+      ${stage ? '' : `<div class="label">${t('weather')}</div><div class="opts">${weather}</div>`}
+      ${laps}${diff}${dynHtml}${ghostHtml}
       <div class="label">Watercraft</div><div class="opts">${boats}</div>
       <div class="panel" style="margin-top:10px;max-width:520px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>`;
     body.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
       const t = trackGeo(c.dataset.track!);
-      drawTrackPreview(c, t.px, t.pz, c.dataset.track === st.trackId ? '#ff3b5c' : '#26e8ff');
+      drawTrackPreview(c, t.px, t.pz, c.dataset.track === st.trackId ? '#ff3b5c' : '#26e8ff', trackDef(c.dataset.track!).sprint);
     });
     // Restore focus to the equivalent control after re-render.
     const again = focusedAct ? (body.querySelector(`[data-act="${focusedAct}"][data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
@@ -502,9 +713,9 @@ export class Screens {
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
     (this.root!.querySelector('#gCredits') as HTMLElement).innerHTML = `CREDITS <b class="cr" style="color:var(--yellow)">${d.credits.toLocaleString()}</b> · LEVEL ${lvl}`;
-    const tabs = ['boats', 'paint', 'style', 'fx'];
+    const tabs = ['boats', 'upgrades', 'paint', 'style', 'fx'];
     (this.root!.querySelector('#gTabs') as HTMLElement).innerHTML = tabs
-      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: 'BOATS', paint: 'PAINT', style: 'STRIPES & DECALS', fx: 'TRAIL & BOOST' }[t]}</button>`)
+      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), paint: t2('paint'), style: t2('stripes'), fx: t2('trail') }[t]}</button>`)
       .join('');
     const liv = g.save.livery(this.garageBoat);
     const spec = boatSpec(this.garageBoat);
@@ -529,6 +740,23 @@ export class Screens {
               ? `<button class="btn small primary ${d.credits < spec.price ? 'disabled' : ''}" data-nav data-act="gbuy" data-arg="${spec.id}"><span>BUY ${spec.price.toLocaleString()} CR</span></button>`
               : `<span class="lock">🔒 REACH LEVEL ${spec.unlockLevel}</span>`
         }</div></div>`;
+    } else if (this.garageTab === 'upgrades') {
+      const owned = d.owned.includes(spec.id);
+      const up = g.save.upgrades(spec.id);
+      const base = boatStats(spec);
+      const now = boatStats(upgradedSpec(spec, up));
+      html = `<div class="hint" style="margin-bottom:10px">Upgrades belong to each boat. ${owned ? '' : '<b style="color:var(--yellow)">Buy this boat first.</b>'}</div>`;
+      html += UPGRADE_KINDS.map((k) => {
+        const lvlK = up[k];
+        const maxed = lvlK >= UPGRADE_MAX;
+        const cost = upgradeCost(k, lvlK);
+        const pips = Array.from({ length: UPGRADE_MAX }, (_, i) => `<i class="pip ${i < lvlK ? 'on' : ''}"></i>`).join('');
+        return `<div class="panel upg"><div class="row"><b style="font-family:var(--font);font-style:italic">${UPGRADE_INFO[k].name}</b><span class="pips">${pips}</span><span class="spacer"></span>
+          <button class="btn small ${maxed ? '' : 'primary'} ${!owned || maxed || d.credits < cost ? 'disabled' : ''}" data-nav data-act="gup" data-arg="${k}"><span>${maxed ? 'MAXED' : `${cost.toLocaleString()} CR`}</span></button></div>
+          <div class="hint">${UPGRADE_INFO[k].blurb}</div></div>`;
+      }).join('');
+      html += `<div class="panel" style="margin-top:8px"><div class="statbars">${Object.entries(now).map(([k, v]) => `<span>${k.toUpperCase()}</span><div class="sbar"><div style="width:${v * 10}%"></div>${v > base[k as keyof typeof base] ? `<div class="sbar-up" style="left:${base[k as keyof typeof base] * 10}%;width:${(v - base[k as keyof typeof base]) * 10}%"></div>` : ''}</div>`).join('')}</div>
+        <div class="hint" style="margin-top:8px">TOP ${Math.round(upgradedSpec(spec, up).topSpeed * 3.6)} KM/H (stock ${Math.round(spec.topSpeed * 3.6)})</div></div>`;
     } else if (this.garageTab === 'paint') {
       const sw = (field: 'hull' | 'accent', list: string[], n: number) =>
         `<div class="swatches">${list.map((c, i) => `<button class="sw ${liv[field] === c ? 'on' : ''} ${i >= n ? 'lk disabled' : ''}" style="background:${c}" data-nav data-act="gpaint" data-arg="${field}:${c}" title="${i >= n ? 'Unlocks at a higher level' : c}"></button>`).join('')}</div>`;
@@ -589,9 +817,11 @@ export class Screens {
           d.credits -= spec.price;
           d.owned.push(spec.id);
           d.selectedBoat = spec.id;
+          const ach = checkAchievements(g.save);
           g.save.save(true);
           g.audio.unlockSting();
           this.toast(spec.name, 'PURCHASED');
+          ach.forEach((n, i) => setTimeout(() => this.toast(n, 'ACHIEVEMENT'), 700 + i * 700));
           this.garage('boats');
         });
         return true;
@@ -608,6 +838,54 @@ export class Screens {
         commit({ ...liv(), number: n });
         return true;
       }
+      case 'gup': {
+        const k = arg as (typeof UPGRADE_KINDS)[number];
+        const up = { ...g.save.upgrades(this.garageBoat) };
+        const cost = upgradeCost(k, up[k]);
+        if (!d.owned.includes(this.garageBoat) || up[k] >= UPGRADE_MAX || d.credits < cost) {
+          g.audio.click('deny');
+          return true;
+        }
+        d.credits -= cost;
+        up[k]++;
+        d.upgrades[this.garageBoat] = up;
+        const ach = checkAchievements(g.save);
+        g.save.save(true);
+        g.audio.unlockSting();
+        this.toast(`${UPGRADE_INFO[k].name} STAGE ${up[k]}`, 'UPGRADED');
+        ach.forEach((n, i) => setTimeout(() => this.toast(n, 'ACHIEVEMENT'), 700 + i * 700));
+        this.refreshGarage();
+        return true;
+      }
+      case 'dynw':
+        g.audio.click('move');
+        g.save.data.settings.dynamicWeather = arg === 'true';
+        g.save.save();
+        this.refreshSetup();
+        return true;
+      case 'ghostShare': {
+        const gh = d.ghosts[this.setup.trackId];
+        if (!gh) return true;
+        g.audio.click('select');
+        void encodeGhost(gh, gh.name ?? d.playerName).then((code) => this.showText('YOUR GHOST CODE', `Send this to a friend. They paste it into RACE A FRIEND'S GHOST on ${trackDef(gh.trackId).name}.`, code));
+        return true;
+      }
+      case 'ghostImport':
+        g.audio.click('select');
+        this.promptText("FRIEND'S GHOST CODE", 'Paste a code that starts with RPT1.', (code) => {
+          void decodeGhost(code).then((gh) => {
+            if (!gh) {
+              this.toast('That code is not a valid ghost', 'GHOST');
+              return;
+            }
+            d.ghosts[gh.trackId] = gh;
+            g.save.save(true);
+            this.toast(`${gh.name} · ${trackDef(gh.trackId).name} · ${formatTime(gh.time)}`, 'GHOST IMPORTED');
+            this.setup.trackId = gh.trackId;
+            this.refreshSetup();
+          });
+        });
+        return true;
       case 'gstripe':
         g.audio.click('move');
         commit({ ...liv(), stripe: arg as Livery['stripe'] });
@@ -622,7 +900,7 @@ export class Screens {
 
   // ── Settings ─────────────────────────────────────────────────────────────
   private settingsTab = 'audio';
-  private settingsReturn = 'menu';
+  settingsReturn = 'menu';
 
   settings(ret = 'menu', tab = this.settingsTab) {
     this.settingsReturn = ret;
@@ -683,7 +961,19 @@ export class Screens {
             [2, 'DEUTAN'],
             [3, 'TRITAN'],
           ]) +
-          this.slider('hudScale', 'HUD SCALE', 0.75, 1.3, 0.05, pct);
+          this.slider('hudScale', 'HUD SCALE', 0.75, 1.3, 0.05, pct) +
+          this.choice('symbols', 'COLOUR-BLIND SYMBOLS', [
+            [false, 'OFF'],
+            [true, 'ON'],
+          ]) +
+          this.choice('shadows', 'BOAT SHADOWS', [
+            [true, 'ON'],
+            [false, 'OFF'],
+          ]) +
+          this.choice('wildlife', 'WILDLIFE & TRAFFIC', [
+            [true, 'ON'],
+            [false, 'OFF'],
+          ]);
         break;
       case 'gameplay':
         html =
@@ -701,10 +991,24 @@ export class Screens {
             ['kmh', 'KM/H'],
             ['mph', 'MPH'],
           ]) +
-          this.slider('sensitivity', 'STEERING SENSITIVITY', 0.5, 1.6, 0.05, (v) => v.toFixed(2));
+          this.slider('sensitivity', 'STEERING SENSITIVITY', 0.5, 1.6, 0.05, (v) => v.toFixed(2)) +
+          this.choice('dynamicWeather', 'CHANGING WEATHER IN RACES', [
+            [false, 'OFF'],
+            [true, 'ON'],
+          ]) +
+          this.choice('lang', t('language'), LANGS.map((l) => [l, LANG_NAME[l]] as [string, string]));
         break;
       case 'controls':
         html =
+          this.choice('touch', 'TOUCH CONTROLS', [
+            ['auto', 'AUTO'],
+            ['on', 'ALWAYS'],
+            ['off', 'NEVER'],
+          ]) +
+          this.choice('tilt', 'TILT TO STEER (TOUCH)', [
+            [false, 'OFF'],
+            [true, 'ON'],
+          ]) +
           ACTIONS.map((a) => `<div class="setting"><span class="nm">${ACTION_LABEL[a].toUpperCase()}</span><div class="opts">${s.bindings[a].map((k) => `<span class="opt on">${keyLabel(k)}</span>`).join('')}<button class="opt" data-nav data-act="sbind" data-arg="${a}">+ REBIND</button></div><span></span></div>`).join('') +
           `<div class="row" style="margin-top:12px"><button class="btn small" data-nav data-act="sbindreset"><span>RESET TO DEFAULTS</span></button></div>
           <div class="hint" style="margin-top:12px">Gamepad: Left stick steer · RT throttle · LT brake · A/RB drift · X nitro · LB barrel roll · Y camera · Start pause</div>`;
@@ -795,13 +1099,14 @@ export class Screens {
   pause() {
     this.mount(
       'pause',
-      `<div class="center-col"><h1 class="h" style="transform:none">PAUSED</h1>
+      `<div class="center-col"><h1 class="h" style="transform:none">${t('paused')}</h1>
       <div class="menu">
-        <button class="btn big primary" data-nav data-act="resume" data-default><span>RESUME</span><span class="k">ESC</span></button>
-        <button class="btn" data-nav data-act="restart"><span>RESTART</span><span class="k">R</span></button>
-        <button class="btn" data-nav data-act="camera"><span>CHANGE CAMERA</span><span class="k">C</span></button>
-        <button class="btn" data-nav data-act="settings" data-arg="pause"><span>SETTINGS</span></button>
-        <button class="btn" data-nav data-act="quit"><span>QUIT TO MENU</span></button>
+        <button class="btn big primary" data-nav data-act="resume" data-default><span>${t('resume')}</span><span class="k">ESC</span></button>
+        ${this.game.session?.mode === 'championship' || this.game.session?.mode === 'tutorial' ? '' : `<button class="btn" data-nav data-act="restart"><span>${t('restart')}</span><span class="k">R</span></button>`}
+        <button class="btn" data-nav data-act="photo"><span>${t('photo')}</span><span class="k">F</span></button>
+        <button class="btn" data-nav data-act="camera"><span>${t('changeCamera')}</span><span class="k">C</span></button>
+        <button class="btn" data-nav data-act="settings" data-arg="pause"><span>${t('settings')}</span></button>
+        <button class="btn" data-nav data-act="quit"><span>${t('quit')}</span></button>
       </div></div>`,
       () => this.game.resumeRace(),
       'screen full',
@@ -843,11 +1148,15 @@ export class Screens {
         </div>
         <div class="label">LEVEL <span id="lvlNum">${sum.levelBefore}</span></div>
         <div class="xpbar" style="height:12px;max-width:420px"><div id="xpFill" style="width:${(sum.xpIntoBefore * 100).toFixed(1)}%"></div></div>
+        ${sum.career ? `<div class="msg small ${sum.career.beatBoss ? 'lime' : 'warn'}" style="font-size:20px;animation:none;transform:none">${sum.career.beatBoss ? `YOU BEAT ${esc(sum.career.bossName)}!${sum.career.final ? ' CAREER COMPLETE!' : ''}` : `${esc(sum.career.bossName)} GOT AWAY — TRY AGAIN`}</div>` : ''}
+        ${sum.challenge ? `<div class="msg small ${sum.challenge.done ? 'lime' : ''}" style="font-size:16px;animation:none;transform:none;white-space:normal">${sum.challenge.done ? '✓ CHALLENGE COMPLETE · +' + sum.challenge.credits.toLocaleString() + ' CR' : '✗ CHALLENGE NOT MET'}</div><div class="hint">${esc(sum.challenge.text)}</div>` : ''}
+        ${sum.bottlesFound ? `<div class="msg small cyan" style="font-size:16px;animation:none;transform:none">FOUND ${sum.bottlesFound} MESSAGE BOTTLE${sum.bottlesFound > 1 ? 'S' : ''}</div>` : ''}
         ${sum.records.map((r) => `<div class="msg small gold" style="font-size:18px;animation:none;transform:none">${r}</div>`).join('')}
         ${table ? `<div style="margin-top:10px">${sum.breakdown.map(([l, v]) => `<div class="row hint"><span>${l}</span><span class="spacer"></span><b>+${v}</b></div>`).join('')}</div>` : ''}
       </div></div>
       <div class="footer">
-        ${champ ? '' : `<button class="btn" data-nav data-act="restart"><span>RACE AGAIN</span><span class="k">R</span></button>`}
+        ${champ ? '' : `<button class="btn" data-nav data-act="restart"><span>${t('raceAgain')}</span><span class="k">R</span></button>`}
+        ${g.replayAvailable ? `<button class="btn" data-nav data-act="replay"><span>${t('watchReplay')}</span></button>` : ''}
         <span class="spacer"></span>
         <button class="btn big primary" data-nav data-act="continue" data-default><span>CONTINUE</span><span class="k">ENTER</span></button>
       </div>`,
@@ -877,6 +1186,7 @@ export class Screens {
     setTimeout(step, 400);
     sum.unlocks.forEach((u, i) => setTimeout(() => this.toast(u.split(': ').pop()!, u.includes(':') ? u.split(':')[0] : 'UNLOCKED'), 1200 + i * 700));
     if (sum.levelAfter > sum.levelBefore) setTimeout(() => this.toast(`LEVEL ${sum.levelAfter}`, 'LEVEL UP'), 900);
+    sum.achievements.forEach((n, i) => setTimeout(() => this.toast(n, 'ACHIEVEMENT'), 1500 + (sum.unlocks.length + i) * 700));
   }
 
   confirm(text: string, yes: () => void) {
@@ -899,6 +1209,62 @@ export class Screens {
         this.game.audio.click('select');
         yes();
       } else this.game.audio.click('back');
+    });
+  }
+
+  /** Read-only text box (copyable). */
+  showText(title: string, sub: string, text: string) {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="panel" style="max-width:620px"><div style="font-family:var(--font);font-size:18px">${esc(title)}</div><div class="hint" style="margin:6px 0 10px">${esc(sub)}</div>
+      <textarea readonly class="codebox">${esc(text)}</textarea>
+      <div class="row" style="justify-content:center;margin-top:10px"><button class="btn small" data-nav data-x="copy"><span>COPY</span></button><button class="btn small primary" data-nav data-x="close"><span>CLOSE</span></button></div></div>`;
+    this.host.appendChild(m);
+    const ta = m.querySelector('textarea')!;
+    ta.select();
+    const prevRoot = this.root;
+    const prevBack = this.game.nav.onBack;
+    const close = () => {
+      m.remove();
+      if (prevRoot?.isConnected) this.game.nav.attach(prevRoot, prevBack);
+    };
+    this.game.nav.attach(m, close, m.querySelector('[data-x="copy"]') as HTMLElement);
+    m.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('[data-x]') as HTMLElement | null;
+      if (!b) return;
+      if (b.dataset.x === 'copy') {
+        ta.select();
+        navigator.clipboard?.writeText(text).then(
+          () => this.toast('Copied to clipboard', 'GHOST'),
+          () => document.execCommand?.('copy'),
+        );
+      } else close();
+    });
+  }
+
+  /** Multi-line text input modal. */
+  promptText(title: string, sub: string, ok: (text: string) => void) {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="panel" style="max-width:620px"><div style="font-family:var(--font);font-size:18px">${esc(title)}</div><div class="hint" style="margin:6px 0 10px">${esc(sub)}</div>
+      <textarea class="codebox" spellcheck="false"></textarea>
+      <div class="row" style="justify-content:center;margin-top:10px"><button class="btn small" data-nav data-x="no"><span>CANCEL</span></button><button class="btn small primary" data-nav data-x="yes"><span>IMPORT</span></button></div></div>`;
+    this.host.appendChild(m);
+    const ta = m.querySelector('textarea')!;
+    setTimeout(() => ta.focus(), 50);
+    ta.addEventListener('keydown', (e) => e.stopPropagation());
+    const prevRoot = this.root;
+    const prevBack = this.game.nav.onBack;
+    const close = () => {
+      m.remove();
+      if (prevRoot?.isConnected) this.game.nav.attach(prevRoot, prevBack);
+    };
+    this.game.nav.attach(m, close, m.querySelector('[data-x="yes"]') as HTMLElement);
+    m.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('[data-x]') as HTMLElement | null;
+      if (!b) return;
+      close();
+      if (b.dataset.x === 'yes') ok(ta.value);
     });
   }
 

@@ -144,7 +144,8 @@ export class Minimap {
 }
 
 /** Static full-course preview for track cards. */
-export function drawTrackPreview(canvas: HTMLCanvasElement, px: Float32Array, pz: Float32Array, color = '#26e8ff') {
+export function drawTrackPreview(canvas: HTMLCanvasElement, px: Float32Array, pz: Float32Array, color = '#26e8ff', sprint?: number) {
+  const last = sprint ? Math.floor(px.length * sprint) : px.length;
   const ctx = canvas.getContext('2d')!;
   const W = (canvas.width = canvas.clientWidth * 2 || 400);
   const H = (canvas.height = canvas.clientHeight * 2 || 240);
@@ -168,17 +169,26 @@ export function drawTrackPreview(canvas: HTMLCanvasElement, px: Float32Array, pz
     [5, color],
   ] as const) {
     ctx.beginPath();
-    for (let i = 0; i < px.length; i += 3) {
+    for (let i = 0; i < last; i += 3) {
       const x = ox + px[i] * s;
       const y = oy + pz[i] * s;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.closePath();
+    if (!sprint) ctx.closePath();
     ctx.lineWidth = w;
     ctx.strokeStyle = col;
     ctx.stroke();
   }
   ctx.fillStyle = '#fff';
   ctx.fillRect(ox + px[0] * s - 5, oy + pz[0] * s - 5, 10, 10);
+  if (sprint) {
+    // Chequered finish flag at the far end.
+    const fx = ox + px[last - 1] * s;
+    const fy = oy + pz[last - 1] * s;
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = (i + (i >> 1)) % 2 ? '#000' : '#fff';
+      ctx.fillRect(fx - 7 + (i % 2) * 7, fy - 7 + (i >> 1) * 7, 7, 7);
+    }
+  }
 }

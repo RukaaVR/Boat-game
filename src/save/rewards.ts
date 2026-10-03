@@ -7,6 +7,7 @@ import { BOATS } from '../boat/specs';
 import { CHAMP_POINTS, CUPS, TRACKS, trackDef } from '../race/trackDefs';
 import type { RaceSession } from '../race/session';
 import { cosmeticUnlocks, levelFromXp, type SaveStore } from './save';
+import { ACHIEVEMENTS, CAREER, challengeMet, type Challenge } from './progress';
 
 export interface RewardSummary {
   xp: number;
@@ -21,6 +22,19 @@ export interface RewardSummary {
   unlocks: string[];
   records: string[];
   breakdown: [string, number][];
+  /** Achievements unlocked by this event. */
+  achievements: string[];
+  /** Challenge outcome, if the event was a challenge attempt. */
+  challenge: { text: string; done: boolean; credits: number } | null;
+  /** Career outcome, if the event was a career stage. */
+  career: { beatBoss: boolean; bossName: string; stage: number; final: boolean } | null;
+  bottlesFound: number;
+}
+
+/** Extra context for an event that isn't in the session itself. */
+export interface RewardContext {
+  challenge?: Challenge | null;
+  careerStage?: number;
 }
 
 const PLACE_XP = [320, 230, 170, 120, 90, 70, 60, 50];
@@ -58,7 +72,7 @@ function unlocksBetween(before: number, after: number) {
   return out;
 }
 
-export function applyRewards(session: RaceSession, store: SaveStore): RewardSummary {
+export function applyRewards(session: RaceSession, store: SaveStore, ctx: RewardContext = {}): RewardSummary {
   const d = store.data;
   const p = session.player;
   const trackId = session.cfg.trackId;
@@ -80,6 +94,7 @@ export function applyRewards(session: RaceSession, store: SaveStore): RewardSumm
 
   if (session.isRace) {
     const place = p.place;
+    if (session.mode === 'battle' && place === 1) d.stats.battleWins++;
     const diffMul = session.cfg.difficulty === 'hard' ? 1.35 : session.cfg.difficulty === 'easy' ? 0.75 : 1;
     add(`${place}${['ST', 'ND', 'RD'][place - 1] ?? 'TH'} PLACE`, PLACE_XP[place - 1] * diffMul);
     credits += Math.round(PLACE_CR[place - 1] * diffMul);
@@ -153,12 +168,89 @@ export function applyRewards(session: RaceSession, store: SaveStore): RewardSumm
     }
   }
 
+  // ── Lifetime stats ─────────────────────────────────────────────────────
+  const st = session.stats;
+  const ls = d.stats;
+  ls.tricks += p.tricks;
+  ls.tier3 += st.tier3;
+  ls.cleanLandings += st.clean;
+  if (st.perfectStart) ls.perfectStarts++;
+  ls.bestAir = Math.max(ls.bestAir, p.bestAir);
+  ls.topSpeed = Math.max(ls.topSpeed, p.topSpeed);
+  ls.distance += Math.max(0, p.maxRaceDist);
+  ls.itemHits += st.itemHits;
+  ls.bestCleanInEvent = Math.max(ls.bestCleanInEvent, st.clean);
+  const w = session.cfg.weather;
+  if (session.mode !== 'tutorial' && !ls.weathers.includes(w)) ls.weathers.push(w);
+
+  // ── Message bottles ────────────────────────────────────────────────────
+  let bottlesFound = 0;
+  if (st.bottles) {
+    const before = d.bottles[trackId] ?? 0;
+    const now = before | st.bottles;
+    for (let i = 0; i < 8; i++) if (now & ~before & (1 << i)) bottlesFound++;
+    d.bottles[trackId] = now;
+    if (bottlesFound) {
+      credits += 150 * bottlesFound;
+      add(`MESSAGE BOTTLE${bottlesFound > 1 ? 'S' : ''} ×${bottlesFound}`, 60 * bottlesFound);
+    }
+  }
+
+  // ── Challenge ──────────────────────────────────────────────────────────
+  let challenge: RewardSummary['challenge'] = null;
+  const ch = ctx.challenge;
+  if (ch) {
+    const done = !d.challengesDone.includes(ch.key) && challengeMet(ch, {
+      mode: session.mode,
+      trackId,
+      weather: session.cfg.weather,
+      boat: session.cfg.playerBoat,
+      place: p.place,
+      finished: p.finished,
+      bestLap: p.bestLap,
+      stuntScore: session.stuntScore,
+      endlessDist: session.endlessDistance,
+      tricks: p.tricks,
+      tier3: st.tier3,
+      cleanLandings: st.clean,
+      itemHits: st.itemHits,
+    });
+    if (done) {
+      d.challengesDone.push(ch.key);
+      d.challengesDone = d.challengesDone.slice(-60);
+      if (ch.weekly) ls.weeklies++;
+      else ls.dailies++;
+      credits += ch.credits;
+      add(ch.weekly ? 'WEEKLY CHALLENGE' : 'DAILY CHALLENGE', ch.xp);
+    }
+    challenge = { text: ch.text, done, credits: done ? ch.credits : 0 };
+  }
+
+  // ── Career ─────────────────────────────────────────────────────────────
+  let career: RewardSummary['career'] = null;
+  if (session.mode === 'career' && ctx.careerStage !== undefined) {
+    const stage = CAREER[ctx.careerStage];
+    const boss = session.racers.find((r) => r.rivalIndex === stage.boss);
+    const beatBoss = !!boss && p.finished && (!boss.finished || p.finishTime < boss.finishTime) && p.place < boss.place;
+    if (beatBoss && d.career.stage === ctx.careerStage) {
+      d.career.stage++;
+      credits += stage.credits;
+      add(`BEAT ${boss!.name}`, stage.xp);
+    }
+    career = { beatBoss, bossName: boss?.name ?? '?', stage: ctx.careerStage, final: ctx.careerStage === CAREER.length - 1 };
+  }
+
   d.xp += xp;
   d.credits += credits;
   const after = levelFromXp(d.xp);
   const unlocks = unlocksBetween(before.level, after.level);
+  const achievements = checkAchievements(store);
   store.save(true);
   return {
+    achievements,
+    challenge,
+    career,
+    bottlesFound,
     xp,
     credits,
     medal,
@@ -172,6 +264,21 @@ export function applyRewards(session: RaceSession, store: SaveStore): RewardSumm
     records,
     breakdown,
   };
+}
+
+/** Award any newly met achievements (credits included). Returns their names. */
+export function checkAchievements(store: SaveStore): string[] {
+  const d = store.data;
+  const out: string[] = [];
+  for (const a of ACHIEVEMENTS) {
+    if (d.achievements[a.id]) continue;
+    if (a.test(d)) {
+      d.achievements[a.id] = Date.now();
+      d.credits += a.credits;
+      out.push(a.name);
+    }
+  }
+  return out;
 }
 
 /** Finish a championship (after the last round): award the cup. */
@@ -189,6 +296,7 @@ export function finishChampionship(store: SaveStore): { place: number; xp: numbe
   d.xp += xp;
   d.credits += credits;
   d.champ = null;
+  const ach = checkAchievements(store);
   store.save(true);
-  return { place, xp, credits, unlocks: unlocksBetween(before, levelFromXp(d.xp).level) };
+  return { place, xp, credits, unlocks: [...unlocksBetween(before, levelFromXp(d.xp).level), ...ach.map((a) => `ACHIEVEMENT: ${a}`)] };
 }

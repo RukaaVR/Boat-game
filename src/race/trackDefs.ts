@@ -31,6 +31,8 @@ export interface TrackDef {
   shortcuts: number;
   /** Time-trial best-lap medal targets (s): gold, silver, bronze. Derived from measured autopilot laps: bronze ≈ steady clean pace, gold ≈ 10% faster. */
   medals: [number, number, number];
+  /** Point-to-point sprint: the fraction of the generated loop that is raced, start → finish. The rest is walled off. */
+  sprint?: number;
 }
 
 export const TRACKS: TrackDef[] = [

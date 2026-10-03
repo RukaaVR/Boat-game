@@ -205,7 +205,7 @@ function sanitizeGhost(v: unknown): GhostData | null {
   if (typeof o.trackId !== 'string' || typeof o.boatId !== 'string' || typeof o.time !== 'number' || !Array.isArray(o.samples)) return null;
   if (o.samples.length % 6 !== 0 || o.samples.length > 6 * 10 * 600) return null;
   if (!o.samples.every((x) => typeof x === 'number' && Number.isFinite(x))) return null;
-  return { trackId: o.trackId, boatId: o.boatId, time: o.time, samples: o.samples as number[] };
+  return { trackId: o.trackId, boatId: o.boatId, time: o.time, samples: o.samples as number[], ...(typeof o.name === 'string' ? { name: o.name.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 12) } : {}) };
 }
 
 function sanitizeStats(v: unknown): LifetimeStats {

@@ -22,6 +22,7 @@ import { AudioEngine, type Listener } from '../audio/audio';
 import { Music } from '../audio/music';
 import { SaveStore } from '../save/save';
 import { applyRewards, finishChampionship, type RewardSummary } from '../save/rewards';
+import { CAREER, type Challenge } from '../save/progress';
 import { RaceSession, type SessionConfig } from '../race/session';
 import { CUPS, trackDef } from '../race/trackDefs';
 import { BoatVisual } from '../boat/boatMesh';
@@ -36,6 +37,7 @@ import { settleBoat } from '../boat/boatPhysics';
 import { getSeaState, oceanHeight } from '../water/waves';
 import type { Boat } from '../boat/boat';
 import { AdminPanel } from '../admin/admin';
+import { getLang, setLang } from '../ui/i18n';
 
 export interface EventRequest {
   mode: ModeId;
@@ -44,6 +46,10 @@ export interface EventRequest {
   laps: number;
   difficulty: Difficulty;
   boat: BoatId;
+  /** A daily/weekly challenge attempt. */
+  challenge?: Challenge | null;
+  /** Career stage index. */
+  careerStage?: number;
 }
 
 type State = 'boot' | 'title' | 'menu' | 'race';
@@ -163,6 +169,11 @@ export class Game {
   // ── Settings ──────────────────────────────────────────────────────────────
   applySettings() {
     const s = this.save.data.settings;
+    if (getLang() !== s.lang) {
+      setLang(s.lang);
+      // Re-render the visible menu in the new language.
+      if (this.screens.current === 'settings') this.screens.settings(this.screens.settingsReturn);
+    }
     this.audio.setVolumes(s.master, s.music, s.sfx);
     this.renderer.adaptive = s.autoRes;
     if (Math.abs(this.renderer.maxPixelRatio - s.pixelRatio) > 1e-3) this.renderer.setMaxPixelRatio(s.pixelRatio);
@@ -357,18 +368,25 @@ export class Game {
     const def = trackDef(req.trackId);
     const weather: WeatherId = req.weather === 'default' ? def.weather : req.weather;
     const champ = req.mode === 'championship' ? d.champ : null;
+    const stage = req.mode === 'career' && req.careerStage !== undefined ? CAREER[req.careerStage] : null;
     const cfg: SessionConfig = {
       mode: req.mode,
       trackId: req.trackId,
       weather,
-      laps: req.mode === 'timetrial' ? req.laps : req.mode === 'championship' ? def.laps : req.laps,
-      difficulty: req.difficulty,
+      laps: req.mode === 'timetrial' ? req.laps : req.mode === 'championship' ? def.laps : stage ? stage.laps : req.laps,
+      difficulty: stage ? stage.difficulty : req.difficulty,
       playerBoat: req.boat,
       playerLivery: this.save.livery(req.boat),
       playerName: d.playerName,
-      opponents: 5,
+      opponents: req.mode === 'battle' ? 5 : 5,
       ghost: req.mode === 'timetrial' ? (d.ghosts[req.trackId] ?? null) : null,
       champPoints: champ?.points,
+      playerUpgrades: this.save.upgrades(req.boat),
+      field: stage ? [stage.boss, ...stage.field] : undefined,
+      boss: stage?.boss,
+      bossPower: stage?.bossPower,
+      bottlesFound: d.bottles[req.trackId] ?? 0,
+      dynamicWeather: d.settings.dynamicWeather && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'battle' || req.mode === 'freeride'),
     };
     this.screens.loading();
     this.state = 'race';
@@ -406,6 +424,12 @@ export class Game {
     const cup = CUPS.find((c) => c.id === ch.cupId)!;
     this.startEvent({ mode: 'championship', trackId: cup.tracks[ch.round], weather: 'default', laps: 3, difficulty: this.save.data.settings.difficulty, boat: this.save.data.selectedBoat });
   }
+
+  // Filled in by the replay / photo / tutorial / split-screen systems.
+  replayAvailable = false;
+  startTutorial() {}
+  photoMode() {}
+  watchReplay() {}
 
   pauseGame() {
     if (this.state !== 'race' || !this.session || this.paused) return;
@@ -593,7 +617,7 @@ export class Game {
     // Results.
     if (racing && s.phase === 'results' && !this.resultsShown) {
       this.resultsShown = true;
-      this.rewards = applyRewards(s, this.save);
+      this.rewards = applyRewards(s, this.save, { challenge: this.lastReq?.challenge, careerStage: this.lastReq?.careerStage });
       this.hud?.destroy();
       this.hud = null;
       this.screens.results(this.rewards);
@@ -790,6 +814,11 @@ export class Game {
       },
       saveData() {
         return JSON.parse(JSON.stringify(g.save.data));
+      },
+      /** Shallow-merge fields into the save (test setup). */
+      patchSave(patch: Record<string, unknown>) {
+        Object.assign(g.save.data, patch);
+        g.save.save(true);
       },
       hideUi(h: boolean) {
         g.ui.style.display = h ? 'none' : '';

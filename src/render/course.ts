@@ -17,6 +17,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   Quaternion,
+  RingGeometry,
   ShaderMaterial,
   TorusGeometry,
   Vector3,
@@ -113,6 +114,8 @@ export class CourseVisuals {
   private gateHighlight: Mesh;
   private ringMesh: InstancedMesh | null = null;
   private mineMesh: InstancedMesh | null = null;
+  private bottleMesh: InstancedMesh | null = null;
+  private bottleGlow: InstancedMesh | null = null;
   private padMat: ShaderMaterial | null = null;
   private lineMat: ShaderMaterial | null = null;
   private lineMesh: Mesh | null = null;
@@ -373,6 +376,28 @@ export class CourseVisuals {
       addOutline(this.mineMesh, 1.6);
       this.add(this.mineMesh, geo);
     }
+    this.buildBottles();
+  }
+
+  private buildBottles() {
+    const n = this.session.bottles.length;
+    if (!n) return;
+    const g = new GeoBuilder();
+    g.cyl(0.32, 0.36, 0.95, 0x3fae6a, { y: 0 }, 10);
+    g.sphere(0.33, 0x3fae6a, { y: 0.47 }, 10, 6);
+    g.cyl(0.12, 0.16, 0.42, 0x3fae6a, { y: 0.9 }, 8);
+    g.cyl(0.13, 0.13, 0.16, 0xb07a44, { y: 1.15 }, 8);
+    g.box(0.36, 0.42, 0.02, 0xf4ead0, { y: 0.05, z: 0.33 });
+    const geo = g.build();
+    this.bottleMesh = new InstancedMesh(geo, cel('bottle', { vertexColors: true, gloss: 1, rim: 1 }), n);
+    this.bottleMesh.frustumCulled = false;
+    addOutline(this.bottleMesh, 1.4);
+    this.add(this.bottleMesh, geo);
+    const rg = new RingGeometry(0.9, 1.5, 24);
+    rg.rotateX(-Math.PI / 2);
+    this.bottleGlow = new InstancedMesh(rg, new MeshBasicMaterial({ color: 0x7dffb0, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }), n);
+    this.bottleGlow.frustumCulled = false;
+    this.add(this.bottleGlow, rg);
   }
 
   /** Build ramp meshes (course ramps at construction, admin-spawned ramps later). */
@@ -530,6 +555,24 @@ export class CourseVisuals {
         this.ringMesh.setMatrixAt(i, _m);
       }
       this.ringMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (this.bottleMesh && this.bottleGlow) {
+      const bs = s.bottles;
+      for (let i = 0; i < bs.length; i++) {
+        const b = bs[i];
+        const sc = b.found ? 0.0001 : 1;
+        const floating = b.y < 2;
+        const y = floating ? oceanHeight(b.x, b.z, time) + 0.1 : b.y + Math.sin(time * 1.7 + i) * 0.25;
+        _e.set(floating ? 1.2 + Math.sin(time * 1.3 + i) * 0.25 : 0, time * 0.9 + i, floating ? Math.sin(time * 0.9 + i) * 0.2 : 0);
+        _q.setFromEuler(_e);
+        _m.compose(_p.set(b.x, y, b.z), _q, _s.set(sc, sc, sc));
+        this.bottleMesh.setMatrixAt(i, _m);
+        const pulse = (1 + 0.35 * Math.sin(time * 4 + i)) * sc;
+        _m.compose(_p.set(b.x, (floating ? y : b.y) + (floating ? 0.05 : -0.6), b.z), _q.identity(), _s.set(pulse, pulse, pulse));
+        this.bottleGlow.setMatrixAt(i, _m);
+      }
+      this.bottleMesh.instanceMatrix.needsUpdate = true;
+      this.bottleGlow.instanceMatrix.needsUpdate = true;
     }
     if (this.mineMesh) {
       const mines = s.mines;

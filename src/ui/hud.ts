@@ -11,6 +11,7 @@ import { Minimap } from './minimap';
 import { CAM_LABEL, type CamMode } from '../camera/cameraRig';
 import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
+import type { Tutorial, TutorialStep } from '../race/tutorial';
 
 interface Msg {
   el: HTMLElement;
@@ -63,12 +64,17 @@ export class Hud {
   private tutorialSteps: string[];
   private tutorialT = 0;
   showTutorial = false;
+  /** Guided tutorial (tutorial mode). */
+  guide: Tutorial | null = null;
+  private guideEl: HTMLElement | null = null;
+  private guideText: Record<TutorialStep, string> = {} as Record<TutorialStep, string>;
 
   constructor(
     private session: RaceSession,
     parent: HTMLElement,
     private units: 'kmh' | 'mph',
     bindings: Bindings,
+    touch = false,
   ) {
     const root = (this.root = el('div', 'hud', parent));
     const tl = el('div', 'tl', root);
@@ -128,6 +134,20 @@ export class Hud {
       `<b>${k('camera')}</b> camera · <b>${k('respawn')}</b> respawn · <b>${keyLabel(bindings.pause[0])}</b> pause`,
     ];
     if (session.mode === 'freeride' || session.mode === 'stunt') this.cpdir.style.display = 'none';
+    const K = (a: keyof Bindings, t: string) => `<b>${touch ? t : k(a)}</b>`;
+    this.guideText = {
+      throttle: `Hold ${K('throttle', 'GAS')} to accelerate`,
+      steer: touch ? 'Steer with the <b>LEFT THUMB</b> — carve left and right' : `Steer with ${K('left', '')} ${K('right', '')} — carve left and right`,
+      checkpoint: 'Follow the arrow at the top and pass through the glowing <b>CHECKPOINT</b>',
+      drift: `DRIFT: turn at speed and hold ${K('drift', 'DRIFT')}. Keep holding until the meter turns <b>ORANGE</b>`,
+      release: `Now RELEASE ${K('drift', 'DRIFT')} for a mini-turbo`,
+      nitro: `Hold ${K('boost', 'NITRO')} to burn nitro. Earn it back by drifting, drafting and tricks`,
+      ramp: 'Hit the orange <b>RAMP</b> at full speed',
+      trick: touch ? 'In the air hold <b>DRIFT</b> + push the stick for a flip or spin, or tap <b>TRICK</b> to barrel roll' : `In the air hold ${K('drift', '')} + ${K('left', '')}/${K('right', '')} to spin, or ${K('throttle', '')}/${K('brake', '')} to flip`,
+      land: touch ? 'Jump again and <b>LAND LEVEL</b> — push the stick up/down to match the nose to the water' : `Jump again and <b>LAND LEVEL</b> — ${K('throttle', '')}/${K('brake', '')} tilt the nose to match the water`,
+      start: `PERFECT START: watch the countdown and hit ${K('throttle', 'GAS')} while <b>1</b> is showing`,
+      done: 'TUTORIAL COMPLETE — you are ready to race!',
+    };
   }
 
   private set(key: string, v: string | number, fn: () => void) {
@@ -373,6 +393,23 @@ export class Hud {
     if (this.camLabelT > 0) {
       this.camLabelT -= dt;
       if (this.camLabelT <= 0) this.camLabel.style.opacity = '0';
+    }
+
+    // Guided tutorial panel.
+    const gd = this.guide;
+    if (gd) {
+      if (!this.guideEl) {
+        this.guideEl = el('div', 'tut-panel', this.root, `<div class="tp-step"></div><div class="tp-text"></div><div class="tp-fb"></div><div class="tp-dots">${'<i></i>'.repeat(gd.progress.n)}</div>`);
+        this.tutorial.style.display = 'none';
+      }
+      const pr = gd.progress;
+      this.set('gstep', gd.step + pr.i, () => {
+        this.guideEl!.querySelector('.tp-step')!.textContent = gd.done ? 'DONE' : `STEP ${pr.i} / ${pr.n}`;
+        this.guideEl!.querySelector('.tp-text')!.innerHTML = this.guideText[gd.step];
+        this.guideEl!.querySelectorAll('.tp-dots i').forEach((d, i) => d.classList.toggle('on', i < pr.i - (gd.done ? 0 : 1)));
+      });
+      this.set('gfb', gd.cheer > 0 ? 'NICE!' : gd.feedback, () => (this.guideEl!.querySelector('.tp-fb')!.textContent = gd.cheer > 0 ? 'NICE!' : gd.feedback));
+      this.set('gch', gd.cheer > 0 ? 1 : 0, () => this.guideEl!.classList.toggle('cheer', gd.cheer > 0));
     }
 
     // First-race tutorial.

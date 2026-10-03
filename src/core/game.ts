@@ -38,6 +38,8 @@ import { getSeaState, oceanHeight } from '../water/waves';
 import type { Boat } from '../boat/boat';
 import { AdminPanel } from '../admin/admin';
 import { getLang, setLang } from '../ui/i18n';
+import { TouchControls, isTouchDevice } from '../input/touch';
+import { Tutorial } from '../race/tutorial';
 
 export interface EventRequest {
   mode: ModeId;
@@ -93,6 +95,11 @@ export class Game {
   /** Global sim speed (admin slow-motion). */
   timeScale = 1;
   readonly admin: AdminPanel;
+  readonly touch: TouchControls;
+  tutorial: Tutorial | null = null;
+  /** A finger has touched the screen this session (auto touch mode). */
+  private touchSeen = false;
+  private touchShown = false;
   /** Harness-scripted player controls (merged over live input). */
   controlOverride: Record<string, number | boolean> | null = null;
 
@@ -107,10 +114,18 @@ export class Game {
     this.rig = new CameraRig(window.innerWidth / Math.max(1, window.innerHeight));
     this.music = new Music(this.audio);
     this.screens = new Screens(this, ui);
+    this.touch = new TouchControls(ui);
+    this.touch.show(false);
     this.nav.onMove = () => this.audio.click('move');
     this.applySettings();
     if (params.has('debug')) this.debug = new DebugOverlay(this, ui);
     this.admin = new AdminPanel(this);
+    window.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' && !this.touchSeen) {
+        this.touchSeen = true;
+        this.applySettings();
+      }
+    });
     window.addEventListener('resize', () => this.onResize());
     // Device pixel ratio changes (moving between monitors, zoom).
     const watchDpr = () => {
@@ -146,6 +161,11 @@ export class Game {
       setTimeout(() => document.getElementById('boot')?.classList.add('gone'), 200);
       if (this.harness) this.installHarness();
     }, 30);
+  }
+
+  get touchEnabled() {
+    const m = this.save.data.settings.touch;
+    return m === 'on' || (m === 'auto' && (this.touchSeen || (isTouchDevice() && !this.harness)));
   }
 
   get debugOn() {
@@ -187,6 +207,9 @@ export class Game {
     this.rig.motionScale = 0.35 + 0.65 * s.motion;
     this.rig.shakeScale = s.shake;
     this.input.bindings = structuredClone(s.bindings);
+    this.input.touch = this.touchEnabled ? this.touch : null;
+    this.touch.setTilt(s.tilt && this.touchEnabled);
+    document.body.classList.toggle('touchmode', this.touchEnabled);
     this.input.sensitivity = s.sensitivity;
     this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');
@@ -207,6 +230,7 @@ export class Game {
 
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
+    this.tutorial = null;
     this.hud?.destroy();
     this.hud = null;
     this.world?.dispose();
@@ -394,7 +418,9 @@ export class Game {
     setTimeout(() => {
       this.build(cfg, weather);
       const s = this.session!;
-      this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings);
+      this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings, this.touchEnabled);
+      this.tutorial = req.mode === 'tutorial' ? new Tutorial(s) : null;
+      this.hud.guide = this.tutorial;
       this.hud.showTutorial = !d.seenTutorial && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'freeride');
       if (this.hud.showTutorial) {
         d.seenTutorial = true;
@@ -427,7 +453,9 @@ export class Game {
 
   // Filled in by the replay / photo / tutorial / split-screen systems.
   replayAvailable = false;
-  startTutorial() {}
+  startTutorial() {
+    this.startEvent({ mode: 'tutorial', trackId: 'coral', weather: 'clear', laps: 0, difficulty: 'easy', boat: this.save.data.owned.includes(this.save.data.selectedBoat) ? this.save.data.selectedBoat : 'speedster' });
+  }
   photoMode() {}
   watchReplay() {}
 
@@ -550,6 +578,13 @@ export class Game {
 
     const simDt = racing && this.paused ? 0 : dt * this.timeScale;
     if (simDt > 0) s.step(simDt);
+    if (racing && this.tutorial && simDt > 0 && s.phase !== 'finished' && s.phase !== 'results') this.tutorial.update(simDt, this.events.list);
+    // Touch overlay only while actually racing with no menu up.
+    const showTouch = racing && !this.paused && !this.nav.root && this.touchEnabled && s.phase !== 'results' && this.rig.scripted !== 'free';
+    if (showTouch !== this.touchShown) {
+      this.touchShown = showTouch;
+      this.touch.show(showTouch);
+    }
 
     // Camera state machine.
     if (racing) {
@@ -712,6 +747,24 @@ export class Game {
       },
       respawnPlayer() {
         if (g.session) g.session.respawn(g.session.player);
+      },
+      /** Direct access for ad-hoc debugging from harness scripts. */
+      get game() {
+        return g;
+      },
+      tutorialJump(i: number) {
+        if (g.tutorial) g.tutorial.index = i;
+      },
+      tutorialStep() {
+        return g.tutorial ? { step: g.tutorial.step, feedback: g.tutorial.feedback } : null;
+      },
+      startTutorial() {
+        const prev = g.session;
+        g.startTutorial();
+        return new Promise<void>((res) => {
+          const wait = () => (g.session && g.session !== prev && g.hud ? res() : setTimeout(wait, 20));
+          wait();
+        });
       },
       stats() {
         const s = g.session;

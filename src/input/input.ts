@@ -5,10 +5,11 @@
 
 import { clamp } from '../core/mathx';
 import type { Controls } from '../core/types';
+import type { TouchControls } from './touch';
 
-export type Action = 'throttle' | 'brake' | 'left' | 'right' | 'drift' | 'boost' | 'roll' | 'camera' | 'pause' | 'restart' | 'respawn' | 'confirm' | 'back';
+export type Action = 'throttle' | 'brake' | 'left' | 'right' | 'drift' | 'boost' | 'roll' | 'item' | 'camera' | 'pause' | 'restart' | 'respawn' | 'confirm' | 'back';
 
-export const ACTIONS: Action[] = ['throttle', 'brake', 'left', 'right', 'drift', 'boost', 'roll', 'camera', 'pause', 'restart', 'respawn', 'confirm'];
+export const ACTIONS: Action[] = ['throttle', 'brake', 'left', 'right', 'drift', 'boost', 'roll', 'item', 'camera', 'pause', 'restart', 'respawn', 'confirm'];
 
 export const ACTION_LABEL: Record<Action, string> = {
   throttle: 'Throttle',
@@ -18,6 +19,7 @@ export const ACTION_LABEL: Record<Action, string> = {
   drift: 'Drift / Trick',
   boost: 'Nitro Boost',
   roll: 'Barrel Roll (air)',
+  item: 'Use Item (Battle)',
   camera: 'Cycle Camera',
   pause: 'Pause',
   restart: 'Restart',
@@ -36,6 +38,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   drift: ['ShiftLeft', 'ShiftRight', 'Space'],
   boost: ['KeyE', 'ControlLeft'],
   roll: ['KeyQ'],
+  item: ['KeyF'],
   camera: ['KeyC'],
   pause: ['Escape', 'KeyP'],
   restart: ['KeyR'],
@@ -49,6 +52,7 @@ const PAD: Partial<Record<Action, number[]>> = {
   drift: [0, 5], // A, RB
   boost: [2], // X
   roll: [4], // LB
+  item: [1], // B
   camera: [3], // Y
   pause: [9], // Start
   restart: [8], // Back/Select
@@ -86,6 +90,8 @@ export class Input {
   readonly padNav: ('up' | 'down' | 'left' | 'right' | 'ok' | 'back')[] = [];
   private stickRepeat = 0;
   private stickDir = '';
+  /** On-screen touch controls, when active. */
+  touch: TouchControls | null = null;
   /** When set, the next key press is captured for rebinding instead of acting. */
   captureNext: ((code: string) => void) | null = null;
 
@@ -181,6 +187,7 @@ export class Input {
 
   /** Edge-triggered: true once per press. */
   pressed(a: Action) {
+    if (this.touch && (a === 'pause' || a === 'camera') && this.touch.take(a)) return true;
     if (this.pressedQ.has(a)) {
       this.pressedQ.delete(a);
       return true;
@@ -191,6 +198,7 @@ export class Input {
   /** Drop queued presses (screen changes). */
   flush() {
     this.pressedQ.clear();
+    this.touch?.pressed.clear();
   }
 
   /** Fill the player's controls. */
@@ -209,6 +217,20 @@ export class Input {
     c.drift = this.held('drift');
     c.boost = this.held('boost');
     c.roll = this.held('roll');
+    c.item = this.held('item');
+    const t = this.touch;
+    if (t) {
+      const ts = clamp(t.steerValue * this.sensitivity, -1, 1);
+      if (Math.abs(ts) > Math.abs(c.steer)) c.steer = ts;
+      if (t.held.gas) c.throttle = 1;
+      if (t.held.brake) c.brake = 1;
+      if (t.held.drift) c.drift = true;
+      if (t.held.boost) c.boost = true;
+      if (t.held.roll) c.roll = true;
+      if (t.held.item) c.item = true;
+      if (Math.abs(t.pitch) > 0.2) c.pitch = clamp(-t.pitch, -1, 1);
+      else if (t.held.gas && c.pitch === 0) c.pitch = 1;
+    }
   }
 
   rumble(strong: number, weak: number, ms: number) {

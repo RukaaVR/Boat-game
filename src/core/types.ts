@@ -10,10 +10,12 @@ export interface Controls {
   boost: boolean;
   /** Barrel-roll trick button. */
   roll: boolean;
+  /** Battle mode: fire the held item. */
+  item: boolean;
 }
 
 export function makeControls(): Controls {
-  return { throttle: 0, brake: 0, steer: 0, pitch: 0, drift: false, boost: false, roll: false };
+  return { throttle: 0, brake: 0, steer: 0, pitch: 0, drift: false, boost: false, roll: false, item: false };
 }
 
 /** A launch ramp floating on the course. Local frame: `along` 0 at foot → length at lip. */

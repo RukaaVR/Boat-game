@@ -102,10 +102,14 @@ export class Boat {
   holdTime = 0;
   /** Engine power multiplier (damage, battle items); 1 = healthy. */
   powerScale = 1;
+  /** Power before damage (career bosses run hotter engines). */
+  basePower = 1;
   /** Hull damage 0..1 (cosmetic scuffs + smoke; slight power loss). */
   damage = 0;
   /** Battle-mode shield seconds remaining. */
   shield = 0;
+  /** Damage taken multiplier (hull upgrades lower it). */
+  toughness = 1;
   /** Stunt score accumulated in the session. */
   stuntScore = 0;
 

@@ -168,6 +168,7 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   b.sinceLand += dt;
   b.impact = Math.max(0, b.impact - dt * 2.5);
   if (id === 0 && TUNE.infiniteNitro) b.nitro = 1;
+  b.shield = Math.max(0, b.shield - dt);
 
   // ── Effective controls (wipeout and penalty hold take them away) ───────────
   const locked = b.wipeout > 0 || b.holdTime > 0;

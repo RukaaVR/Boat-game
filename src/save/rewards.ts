@@ -144,7 +144,7 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
       rec.endless = dist;
     }
   }
-  if (session.mode !== 'freeride') {
+  if (session.mode !== 'freeride' && session.mode !== 'tutorial') {
     // Skill bonuses common to every scored mode.
     add('DRIFTING', Math.min(200, p.driftScore * 0.12));
     add('TRICKS', Math.min(200, p.tricks * 22));
@@ -154,6 +154,12 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
         add('LAP RECORD', 80);
       }
       rec.lap = p.bestLap;
+    }
+  } else if (session.mode === 'tutorial') {
+    if (!d.tutorialDone) {
+      d.tutorialDone = true;
+      add('TUTORIAL COMPLETE', 300);
+      credits += 500;
     }
   } else {
     add('FREE RIDE', Math.min(150, session.raceTime / 2 + p.tricks * 10 + session.ringsTaken * 10));

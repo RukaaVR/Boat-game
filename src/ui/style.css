@@ -327,3 +327,49 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .sbar { position: relative; }
 .sbar .sbar-up { position: absolute; top: 0; height: 100%; background: var(--yellow) !important; }
 textarea.codebox { width: min(560px, 80vw); height: 110px; font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; background: #0a1230; color: #dff; border: 1px solid var(--line); padding: 8px; word-break: break-all; resize: vertical; }
+
+/* ── Touch controls ──────────────────────────────────────────────────── */
+.touch { position: absolute; inset: 0; z-index: 20; touch-action: none; pointer-events: none !important; }
+.touch * { touch-action: none; -webkit-tap-highlight-color: transparent; }
+.touch .t-stick { position: absolute; left: 0; top: 18%; width: 50%; bottom: 0; pointer-events: auto; }
+.touch .t-base, .touch .t-knob { position: fixed; left: 0; top: 0; border-radius: 50%; opacity: 0; transition: opacity .15s; pointer-events: none; }
+.touch .t-base { width: 140px; height: 140px; margin: -70px 0 0 -70px; border: 3px solid rgba(255,255,255,.35); background: rgba(5,10,30,.25); }
+.touch .t-knob { width: 64px; height: 64px; margin: -32px 0 0 -32px; background: rgba(38,232,255,.55); box-shadow: 0 0 20px rgba(38,232,255,.6); }
+.touch .t-btn {
+  position: absolute; pointer-events: auto; border: 0; border-radius: 50%; color: #fff; font-family: var(--font); font-style: italic; font-size: 14px;
+  letter-spacing: 1px; background: rgba(5,10,30,.45); box-shadow: inset 0 0 0 3px rgba(255,255,255,.35); user-select: none;
+}
+.touch .t-btn.on { background: rgba(38,232,255,.6); color: var(--ink); box-shadow: inset 0 0 0 3px #fff, 0 0 18px rgba(38,232,255,.7); }
+.touch .t-gas { right: 26px; bottom: 30px; width: 110px; height: 110px; font-size: 18px; background: rgba(166,255,61,.28); }
+.touch .t-brake { right: 150px; bottom: 22px; width: 72px; height: 72px; }
+.touch .t-drift { right: 142px; bottom: 110px; width: 84px; height: 84px; background: rgba(255,79,216,.3); }
+.touch .t-boost { right: 40px; bottom: 156px; width: 80px; height: 80px; background: rgba(255,59,92,.35); }
+.touch .t-roll { right: 236px; bottom: 120px; width: 64px; height: 64px; font-size: 12px; }
+.touch .t-small { width: 52px; height: 52px; font-size: 12px; border-radius: 12px; }
+.touch .t-pause { left: 10px; top: 10px; }
+.touch .t-cam { left: 70px; top: 10px; }
+@media (max-height: 480px) {
+  .touch .t-gas { width: 90px; height: 90px; bottom: 16px; right: 16px; }
+  .touch .t-brake { right: 118px; bottom: 12px; width: 60px; height: 60px; }
+  .touch .t-drift { right: 112px; bottom: 84px; width: 70px; height: 70px; }
+  .touch .t-boost { right: 24px; bottom: 118px; width: 66px; height: 66px; }
+  .touch .t-roll { right: 196px; bottom: 92px; width: 54px; height: 54px; }
+}
+body.touchmode .hud .tl { top: calc(70px * var(--hud)); }
+body.touchmode .hud .br { right: auto; left: 50%; bottom: 8px; transform: translateX(-50%) scale(calc(var(--hud) * .8)); transform-origin: bottom center; text-align: center; }
+body.touchmode .hud .br .gauge { margin-left: auto; margin-right: auto; }
+body.touchmode .hud .br .drift { justify-content: center; }
+body.touchmode .hud .tutorial { bottom: auto; top: 46%; }
+
+/* ── Guided tutorial panel ───────────────────────────────────────────── */
+.tut-panel { position: absolute; left: 50%; top: 21%; transform: translateX(-50%); width: min(620px, 92vw); text-align: center; font-family: var(--font2); font-style: normal; }
+.tut-panel .tp-step { font-family: var(--font); font-style: italic; font-size: 13px; letter-spacing: 3px; color: var(--cyan); }
+.tut-panel .tp-text { margin-top: 6px; background: rgba(5,10,30,.72); padding: 12px 18px; font-size: 18px; font-weight: 700; line-height: 1.45; border-left: 4px solid var(--cyan); }
+.tut-panel .tp-text b { color: var(--ink); background: var(--cyan); padding: 1px 7px; margin: 0 2px; }
+.tut-panel .tp-fb { margin-top: 8px; color: var(--yellow); font-weight: 700; font-size: 15px; min-height: 20px; text-shadow: 0 1px 3px #000; }
+.tut-panel .tp-dots { display: flex; gap: 5px; justify-content: center; margin-top: 8px; }
+.tut-panel .tp-dots i { width: 22px; height: 6px; background: rgba(255,255,255,.18); transform: skewX(-20deg); }
+.tut-panel .tp-dots i.on { background: var(--lime); }
+.tut-panel.cheer .tp-text { border-left-color: var(--lime); }
+.touch .t-item { right: 236px; bottom: 30px; width: 70px; height: 70px; background: rgba(255,210,30,.35); }
+@media (max-height: 480px) { .touch .t-item { right: 196px; bottom: 16px; width: 58px; height: 58px; } }

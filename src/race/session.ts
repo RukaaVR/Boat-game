@@ -22,6 +22,7 @@ import { setSeaState, setSwellZones, setWaveTime, type SwellZone } from '../wate
 import { Track, type Projection, type TrackPoint } from './track';
 import { trackDef } from './trackDefs';
 import { Racer } from './racer';
+import { BattleItems } from './items';
 import type { Boat } from '../boat/boat';
 
 export type Phase = 'intro' | 'countdown' | 'racing' | 'finished' | 'results';
@@ -157,6 +158,11 @@ export class RaceSession {
   endlessLevel = 1;
   ringsTaken = 0;
   results: ResultRow[] = [];
+  /** Battle mode items (null in other modes). */
+  readonly items: BattleItems | null;
+  /** Planned mid-race weather change. */
+  weatherPlan: { at: number; to: WeatherId; done: boolean } | null = null;
+  private seaBlend: { from: number; fromChop: number; to: number; toChop: number; t: number } | null = null;
   readonly stats: EventStats = { tier3: 0, clean: 0, perfectStart: false, itemHits: 0, bottles: 0 };
   /** Bottles on this course: position + found (this or an earlier event). */
   readonly bottles: { x: number; y: number; z: number; found: boolean }[];
@@ -195,7 +201,7 @@ export class RaceSession {
     this.rng = new Rng(def.seed + 99);
 
     const racing = cfg.mode === 'quick' || cfg.mode === 'championship' || cfg.mode === 'battle' || cfg.mode === 'career';
-    this.totalLaps = cfg.mode === 'timetrial' ? cfg.laps : cfg.mode === 'freeride' || cfg.mode === 'stunt' || cfg.mode === 'endless' ? 0 : cfg.laps;
+    this.totalLaps = cfg.mode === 'timetrial' ? cfg.laps : cfg.mode === 'freeride' || cfg.mode === 'stunt' || cfg.mode === 'endless' || cfg.mode === 'tutorial' ? 0 : cfg.laps;
 
     // Weather → sea.
     const w = WEATHER[cfg.weather];
@@ -203,6 +209,12 @@ export class RaceSession {
     setSeaState(w.sea, w.chop);
     const zones: SwellZone[] = this.track.swells.map((z) => ({ ...z, gain: z.gain * (cfg.weather === 'storm' ? 1.0 : 0.85) }));
     setSwellZones(zones);
+    if (cfg.mode === 'tutorial') {
+      // Lessons happen on calm water: no swell launching the boat before the ramp.
+      this.baseSea = 0.45;
+      setSeaState(0.45, 0.7);
+      setSwellZones([]);
+    }
 
     // Racers: player + rivals.
     this.player = new Racer(0, cfg.playerName, upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerLivery, true, null);
@@ -219,10 +231,17 @@ export class RaceSession {
       racer.reaction = this.rng.range(0.0, 0.35);
       racer.points = cfg.champPoints?.[i + 1] ?? 0;
       racer.rivalIndex = field[i];
-      if (cfg.boss === field[i]) racer.boat.powerScale = cfg.bossPower ?? 1;
+      if (cfg.boss === field[i]) racer.boat.basePower = racer.boat.powerScale = cfg.bossPower ?? 1;
       this.racers.push(racer);
     }
     this.player.points = cfg.champPoints?.[0] ?? 0;
+    this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
+    this.items = cfg.mode === 'battle' ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
+    if (cfg.dynamicWeather) {
+      const next: Record<WeatherId, WeatherId[]> = { clear: ['storm', 'sunset'], sunset: ['night', 'storm'], storm: ['clear', 'sunset'], night: ['storm', 'clear'] };
+      const opts = next[cfg.weather];
+      this.weatherPlan = { at: this.rng.range(30, 60), to: opts[this.rng.int(0, opts.length - 1)], done: false };
+    }
     this.playerDriver = new AIDriver('technical', 'hard', 4242);
     this.boats = this.racers.map((r) => r.boat);
     this.ids = this.racers.map((r) => r.id);
@@ -264,7 +283,7 @@ export class RaceSession {
   }
 
   skipIntro() {
-    if (this.phase === 'intro') this.setPhase(this.mode === 'freeride' ? 'racing' : 'countdown');
+    if (this.phase === 'intro') this.setPhase(this.mode === 'freeride' || this.mode === 'tutorial' ? 'racing' : 'countdown');
   }
 
   setPhase(p: Phase) {
@@ -321,6 +340,7 @@ export class RaceSession {
         this.view.lap = r.lap;
         drive.update(b, r.controls, this.track, this.view, dt);
         if (r.finished && r.ai) r.controls.boost = false;
+        if (r.ai && this.items) this.items.aiDecide(r, this.racers, dt);
         if (r.ai && this.aiFrozen) {
           r.controls.throttle = 0;
           r.controls.boost = false;
@@ -342,6 +362,10 @@ export class RaceSession {
       resolveCollisions(this.collHost, h);
     }
 
+    if (this.items) this.items.update(dt, this.racers, this.phase === 'racing');
+    for (const r of this.racers) r.boat.powerScale = r.boat.basePower * (1 - 0.12 * r.boat.damage);
+    this.stats.itemHits = this.player.itemHits;
+    this.updateWeather(dt);
     this.updateDrafting(dt);
     this.updateProgress(dt);
     this.updateModes(dt);
@@ -528,6 +552,11 @@ export class RaceSession {
     }
     this.ghostRec.length = 0;
     this.ghostAcc = 0;
+  }
+
+  /** End the event now (tutorial completion). */
+  forceFinish() {
+    this.onPlayerFinish();
   }
 
   private onPlayerFinish() {
@@ -748,7 +777,7 @@ export class RaceSession {
             b.velocity.z *= 0.5;
             b.pitchRate += 3;
             b.impact = 1;
-            b.damage = Math.min(1, b.damage + 0.25);
+            b.damage = Math.min(1, b.damage + 0.25 * b.toughness);
             if (r.isPlayer && this.mode === 'endless') this.endlessTimeLeft = Math.max(0, this.endlessTimeLeft - 3);
           }
           this.events.push('collide', r.id, m.x, b.surfaceY, m.z, 1, 'mine');
@@ -759,11 +788,40 @@ export class RaceSession {
     }
   }
 
+  private updateWeather(dt: number) {
+    const wp = this.weatherPlan;
+    if (wp && !wp.done && this.phase === 'racing' && this.raceTime >= wp.at) {
+      wp.done = true;
+      const from = WEATHER[this.cfg.weather];
+      const to = WEATHER[wp.to];
+      this.seaBlend = { from: from.sea, fromChop: from.chop, to: to.sea, toChop: to.chop, t: 0 };
+      this.cfg.weather = wp.to;
+      this.events.push('weatherShift', -1, 0, 0, 0, 0, wp.to);
+    }
+    const sb = this.seaBlend;
+    if (sb) {
+      sb.t = Math.min(1, sb.t + dt / 14);
+      const k = sb.t * sb.t * (3 - 2 * sb.t);
+      this.baseSea = sb.from + (sb.to - sb.from) * k;
+      setSeaState(this.baseSea, sb.fromChop + (sb.toChop - sb.fromChop) * k);
+      if (sb.t >= 1) {
+        this.seaBlend = null;
+        this.applyWeatherSea(this.cfg.weather);
+      }
+    }
+  }
+
   /** Session-level scoring from physics events (drift, tricks). */
   private scoreEvents() {
     const list = this.events.list;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
+      // Hull damage from hard hits (any racer).
+      if (e.type === 'collide' && e.racer >= 0 && e.value > 0.3 && e.text !== 'mine') {
+        const r = this.racers[e.racer];
+        if (r) r.boat.damage = Math.min(1, r.boat.damage + (e.value - 0.2) * 0.1 * r.boat.toughness);
+      }
+
       if (e.racer !== 0) continue;
       if (e.type === 'driftTier') {
         this.player.driftScore += e.value * 100;

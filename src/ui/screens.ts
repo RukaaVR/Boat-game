@@ -1131,6 +1131,8 @@ export class Screens {
       head = `<div class="bigplace">${s.stuntScore.toLocaleString()}</div><div class="sub">STUNT SCORE · ${p.tricks} TRICKS · ${s.ringsTaken} RINGS</div>`;
     } else if (s.mode === 'endless') {
       head = `<div class="bigplace">${Math.round(s.endlessDistance).toLocaleString()} m</div><div class="sub">SURVIVED ${formatTime(s.raceTime, false)} · REACHED LEVEL ${s.endlessLevel}</div>`;
+    } else if (s.mode === 'tutorial') {
+      head = `<div class="bigplace" style="font-size:clamp(50px,8vw,100px)">WELL DONE!</div><div class="sub">TUTORIAL COMPLETE · YOU'RE READY TO RACE</div>`;
     } else {
       head = `<div class="bigplace" style="font-size:clamp(50px,8vw,100px)">FREE RIDE</div><div class="sub">TOP ${Math.round(p.topSpeed * 3.6)} KM/H · BEST AIR ${p.bestAir.toFixed(1)}s · ${p.tricks} TRICKS</div>`;
     }

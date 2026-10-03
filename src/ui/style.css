@@ -262,3 +262,5 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
   .menu { gap: 5px; }
 }
 .msg.msg-pink { color: #ff4fd8; }
+
+.hud .draft { position: absolute; left: 50%; bottom: calc(96px * var(--hud)); transform: translateX(-50%) skewX(-10deg); font-size: calc(18px * var(--hud)); transition: opacity .25s; animation: none; }

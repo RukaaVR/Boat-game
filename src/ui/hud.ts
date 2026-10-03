@@ -48,6 +48,7 @@ export class Hud {
   private proxR: HTMLElement;
   private tutorial: HTMLElement;
   private camLabel: HTMLElement;
+  private draftEl: HTMLElement;
   private wrong: HTMLElement | null = null;
   private msgs: Msg[] = [];
   private cache: Record<string, string | number> = {};
@@ -102,6 +103,8 @@ export class Hud {
     this.proxR = el('div', 'prox r', root);
     this.tutorial = el('div', 'tutorial', root);
     this.tutorial.style.opacity = '0';
+    this.draftEl = el('div', 'msg small cyan draft', root, 'SLIPSTREAM');
+    this.draftEl.style.opacity = '0';
     this.camLabel = el('div', 'camlabel', root);
     this.camLabel.style.opacity = '0';
     requestAnimationFrame(() => this.minimap.resize());
@@ -142,6 +145,7 @@ export class Hud {
     const s = this.session;
     switch (e.type) {
       case 'countdown':
+        if (e.value === 3 && this.showTutorial) this.message('TIP: hit the throttle on <b>1</b> for a PERFECT START', 'small', 2.8);
         this.count.style.display = 'block';
         this.count.className = 'count' + (e.value === 0 ? ' go' : '');
         this.count.textContent = e.value === 0 ? 'GO!' : String(e.value);
@@ -350,6 +354,10 @@ export class Hud {
     }
     this.set('pl', Math.round(l * 10), () => (this.proxL.style.opacity = String(l)));
     this.set('pr', Math.round(r * 10), () => (this.proxR.style.opacity = String(r)));
+
+    // Slipstream indicator.
+    const dr = b.draft > 0.45 && s.phase === 'racing' ? 1 : 0;
+    this.set('draft', dr, () => (this.draftEl.style.opacity = String(dr)));
 
     // Camera label fade.
     if (this.camLabelT > 0) {

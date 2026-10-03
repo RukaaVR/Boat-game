@@ -426,16 +426,14 @@ export class Game {
       const cup = CUPS.find((c) => c.id === ch.cupId)!;
       ch.round++;
       if (ch.round >= cup.tracks.length) {
-        ch.round = cup.tracks.length - 1;
-        this.screens.champStandings(true);
-        // Next "continue" awards the cup.
-        const name = cup.name;
+        // Final round done: show the final table, then the trophy screen.
+        const points = ch.points.slice();
         const fin = finishChampionship(this.save);
-        setTimeout(() => {
-          this.screens.champFinal(fin.place, fin.xp, fin.credits, name);
+        this.champPendingFinal = true;
+        this.screens.champFinalStandings(cup.id, points, () => {
+          this.screens.champFinal(fin.place, fin.xp, fin.credits, cup.name);
           fin.unlocks.forEach((u, i) => setTimeout(() => this.screens.toast(u.split(': ').pop()!, u.split(':')[0]), 600 + i * 700));
-          this.champPendingFinal = true;
-        }, 2200);
+        });
         return;
       }
       this.save.save();
@@ -463,6 +461,16 @@ export class Game {
   /** Advance everything except rendering by dt. */
   frame(dt: number) {
     this.input.poll();
+    // Gamepad drives the menu navigator whenever a screen is up.
+    const pn = this.input.padNav;
+    if (this.nav.root) {
+      for (const a of pn) {
+        if (a === 'ok') this.nav.activate();
+        else if (a === 'back') this.nav.back();
+        else this.nav.move(a);
+      }
+    }
+    pn.length = 0;
     const s = this.session;
     const w = this.world;
     if (!s || !w) return;
@@ -774,6 +782,10 @@ export class Game {
         g.rig.startOrbit(new Vector3(pr.x + Math.cos(pr.rot) * off, kind === 'volcano' ? 120 : 6, pr.z + Math.sin(pr.rot) * off), radius, height);
         g.rig.cut();
         return true;
+      },
+      /** Test hook: jump the active championship to a round. */
+      setChampRound(n: number) {
+        if (g.save.data.champ) g.save.data.champ.round = n;
       },
       audioMeter() {
         return g.audio.meter();

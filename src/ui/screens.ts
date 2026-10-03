@@ -174,6 +174,11 @@ export class Screens {
         a.click('select');
         g.startChampRound();
         break;
+      case 'champTrophy':
+        a.click('select');
+        this.pendingFinal?.();
+        this.pendingFinal = null;
+        break;
       case 'champAbandon':
         a.click('back');
         this.confirm('Abandon this championship? Points will be lost.', () => {
@@ -426,6 +431,27 @@ export class Screens {
       () => g.enterMenu(),
     );
   }
+
+  /** Final table of a finished cup (championship state has already been cleared). */
+  champFinalStandings(cupId: string, points: number[], next: () => void) {
+    const cup = CUPS.find((c) => c.id === cupId)!;
+    const names = [this.game.save.data.playerName, ...RIVALS.slice(0, points.length - 1).map((r) => r.name)];
+    const rows = points
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => b.p - a.p)
+      .map((o, k) => `<tr class="${o.i === 0 ? 'me' : ''}"><td class="p">${k + 1}</td><td>${esc(names[o.i])}</td><td class="t">${o.p} PTS</td></tr>`)
+      .join('');
+    this.pendingFinal = next;
+    this.mount(
+      'champStandings',
+      `<h1 class="h">${cup.name}</h1><div class="sub">FINAL STANDINGS</div>
+      <div class="panel scroll" style="max-width:560px">${rows ? `<table class="res">${rows}</table>` : ''}</div>
+      <div class="footer"><span class="spacer"></span><button class="btn big primary" data-nav data-act="champTrophy" data-default><span>SEE TROPHY</span><span class="k">ENTER</span></button></div>`,
+      () => next(),
+      'screen full',
+    );
+  }
+  private pendingFinal: (() => void) | null = null;
 
   champSetup() {
     const ch = this.game.save.data.champ!;

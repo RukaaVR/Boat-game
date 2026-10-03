@@ -82,6 +82,10 @@ export class Input {
   padName = '';
   lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
   private steerSmooth = 0;
+  /** Menu navigation intents from the gamepad only (keyboard is handled by Nav directly). */
+  readonly padNav: ('up' | 'down' | 'left' | 'right' | 'ok' | 'back')[] = [];
+  private stickRepeat = 0;
+  private stickDir = '';
   /** When set, the next key press is captured for rebinding instead of acting. */
   captureNext: ((code: string) => void) | null = null;
 
@@ -155,11 +159,24 @@ export class Input {
     for (const a of Object.keys(PAD) as Action[]) {
       for (const b of PAD[a]!) if (this.padNow[b] && !this.padPrev[b]) this.pressedQ.add(a);
     }
-    // D-pad / stick for menu navigation.
-    const up = gp.buttons[12]?.pressed && !this.padPrev[12];
-    const down = gp.buttons[13]?.pressed && !this.padPrev[13];
-    if (up) this.pressedQ.add('throttle');
-    if (down) this.pressedQ.add('brake');
+    // Menu navigation: D-pad edges, left stick with auto-repeat, A / B.
+    const edge = (i: number) => !!gp!.buttons[i]?.pressed && !this.padPrev[i];
+    if (edge(12)) this.padNav.push('up');
+    if (edge(13)) this.padNav.push('down');
+    if (edge(14)) this.padNav.push('left');
+    if (edge(15)) this.padNav.push('right');
+    if (edge(0)) this.padNav.push('ok');
+    if (edge(1)) this.padNav.push('back');
+    const ax = this.padAxes[0];
+    const ay = this.padAxes[1];
+    const dir = Math.abs(ay) > 0.6 ? (ay < 0 ? 'up' : 'down') : Math.abs(ax) > 0.6 ? (ax < 0 ? 'left' : 'right') : '';
+    const now = performance.now();
+    if (dir && (dir !== this.stickDir || now > this.stickRepeat)) {
+      this.padNav.push(dir as 'up');
+      this.stickRepeat = now + (dir !== this.stickDir ? 380 : 140);
+    }
+    this.stickDir = dir;
+    if (this.padNav.length > 8) this.padNav.splice(0, this.padNav.length - 8);
   }
 
   /** Edge-triggered: true once per press. */

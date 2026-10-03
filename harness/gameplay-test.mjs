@@ -293,6 +293,31 @@ await test('championship: start cup, race, standings', async () => {
   assert(champ && champ.round === 1 && champ.points.some((p) => p > 0), 'champ state not advanced');
 });
 
+await test('championship finale awards a trophy', async () => {
+  await P.evaluate(() => window.__RIPTIDE__.setChampRound(2));
+  await P.click('[data-act="champNext"]');
+  await P.waitForFunction(() => window.__RIPTIDE__.stats().phase === 'intro', null, { timeout: 30000 });
+  const r = await P.evaluate(() => {
+    const x = window.__RIPTIDE__;
+    x.autopilot(true);
+    x.skipIntro();
+    return x.simulateUntil("s.phase === 'results'", 400, 1 / 20);
+  });
+  assert(r.ok, 'final round did not finish');
+  await P.keyboard.press('Enter'); // results → final standings
+  await P.evaluate(() => window.__RIPTIDE__.tick());
+  assert(await P.isVisible('text=FINAL STANDINGS'), 'no final standings');
+  await P.click('[data-act="champTrophy"]');
+  await P.waitForTimeout(300);
+  assert(await P.isVisible('text=FINAL RESULT'), 'no trophy screen');
+  const d = await P.evaluate(() => window.__RIPTIDE__.saveData());
+  assert(d.champ === null && typeof d.cups.surf === 'number', 'cup not closed: ' + JSON.stringify(d.champ));
+  await P.click('[data-act="continue"]');
+  await P.evaluate(() => window.__RIPTIDE__.tick());
+  await P.waitForTimeout(500);
+  assert((await S(P)).state === 'menu', 'not back at menu');
+});
+
 await test('garage customisation persists', async () => {
   await P.evaluate(() => window.__RIPTIDE__.menu());
   await P.evaluate(() => window.__RIPTIDE__.garage());
@@ -400,6 +425,20 @@ await test('gamepad input drives the boat without errors', async () => {
   });
   const s = await S(page);
   assert(s.speed > 15, 'gamepad throttle did not move the boat: ' + s.speed);
+  // Start pauses; D-pad + A navigate the pause menu (QUIT TO MENU is the last item).
+  const press = async (i) => {
+    await page.evaluate((b) => (window.__pad.buttons[b] = { pressed: true, touched: true, value: 1 }), i);
+    await page.evaluate(() => window.__RIPTIDE__.tick());
+    await page.evaluate((b) => (window.__pad.buttons[b] = { pressed: false, touched: false, value: 0 }), i);
+    await page.evaluate(() => window.__RIPTIDE__.tick());
+  };
+  await page.evaluate(() => { window.__pad.buttons[7] = { pressed: false, touched: false, value: 0 }; window.__pad.buttons[2] = { pressed: false, touched: false, value: 0 }; window.__pad.axes[0] = 0; });
+  await press(9);
+  assert((await S(page)).screen === 'pause', 'Start did not pause');
+  for (let i = 0; i < 4; i++) await press(13);
+  await press(0);
+  await page.evaluate(() => window.__RIPTIDE__.tick());
+  assert((await S(page)).state === 'menu', 'gamepad could not quit to menu: ' + JSON.stringify(await S(page)));
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

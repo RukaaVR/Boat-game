@@ -218,11 +218,11 @@ export class Screens {
       'title',
       `<div class="center-col">
         <div class="title-logo">RIPTIDE<small>ARCADE WAVE RACING</small></div>
-        <button class="btn big primary press" data-nav data-act="start" style="margin-top:7vh"><span>PRESS ENTER TO RIDE</span></button>
-        <div class="hint" style="margin-top:20px">Keyboard · Mouse · Gamepad — every mesh, texture and sound generated in code</div>
+        <button class="btn big primary press" data-nav data-act="start" style="margin-top:7vh;animation:pulse 1.6s infinite"><span>PRESS ENTER TO RIDE</span></button>
+        <div class="hint" style="margin-top:20px;color:#cfe0ff;text-shadow:0 1px 3px #000">Keyboard · Mouse · Gamepad — every mesh, texture and sound generated in code</div>
       </div>`,
       null,
-      'screen',
+      'screen titlebg',
     );
     r.addEventListener('pointerdown', () => this.game.audio.unlock(), { once: true });
   }

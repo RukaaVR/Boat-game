@@ -71,6 +71,7 @@ uniform vec3 uFoam;
 uniform float uTime;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
+uniform float uOpacity;
 varying vec4 vInfo;
 varying vec3 vColor;
 varying vec2 vXZ;
@@ -90,7 +91,7 @@ void main() {
   // Churned centre is broken into streaks so it never reads as a solid band.
   float churn = centre * smoothstep(0.35, 0.7, streak * 0.7 + n2 * 0.5) * (0.45 + 0.55 * bub);
   float a = (arms * 0.75 + body * streak) * breakup + churn * 0.55;
-  a *= str * pow(1.0 - age, 1.6) * 0.7;
+  a *= str * pow(1.0 - age, 1.6) * 0.7 * uOpacity;
   if (a < 0.02) discard;
   vec3 col = mix(uFoam, vColor, 0.18 * (1.0 - age));
   float d = length(cameraPosition.xz - vXZ) * uFogDensity;
@@ -213,6 +214,7 @@ export class WakeSystem {
         uFoam: { value: new Color(0xffffff) },
         uFogColor: { value: new Color() },
         uFogDensity: { value: 0.001 },
+        uOpacity: { value: 1 },
       },
       vertexShader: wakeVert,
       fragmentShader: wakeFrag,

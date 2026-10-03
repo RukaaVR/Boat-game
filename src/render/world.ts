@@ -108,6 +108,9 @@ export class World {
     for (let i = 0; i < s.racers.length; i++) {
       const r = s.racers[i];
       this.visuals[i].update(r.boat, r.controls.steer, dt, time);
+      const v = this.visuals[i];
+      const d2 = (r.boat.position.x - cam.position.x) ** 2 + (r.boat.position.z - cam.position.z) ** 2;
+      v.setLod(d2 > 260 * 260 ? 2 : d2 > 110 * 110 ? 1 : 0);
       // Ghosting after respawn: blink.
       this.visuals[i].root.visible = r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0;
     }

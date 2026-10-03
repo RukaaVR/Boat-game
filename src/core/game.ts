@@ -187,6 +187,7 @@ export class Game {
     this.session = new RaceSession(cfg, this.events);
     this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather);
     this.rig.ramps = this.session.track.ramps;
+    this.rig.boats = this.session.racers.map((r) => r.boat);
     const scenery = this.world.scenery;
     this.rig.ground = (x, z) => scenery.ground(x, z);
     this.rig.seaLift = Math.max(0, (getSeaState() - 1) * 2.2);

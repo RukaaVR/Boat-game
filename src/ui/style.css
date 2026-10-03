@@ -63,6 +63,8 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
   transform: skewX(-8deg);
 }
 .title-logo small { display: block; font-size: .2em; letter-spacing: .5em; color: var(--cyan); text-shadow: none; margin-top: .6em; }
+.screen.titlebg { background: radial-gradient(ellipse 70% 60% at 50% 45%, rgba(4,8,24,.62) 0%, rgba(4,8,24,.35) 55%, rgba(4,8,24,.1) 100%); }
+.title-logo small { text-shadow: 0 2px 0 rgba(0,0,0,.6), 0 0 18px rgba(0,0,0,.7); }
 .press { margin-top: 6vh; font-family: var(--font); font-style: italic; font-size: 20px; letter-spacing: 4px; animation: pulse 1.6s infinite; }
 .center-col { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
 

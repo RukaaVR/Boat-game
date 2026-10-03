@@ -210,6 +210,8 @@ export class Atmosphere {
       wake.collarMat.uniforms.uFoam.value.setHex(w.waterFoam);
       wake.wakeMat.uniforms.uFogColor.value.setHex(w.fogColor);
       wake.wakeMat.uniforms.uFogDensity.value = w.fogDensity;
+      // Wind-blown storm seas are already white; keep trails from dominating.
+      wake.wakeMat.uniforms.uOpacity.value = weather === 'storm' ? 0.55 : weather === 'night' ? 0.8 : 1;
     }
 
     celShared.uRimColor.value.setHex(w.sunColor).lerp(_c.setHex(w.skyHorizon), 0.4);

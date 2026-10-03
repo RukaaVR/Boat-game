@@ -8,7 +8,7 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DynamicDrawUsage, NormalBlending, Points, ShaderMaterial } from 'three';
 import { particleSprite } from '../render/textures';
 
-export type ParticleKind = 'spray' | 'mist' | 'boost' | 'spark' | 'smoke' | 'steam' | 'ember' | 'drop' | 'confetti' | 'splash' | 'ripple';
+export type ParticleKind = 'spray' | 'mist' | 'boost' | 'spark' | 'smoke' | 'steam' | 'ember' | 'drop' | 'confetti' | 'splash' | 'ripple' | 'dust' | 'ash' | 'spindrift';
 
 interface KindDef {
   additive: boolean;
@@ -33,6 +33,9 @@ const KINDS: Record<ParticleKind, KindDef> = {
   steam: { additive: false, life: [2.5, 4], size: [2, 9], alpha: 0.32, gravity: -1.8, drag: 0.6, water: false },
   ember: { additive: true, life: [1.5, 3.5], size: [0.35, 0.1], alpha: 1, gravity: -1.2, drag: 0.5, water: false },
   confetti: { additive: false, life: [2.5, 4], size: [0.35, 0.3], alpha: 1, gravity: 3, drag: 1.2, water: false },
+  dust: { additive: true, life: [3, 6], size: [0.18, 0.12], alpha: 0.55, gravity: -0.05, drag: 0.3, water: false },
+  ash: { additive: false, life: [4, 7], size: [0.16, 0.12], alpha: 0.7, gravity: 0.35, drag: 0.6, water: false },
+  spindrift: { additive: false, life: [1.2, 2.2], size: [1.4, 4.5], alpha: 0.1, gravity: -0.2, drag: 0.4, water: false },
 };
 
 const vert = /* glsl */ `

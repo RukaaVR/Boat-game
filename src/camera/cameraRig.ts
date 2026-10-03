@@ -57,6 +57,9 @@ export class CameraRig {
   private snap = true;
   /** Extra chase height in heavy seas so the lens stays above the swell. */
   seaLift = 0;
+  /** Other boats to keep out of the lens. */
+  boats: readonly Boat[] | null = null;
+  private avoid = 0;
   /** Solid ramps the camera must stay above. */
   ramps: readonly Ramp[] | null = null;
   /** Terrain height (islands), so the lens never enters a hillside. */
@@ -121,9 +124,10 @@ export class CameraRig {
     } else _fwd.set(hx, 0, hz);
     _right.set(-_fwd.z, 0, _fwd.x);
 
-    let fovT = 62 + sp01 * 9 * this.motionScale + b.boostLevel * 9 * this.motionScale;
+    let fovT = 62 + sp01 * 9 * this.motionScale + b.boostLevel * 9 * this.motionScale + (b.airborne ? 4 * this.motionScale : 0);
     let rollT = 0;
-    const posRate = 7;
+    // Stiffer follow at speed so the boat never runs away from the lens.
+    const posRate = 7 + sp01 * 5;
     let lookRate = 12;
 
     // Shared dynamic offsets.
@@ -160,7 +164,7 @@ export class CameraRig {
       case 'chase':
       case 'far': {
         const far = this.mode === 'far';
-        const dist = (far ? 12.5 : 7.8) + sp01 * 1.4 + b.boostLevel * 1.1 * this.motionScale;
+        const dist = (far ? 12.5 : 7.8) + sp01 * 1.2 + b.boostLevel * 0.5 * this.motionScale;
         const height = (far ? 4.6 : 2.9) + this.lift + this.dip + this.seaLift;
         _want.set(b.position.x - _fwd.x * dist + _right.x * this.side, b.surfaceY + height + Math.max(0, b.position.y - b.surfaceY) * 0.6, b.position.z - _fwd.z * dist + _right.z * this.side);
         const ahead = far ? 9 : 7 + sp01 * 4;
@@ -215,6 +219,17 @@ export class CameraRig {
       }
     }
 
+    // Rise over any rival boat that would otherwise pass through the lens.
+    if (this.boats) {
+      let lift = 0;
+      for (const o of this.boats) {
+        if (o === b) continue;
+        const d = Math.hypot(o.position.x - _want.x, o.position.z - _want.z);
+        if (d < 6) lift = Math.max(lift, (6 - d) * 0.55);
+      }
+      this.avoid = damp(this.avoid, lift, 6, dt);
+      _want.y += this.avoid;
+    }
     if (this.snap) {
       this.pos.copy(_want);
       this.look.copy(_look);

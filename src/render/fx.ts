@@ -21,6 +21,8 @@ const SPARK = new Color(1, 0.75, 0.3);
 const SMOKE = new Color(0.22, 0.2, 0.22);
 const STEAM = new Color(0.9, 0.92, 0.95);
 const EMBER = new Color(1, 0.45, 0.1);
+const DUST = new Color(1, 0.9, 0.6);
+const ASH = new Color(0.35, 0.32, 0.33);
 const TIER = [new Color(1, 1, 1), new Color(0.3, 0.75, 1), new Color(1, 0.55, 0.15), new Color(1, 0.3, 0.85)];
 const CONFETTI = [new Color(1, 0.23, 0.36), new Color(0.16, 0.83, 1), new Color(1, 0.88, 0.3), new Color(0.65, 1, 0.24), new Color(0.48, 0.36, 1)];
 const _c = new Color();
@@ -162,6 +164,32 @@ export class FxDirector {
         else if (e.kind === 'steam') P.emit('steam', x, e.y, z, (Math.random() - 0.5) * 1.5, 2 + Math.random() * 2, (Math.random() - 0.5) * 1.5, STEAM);
         else if (e.kind === 'mist') P.emit('mist', x, e.y + Math.random() * 2, z, (Math.random() - 0.5) * 3, 0.8 + Math.random(), (Math.random() - 0.5) * 3, MIST, 1.4, 1.5);
         else P.emit('ember', x, e.y + Math.random(), z, (Math.random() - 0.5) * 1.5, 1 + Math.random() * 2, (Math.random() - 0.5) * 1.5, EMBER);
+      }
+    }
+    // Theme ambience around the lens.
+    const theme = this.session.track.def.theme;
+    if (theme === 'tropical' && weatherRain === 0) {
+      // Sunlit motes near islands.
+      let nearIsland = false;
+      for (const is of this.session.layout.islands) if (Math.hypot(is.x - cam.x, is.z - cam.z) < is.r + 90) nearIsland = true;
+      if (nearIsland) {
+        const n = P.count(14, dt);
+        for (let k = 0; k < n; k++) P.emit('dust', cam.x + (Math.random() - 0.5) * 40, cam.y + (Math.random() - 0.3) * 8, cam.z + (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 0.6, 0.1, (Math.random() - 0.5) * 0.6, DUST);
+      }
+    } else if (theme === 'volcanic') {
+      const n = P.count(30, dt);
+      for (let k = 0; k < n; k++) {
+        const ember = Math.random() < 0.25;
+        P.emit(ember ? 'ember' : 'ash', cam.x + (Math.random() - 0.5) * 50, cam.y + Math.random() * 14 - 2, cam.z + (Math.random() - 0.5) * 50, 0.8 + Math.random(), ember ? 0.5 : -0.2, 0.4, ember ? EMBER : ASH, ember ? 0.7 : 1, ember ? 0.6 : 1);
+      }
+    }
+    if (weatherRain > 0) {
+      // Spindrift: spray torn off crests blowing across the water.
+      const n = P.count(10, dt);
+      for (let k = 0; k < n; k++) {
+        const x = cam.x + (Math.random() - 0.5) * 70;
+        const z = cam.z + (Math.random() - 0.5) * 70;
+        P.emit('spindrift', x, oceanHeight(x, z, time) + 0.6, z, 6 + Math.random() * 3, 0.4, 3 + Math.random() * 2, MIST);
       }
     }
     // Rain hitting the water around the camera.

@@ -414,6 +414,22 @@ export class BoatVisual {
     this.root.name = `boat_${spec.id}`;
   }
 
+  private lod = 0;
+  /**
+   * Distance LOD: 0 = full detail; 1 = no outlines on limbs, no nav lights;
+   * 2 = hull + rider torso only (beyond ~260 m the boat is a few pixels).
+   */
+  setLod(level: number) {
+    if (level === this.lod) return;
+    this.lod = level;
+    const showLimbs = level < 2;
+    this.armL.visible = this.armR.visible = showLimbs;
+    this.lights.visible = level < 1;
+    for (const m of [this.parts, this.armL, this.armR, this.upper.children[0]]) {
+      for (const c of m.children) if (c.userData.isOutline) c.visible = level < 1;
+    }
+  }
+
   /** Repaint after a garage change (same hull style). */
   repaint(l: Livery) {
     this.livery = l;

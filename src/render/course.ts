@@ -184,6 +184,19 @@ export class CourseVisuals {
           uv.push(u, v);
         }
         idx.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+        // Back face with mirrored U so the lettering reads correctly from behind too.
+        const back = pos.length / 3;
+        for (const [a, y, u, v] of [
+          [-1, h0, 1, 0],
+          [1, h0, 0, 0],
+          [-1, h1, 1, 1],
+          [1, h1, 0, 1],
+        ] as const) {
+          const lx = a * half;
+          pos.push(g.x - Math.cos(g.heading) * lx, y, g.z + Math.sin(g.heading) * lx);
+          uv.push(u, v);
+        }
+        idx.push(back, back + 2, back + 1, back + 2, back + 3, back + 1);
       }
       if (!pos.length) continue;
       const geo = new BufferGeometry();
@@ -192,7 +205,7 @@ export class CourseVisuals {
       geo.setIndex(idx);
       geo.computeVertexNormals();
       const tex = startOnly ? bannerTexture('RIPTIDE  •  START / FINISH', '#ff3b5c', 'banner_start') : bannerTexture('CHECKPOINT', '#26e8ff', 'banner_cp');
-      const m = new Mesh(geo, cel(startOnly ? 'bannerStart' : 'bannerCp', { map: tex, side: DoubleSide, emissive: 0x333333 }));
+      const m = new Mesh(geo, cel(startOnly ? 'bannerStart' : 'bannerCp', { map: tex, emissive: 0x333333 }));
       this.add(m, geo);
     }
     // Next-checkpoint highlight arch.

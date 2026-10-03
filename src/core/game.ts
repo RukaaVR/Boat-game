@@ -241,6 +241,7 @@ export class Game implements ReplayHost, PhotoHost {
     this.input.touch = this.touchEnabled ? this.touch : null;
     this.touch.setTilt(s.tilt && this.touchEnabled);
     document.body.classList.toggle('touchmode', this.touchEnabled);
+    document.body.classList.toggle('symbols', s.symbols);
     this.input.sensitivity = s.sensitivity;
     this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');
@@ -296,7 +297,7 @@ export class Game implements ReplayHost, PhotoHost {
   private build(cfg: SessionConfig, weather: WeatherId) {
     this.teardown();
     this.session = new RaceSession(cfg, this.events);
-    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows });
+    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows, symbols: this.save.data.settings.symbols });
     this.rig.ramps = this.session.track.ramps;
     this.rig.boats = this.session.racers.map((r) => r.boat);
     const scenery = this.world.scenery;

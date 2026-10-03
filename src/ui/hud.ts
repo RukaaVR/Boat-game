@@ -204,7 +204,7 @@ export class Hud {
         this.message('PERFECT START!', 'lime');
         break;
       case 'driftTier':
-        this.message(['', 'DRIFT', 'SUPER DRIFT', 'ULTRA DRIFT'][e.value], ['', 'cyan', 'gold', 'msg-pink'][e.value] + ' small', 0.9);
+        this.message(['', 'DRIFT', 'SUPER DRIFT', 'ULTRA DRIFT'][e.value] + (document.body.classList.contains('symbols') ? ' ' + ['', 'I', 'II', 'III'][e.value] : ''), ['', 'cyan', 'gold', 'msg-pink'][e.value] + ' small', 0.9);
         break;
       case 'boostStart':
         this.message(['', 'BOOST!', 'SUPER BOOST!', 'ULTRA BOOST!'][e.value], 'cyan small', 0.9);

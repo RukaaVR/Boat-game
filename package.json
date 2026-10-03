@@ -9,8 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "node harness/gameplay-test.mjs",
-    "shots": "node harness/capture.mjs"
+    "test": "node harness/gameplay-test.mjs && node harness/features-test.mjs",
+    "shots": "node harness/capture.mjs",
+    "test:features": "node harness/features-test.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"

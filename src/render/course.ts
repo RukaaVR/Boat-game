@@ -6,6 +6,9 @@
 import type { Ramp } from '../core/types';
 import {
   AdditiveBlending,
+  ConeGeometry,
+  BoxGeometry,
+  OctahedronGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -122,7 +125,15 @@ export class CourseVisuals {
   private disposables: { dispose(): void }[] = [];
   private frame = 0;
 
-  constructor(private session: RaceSession) {
+  /** Colour-blind mode: a shape on top of each buoy (▲ left, ■ right, ◆ shortcut). */
+  private marks: { mesh: InstancedMesh; slot: Int32Array }[] = [];
+  private markOf: Int8Array;
+  private markSlot: Int32Array;
+
+  constructor(
+    private session: RaceSession,
+    symbols = false,
+  ) {
     const track = session.track;
     const style = THEME_STYLE[track.def.theme];
 
@@ -155,6 +166,27 @@ export class CourseVisuals {
     }
     this.buoyLights.frustumCulled = false;
     this.add(this.buoyLights, lg);
+    this.markOf = new Int8Array(buoys.length).fill(-1);
+    this.markSlot = new Int32Array(buoys.length);
+    if (symbols) {
+      const shapes = [new ConeGeometry(0.55, 0.9, 3), new BoxGeometry(0.75, 0.75, 0.75), new OctahedronGeometry(0.55)];
+      const mat = new MeshBasicMaterial({ color: 0x0a0f22, fog: true });
+      for (let k = 0; k < 3; k++) {
+        const n = buoys.filter((b) => Math.min(2, b.side) === k).length;
+        const m = new InstancedMesh(shapes[k], mat, Math.max(1, n));
+        m.frustumCulled = false;
+        addOutline(m, 1.4);
+        this.add(m, shapes[k]);
+        this.marks.push({ mesh: m, slot: new Int32Array(0) });
+      }
+      const counts = [0, 0, 0];
+      buoys.forEach((b, i) => {
+        const k = Math.min(2, b.side);
+        this.markOf[i] = k;
+        this.markSlot[i] = counts[k]++;
+      });
+      this.disposables.push(mat);
+    }
 
     // ── Gates (merged pylons + banners) ───────────────────────────────────
     const gp = new GeoBuilder();
@@ -542,9 +574,16 @@ export class CourseVisuals {
       _p.z += b.z;
       _m.compose(_p, _q, _s);
       this.buoyLights.setMatrixAt(i, _m);
+      const mk = this.markOf[i];
+      if (mk >= 0) {
+        _p.y += 0.75;
+        _m.compose(_p, _q, _s);
+        this.marks[mk].mesh.setMatrixAt(this.markSlot[i], _m);
+      }
     }
     this.buoyMesh.instanceMatrix.needsUpdate = true;
     this.buoyLights.instanceMatrix.needsUpdate = true;
+    for (const m of this.marks) m.mesh.instanceMatrix.needsUpdate = true;
 
     // Next gate highlight.
     const g = s.track.gates[nextGate % s.track.gates.length];

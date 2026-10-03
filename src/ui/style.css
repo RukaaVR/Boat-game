@@ -415,3 +415,15 @@ body.touchmode .hud .tutorial { bottom: auto; top: 46%; }
 .splitwrap.bottom { top: 50%; }
 .splitwrap .hud .standings { display: none; }
 .splitwrap .hud .minimap { width: 150px; height: 150px; }
+
+/* ── Colour-blind symbols ────────────────────────────────────────────── */
+body.symbols .drift div::after { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font2); font-style: normal; font-size: 9px; font-weight: 900; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; transform: skewX(20deg); }
+body.symbols .drift div:nth-child(1)::after { content: 'I'; }
+body.symbols .drift div:nth-child(2)::after { content: 'II'; }
+body.symbols .drift div:nth-child(3)::after { content: 'III'; }
+body.symbols .medal { position: relative; }
+body.symbols .medal::after { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 9px/1 var(--font2); color: #111; }
+body.symbols .medal.m1::after { content: 'B'; }
+body.symbols .medal.m2::after { content: 'S'; }
+body.symbols .medal.m3::after { content: 'G'; }
+body.symbols .dmgbar.bad span::after { content: ' ⚠'; color: var(--pink); }

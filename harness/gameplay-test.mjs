@@ -435,7 +435,7 @@ await test('gamepad input drives the boat without errors', async () => {
   await page.evaluate(() => { window.__pad.buttons[7] = { pressed: false, touched: false, value: 0 }; window.__pad.buttons[2] = { pressed: false, touched: false, value: 0 }; window.__pad.axes[0] = 0; });
   await press(9);
   assert((await S(page)).screen === 'pause', 'Start did not pause');
-  for (let i = 0; i < 4; i++) await press(13);
+  for (let i = 0; i < 5; i++) await press(13); // RESUME → RESTART → PHOTO → CAMERA → SETTINGS → QUIT
   await press(0);
   await page.evaluate(() => window.__RIPTIDE__.tick());
   assert((await S(page)).state === 'menu', 'gamepad could not quit to menu: ' + JSON.stringify(await S(page)));

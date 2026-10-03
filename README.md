@@ -15,6 +15,10 @@ npm run build      # typecheck + production build into dist/
 npm run preview    # serve the production build on :4173
 ```
 
+The production build is an installable offline app (web manifest + service
+worker): open it once, then "Install" / "Add to Home Screen" and it runs with
+no connection.
+
 ## Controls
 
 | Action | Keyboard | Gamepad (standard mapping) |
@@ -26,6 +30,7 @@ npm run preview    # serve the production build on :4173
 | Nitro (hold) | `E` / `Left Ctrl` | X |
 | Air tricks | in the air: `Drift` + `↑` front flip, `Drift` + `↓` back flip, `Drift` + `←/→` 360 spin | same with stick |
 | Barrel roll (air) | `Q` | LB |
+| Use item (Battle) | `F` | B |
 | Air pitch | `W` / `S` while airborne | Left stick Y |
 | Camera (close / far / bow / cinematic / aerial) | `C` | Y |
 | Pause | `Esc` / `P` | Start |
@@ -34,6 +39,16 @@ npm run preview    # serve the production build on :4173
 | Menus | arrows / WASD, `Enter`, `Esc`, or mouse | D-pad / stick, A, B |
 
 Every keyboard binding can be changed in **Settings → Controls**.
+
+**Touch** (phones/tablets, auto-detected or forced in Settings → Controls): a
+floating thumbstick on the left half of the screen steers (and trims pitch in
+the air); GAS, BRAKE, DRIFT, NITRO and TRICK buttons on the right, ITEM in
+Battle, pause and camera at the top left. Optional tilt-to-steer.
+
+**Two players** (split-screen, top/bottom): P1 uses `W A S D`, `Space` drift,
+`E` nitro, `Q` roll, `F` item, `C` camera, `T` respawn; P2 uses the arrow keys,
+`Right Shift` drift, `Right Ctrl` nitro, `.` roll, `/` item, `M` camera, `\`
+respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 
 ## How it plays
 
@@ -62,22 +77,41 @@ Every keyboard binding can be changed in **Settings → Controls**.
 
 | Mode | |
 |---|---|
-| Quick Race | 6 boats, 1–5 laps, easy / normal / hard AI, any weather |
-| Championship | Three cups (3 or 6 races). Points 10-8-6-5-4-3, standings between rounds, trophy at the end |
-| Time Trial | Solo laps against medal targets and your saved best-lap **ghost** |
+| Quick Race | 6 boats, 1–5 laps, easy / normal / hard AI, any weather, optional changing weather |
+| Career | Eight named rivals, one at a time, each with an intro line. Finish ahead of the boss to unlock the next; the final boss, MAELSTROM, runs a hotter engine |
+| Championship | Four cups (3–6 races). Points 10-8-6-5-4-3, standings between rounds, trophy at the end |
+| Challenges | A new daily challenge and weekly challenge, generated from the date (same for everyone), with credit and XP rewards. Boats you don't own are lent for the attempt |
+| Battle | A race with item boxes: torpedoes, oil slicks, shields, a wave maker and turbo. Weaker items go to the leaders, stronger ones to the back of the pack |
+| 2 Player | Local split-screen with 0–4 AI rivals (no progression awarded) |
+| Time Trial | Solo laps against medal targets and a best-lap **ghost** — yours, or a friend's imported from a code |
 | Stunt Run | Two minutes to score with tricks, drifts, clean landings and rings |
 | Endless Wave | The sea keeps rising and mines drift in; checkpoints add time |
-| Free Ride | No clock — explore the course, chase rings, practise |
+| Free Ride | No clock — explore the course, chase rings, hunt message bottles |
+| Tutorial | A guided lesson on calm water: throttle, steering, checkpoints, drift tiers, mini-turbo, nitro, ramps, tricks, clean landings and the perfect start. Each step completes only when you have actually done it |
 
 ## Content
 
-- **6 courses** across 4 themes — Coral Cove and Sunset Atoll (tropical bay),
+- **10 courses** across 7 themes — Coral Cove and Sunset Atoll (tropical bay),
   Thunderhead Coast (storm coast), Neon Harbor and Shipyard Sprint (harbour /
-  industrial docks), Cinder Strait (volcanic waters). Each has gates, buoy-marked
-  edges, chevron corner signs, ramps, boost pads, swell zones, hazards, a
-  shortcut and themed scenery (palms, huts, docks, waterfall; cliffs,
-  lighthouses with sweeping beams, a wreck, a bridge; container barges, gantry
-  cranes, quays, a lit skyline; basalt, lava rocks, steam vents, a volcano).
+  industrial docks), Cinder Strait (volcanic waters), Glacier Bay (icebergs,
+  drifting floes, the northern lights), Canal City (stone embankments,
+  waterfront townhouses, arch bridges, gondolas and tight turns), and two
+  **point-to-point sprints** — Jungle Rapids (a river between wooded banks, past
+  a temple ruin) and Fjord Dash (between snow-capped cliffs). A sprint races one
+  stretch of the generated course from a START gate to a FINISH gate; the rest
+  of the loop is walled off by a log jam or an ice wall.
+- Each course has gates, buoy-marked edges, chevron corner signs, ramps, boost
+  pads, swell zones, hazards, a shortcut, five hidden **message bottles**, and
+  themed scenery.
+- **Living world**: dolphin pods leap beside the course, gull flocks circle the
+  islands, a whale breaches out on open water, and fishing trawlers cross the
+  course as moving obstacles (the AI steers around them). Toggle in Settings.
+- **Music that follows the race**: the procedural soundtrack speeds up, adds
+  hi-hats, fills and a lead line as the fight for a position tightens or while
+  you lead, and switches to its final-lap arrangement on the last lap.
+- **Changing weather**: optionally, a storm rolls in, night falls, or the sky
+  clears part-way through a race — sky, light, water colour, rain and the sea
+  state all blend over about 14 s.
 - **4 weathers** for any course — clear, sunset, storm (rain, lightning,
   thunder, much bigger swell), night (stars, moon, neon reflections).
 - **6 watercraft** with distinct hulls and handling: SPEEDSTER (balanced),
@@ -86,30 +120,85 @@ Every keyboard binding can be changed in **Settings → Controls**.
 - **5 AI rivals** with personalities (aggressive, technical, speed, balanced,
   reckless): different lanes, drift habits, shortcut and ramp choices, nitro
   strategy, deliberate mistakes, traffic behaviour and stuck recovery.
-- **Garage**: buy boats, then customise hull and accent colour, stripe pattern,
+- **Garage**: buy boats, upgrade each one (engine, hull, nitro tank, handling;
+  three stages each), and customise hull and accent colour, stripe pattern,
   race number, decal, wake-trail tint and boost-flame colour — painted live on
   the 3D hull.
+- **Damage**: hard hits, mines and battle items scuff and dent the hull livery,
+  trail smoke from the engine and cost up to 12% power for the rest of the
+  event. Hull upgrades reduce damage taken.
 - **Progression**: XP and levels (unlock courses, cups, boats, paint, decals,
   trail and flame colours), credits, medals per course and mode, records,
-  championship trophies, unlock toasts.
+  championship trophies, 27 achievements with credit rewards, lifetime stats,
+  collectibles, career progress, unlock toasts.
+
+## Replays, photos and sharing
+
+- **Replay**: every race (except split-screen) is recorded. Watch it from the
+  results screen at ¼×–2× speed, from any camera, following any boat.
+- **Photo mode** (pause menu or replay bar): the action freezes and a free
+  camera flies anywhere (`WASD`, arrows, `Q`/`E`, `Shift`). Adjust FOV and tilt,
+  pick a filter (vivid, noir, sepia, retro, dream), hide the boats, and SNAP to
+  save a PNG.
+- **Ghost codes**: in Time Trial, SHARE MY GHOST produces a text code (the lap,
+  quantised and deflated, about 1–2 KB). A friend pastes it into RACE A
+  FRIEND'S GHOST and races your exact line.
+
+## Settings and accessibility
+
+Five menu languages (English, Español, Français, Deutsch, Português), colour
+assist filters (protan / deutan / tritan), **colour-blind symbols** (shapes on
+buoys — ▲ left edge, ■ right edge, ◆ shortcut — Roman numerals on drift tiers,
+letters on medals), HUD scale, camera-shake and motion-effect sliders, boat
+shadows, wildlife on/off, changing weather on/off, touch controls and tilt,
+steering sensitivity, key rebinding.
+
+## Admin panel
+
+A password-protected developer / cheat console. Open it with
+**`Ctrl` + `Shift` + `K`** anywhere, or click any RIPTIDE logo five times
+quickly. The password is **`SaltyKraken77`**.
+
+- **Save**: set credits / level, unlock everything, give all boats, max all
+  upgrades, give gold medals, export / download / import the save as JSON,
+  reset progress.
+- **Race**: infinite nitro, god mode (no wipeouts), freeze AI, AI strength
+  slider, jump to the next checkpoint, skip a lap, respawn, refill nitro, repair,
+  shield, instant finish in any position.
+- **Physics**: live multipliers for top speed, grip, drift, gravity, buoyancy
+  and boost power.
+- **World**: weather / time of day, wave height, rain strength, game speed
+  (slow motion), spawn mines or a ramp ahead, free-flying camera.
+- **Debug**: live FPS / CPU stats, the `?debug=1` overlay, ocean wireframe,
+  collision shapes, hide UI, bloom, outlines, autopilot.
+
+Three wrong passwords lock the prompt for 30 seconds; a correct one stays
+unlocked until the tab is closed. The game has no server, so the check runs in
+the browser and only a hash of the password ships in the code — it keeps
+casual players out, but anyone with developer tools could get past it.
 
 ## Architecture
 
 ```
 src/
+  admin/       password-gated admin panel
   core/        game orchestrator (state machine, harness API), math, rng, events, types
   water/       waves.ts — THE wave field (CPU + GLSL); ocean mesh/shader; wakes & hull foam
   boat/        specs, state, physics (buoyancy, handling, drift, boost, tricks), collisions, meshes
-  race/        course generator, track queries, race session (all mode rules), racers
+  race/        course generator (loops + sprints), race session (all mode rules), racers,
+               battle items, trawler traffic, replay recorder/player, guided tutorial
   ai/          AI drivers
-  environment/ layout (pure data), scenery visuals, props, sky, weather presets, atmosphere
-  render/      renderer + post stack + adaptive resolution, cel materials/outlines, course furniture, FX director, world
+  environment/ layout (pure data), scenery visuals, props, sky, aurora, weather presets + blending, atmosphere
+  render/      renderer + post stack + split-screen + adaptive resolution, cel materials/outlines,
+               course furniture, battle visuals, wildlife, boat shadows, FX director, world
   camera/      chase/bow/cinematic/aerial rig with shake and comfort scaling
   particles/   pooled GPU point particles
   audio/       synthesised SFX/engines and procedural music sequencer
-  ui/          menus, HUD, minimap, spatial navigation, styles
-  input/       keyboard + gamepad, rebindable
-  save/        validated localStorage save, progression, rewards
+  ui/          menus, HUD, minimap, replay bar / photo panel, translations, spatial navigation, styles
+  input/       keyboard + gamepads (incl. split-screen layouts) + touch, rebindable
+  save/        validated localStorage save, progression content (upgrades, achievements,
+               challenges, career), rewards, ghost codes
+public/        web manifest, icons, service worker
   debug/       ?debug=1 overlay, GPU↔CPU wave agreement check
 harness/       Playwright + tsx test and capture scripts
 ```
@@ -141,12 +230,21 @@ so results are deterministic.
 
 ```bash
 npm run dev &                          # or build + preview
-npm test                               # 29 automated gameplay tests
+npm test                               # 29 gameplay tests + 18 feature tests
+node harness/features-test.mjs         # just the feature suite
 node harness/capture.mjs --list        # named screenshot scenarios
 node harness/capture.mjs --shots=racing,storm,night --out=shots
 npx tsx harness/sim-probe.ts coral     # headless full race, numeric report
 node harness/perf.mjs --url=http://localhost:4173/   # real-clock perf sampling
 ```
+
+The feature suite covers: the admin password gate and lockout, upgrades
+applied in races, achievements and lifetime stats, replay playback, photo
+snapshots, ghost-code round trips, deterministic challenges, the full guided
+tutorial, battle items and damage, split-screen input, a point-to-point sprint
+finish, the new courses, the career ladder, bottle collection, mid-race weather
+changes, touch controls, menu translation, and hostile values in the new save
+fields.
 
 The gameplay suite covers: GPU/CPU wave agreement, race start sequence,
 flotation, acceleration, checkpoints and AI progress, finish and results,
@@ -191,7 +289,17 @@ numbers.
   changes), not by listening.
 - Wake and spray are stylised approximations: there is no wave–wake interaction
   between boats, and spray is billboarded points rather than fluid.
-- Boats do not cast shadows; contact is conveyed with foam collars instead.
-- Tracks are generated from harmonic radius profiles, so every course is a
-  single closed loop (shortcuts are the only branches).
-- Touch controls are not implemented; desktop keyboard/gamepad is the target.
+- Boat shadows are soft projected footprints, not shadow maps: they are cast
+  onto the water and ramps, not onto other boats or scenery.
+- Tracks are generated from harmonic radius profiles. Point-to-point sprints
+  race part of such a loop and wall off the rest, so start and finish are never
+  very far apart in a straight line.
+- Canal City's "right-angle" turns are tight rounded corners (the generator
+  enforces a 30 m minimum turn radius so every boat can make them).
+- Touch controls were tested with emulated touch input in headless Chromium,
+  not on a physical phone.
+- Split-screen renders the scene twice per frame; on weak GPUs expect roughly
+  half the single-player frame rate. Replays and progression are off in
+  split-screen.
+- Only menus are translated; in-race callouts stay in English.
+- The admin password check is client-side (see above).

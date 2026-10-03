@@ -57,7 +57,7 @@ export class World {
     events: EventQueue,
     quality: Quality,
     weather: WeatherId,
-    opts: { wildlife?: boolean; shadows?: boolean } = {},
+    opts: { wildlife?: boolean; shadows?: boolean; symbols?: boolean } = {},
   ) {
     this.weather = weather;
     const scene = this.scene;
@@ -69,7 +69,7 @@ export class World {
     this.atmosphere = new Atmosphere(scene, this.sky, events, quality);
     this.scenery = new Scenery(session.layout, session.track, quality);
     scene.add(this.scenery.group);
-    this.course = new CourseVisuals(session);
+    this.course = new CourseVisuals(session, !!opts.symbols);
     scene.add(this.course.group);
 
     this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery));

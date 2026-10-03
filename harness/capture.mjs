@@ -86,7 +86,7 @@ for (const name of names) {
   const res = await shot.run(page);
   if (res && res.ok === false) console.log(`  ⚠ STATE NEVER REACHED for ${name}`);
   await R(page, () => window.__RIPTIDE__.render());
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(600);
   await page.screenshot({ path: `${out}/${name}.png` });
   const st = await R(page, () => window.__RIPTIDE__.stats());
   console.log(`✓ ${name.padEnd(10)} ${((Date.now() - t0) / 1000).toFixed(1)}s  calls=${st.calls} tris=${(st.triangles / 1000).toFixed(0)}k parts=${st.particles} phase=${st.phase} spd=${(st.speed ?? 0).toFixed(1)} air=${st.airborne}`);

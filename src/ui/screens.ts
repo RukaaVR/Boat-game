@@ -627,7 +627,7 @@ export class Screens {
   }
   private choice(key: keyof Settings, label: string, opts: [string | number | boolean, string][]) {
     const v = this.game.save.data.settings[key];
-    return `<div class="setting"><span class="nm">${label}</span><div class="opts">${opts.map(([o, l]) => `<button class="opt ${v === o ? 'on' : ''}" data-nav data-act="sset" data-arg="${key}:${JSON.stringify(o)}">${l}</button>`).join('')}</div><span></span></div>`;
+    return `<div class="setting"><span class="nm">${label}</span><div class="opts">${opts.map(([o, l]) => `<button class="opt ${v === o ? 'on' : ''}" data-nav data-act="sset" data-arg='${key}:${JSON.stringify(o)}'>${l}</button>`).join('')}</div><span></span></div>`;
   }
 
   private refreshSettings() {

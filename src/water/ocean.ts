@@ -192,17 +192,18 @@ void main() {
   }
 
   // ── Foam ────────────────────────────────────────────────────────────────
-  vec4 fm = texture2D(uFoamMap, vWorld.xz * 0.06 + vec2(uTime * 0.01, 0.0));
-  vec4 fm2 = texture2D(uFoamMap, vWorld.xz * 0.023 - vec2(0.0, uTime * 0.008));
-  float cap = smoothstep(0.92, 0.55, vJac) * uFoamAmount;
-  float capMask = cap * smoothstep(0.25, 0.65, fm.r + fm2.r * 0.6 + cap * 0.4);
+  vec4 fm = texture2D(uFoamMap, vWorld.xz * 0.17 + vec2(uTime * 0.01, 0.0));
+  vec4 fm2 = texture2D(uFoamMap, vWorld.xz * 0.031 - vec2(0.0, uTime * 0.008));
+  float cap = smoothstep(0.9, 0.5, vJac) * uFoamAmount;
+  // Soft noise sets where foam survives; the fine bubble web only adds texture inside it.
+  float capMask = cap * smoothstep(0.42, 0.7, fm2.g + cap * 0.35) * (0.55 + 0.45 * fm.r);
   // Surf lines rolling toward each shore.
   float surf = 0.0;
   if (sd < 28.0) {
     float wave = fract(sd / 9.0 + uTime * 0.18);
     surf = smoothstep(0.82, 0.92, wave) * (1.0 - sd / 28.0);
     surf += (1.0 - smoothstep(0.0, 3.5, sd)) * 0.9;
-    surf *= smoothstep(0.2, 0.55, fm.r + 0.3);
+    surf *= smoothstep(0.2, 0.55, fm2.g + 0.25);
   }
   float foam = clamp(capMask + surf, 0.0, 1.0);
   col = mix(col, uFoam * (0.85 + 0.15 * band), foam * 0.92);

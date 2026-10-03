@@ -99,14 +99,36 @@ export function waterNormalMap(): Texture {
   return t;
 }
 
-/** Tileable cellular foam pattern (R) + soft noise (G). */
+/** Tileable foam: R = fine cellular bubble web, G = soft fbm noise, B = streak noise. */
 export function foamTexture(): Texture {
   const key = 'foam';
   if (cache.has(key)) return cache.get(key)!;
   const N = 256;
   const rng = new Rng(4242);
   const pts: [number, number][] = [];
-  for (let i = 0; i < 70; i++) pts.push([rng.next() * N, rng.next() * N]);
+  for (let i = 0; i < 160; i++) pts.push([rng.next() * N, rng.next() * N]);
+  // Periodic value noise lattice for fbm.
+  const lat = (period: number, seed: number) => {
+    const r = new Rng(seed);
+    const g = new Float32Array(period * period);
+    for (let i = 0; i < g.length; i++) g[i] = r.next();
+    return (x: number, y: number) => {
+      const fx = (x / N) * period;
+      const fy = (y / N) * period;
+      const x0 = Math.floor(fx);
+      const y0 = Math.floor(fy);
+      const tx = fx - x0;
+      const ty = fy - y0;
+      const ux = tx * tx * (3 - 2 * tx);
+      const uy = ty * ty * (3 - 2 * ty);
+      const at = (i: number, j: number) => g[(((j % period) + period) % period) * period + (((i % period) + period) % period)];
+      const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * ux;
+      const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * ux;
+      return a + (b - a) * uy;
+    };
+  };
+  const octs = [lat(4, 1), lat(8, 2), lat(16, 3), lat(32, 4)];
+  const streak = [lat(32, 7), lat(64, 8)];
   const data = new Uint8Array(N * N * 4);
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; x++) {
@@ -123,13 +145,15 @@ export function foamTexture(): Texture {
           d1 = d;
         } else if (d < d2) d2 = d;
       }
-      // Distance to the cell border: bright webbing between bubbles.
       const edge = Math.sqrt(d2) - Math.sqrt(d1);
-      const web = Math.max(0, 1 - edge / 9);
+      const web = Math.max(0, 1 - edge / 5);
+      const fbm = octs[0](x, y) * 0.5 + octs[1](x, y) * 0.25 + octs[2](x, y) * 0.15 + octs[3](x, y) * 0.1;
+      // Streaks: high frequency across, low along (stretch y).
+      const st = streak[0](x, y * 0.15) * 0.6 + streak[1](x, y * 0.2) * 0.4;
       const i = (y * N + x) * 4;
       data[i] = web * 255;
-      data[i + 1] = (Math.sin(x * 0.11) * Math.sin(y * 0.13) * 0.5 + 0.5) * 255;
-      data[i + 2] = Math.min(255, Math.sqrt(d1) * 6);
+      data[i + 1] = fbm * 255;
+      data[i + 2] = st * 255;
       data[i + 3] = 255;
     }
   const t = new DataTexture(data, N, N, RGBAFormat, UnsignedByteType);

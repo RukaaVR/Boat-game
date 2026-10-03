@@ -22,10 +22,10 @@ interface KindDef {
 }
 
 const KINDS: Record<ParticleKind, KindDef> = {
-  spray: { additive: false, life: [0.4, 0.8], size: [0.18, 0.7], alpha: 0.8, gravity: 11, drag: 0.6, water: true },
-  splash: { additive: false, life: [0.6, 1.2], size: [0.4, 1.6], alpha: 0.85, gravity: 12, drag: 0.4, water: true },
+  spray: { additive: false, life: [0.35, 0.75], size: [0.14, 0.55], alpha: 0.85, gravity: 11, drag: 0.6, water: true },
+  splash: { additive: false, life: [0.5, 1.1], size: [0.25, 1.0], alpha: 0.85, gravity: 12, drag: 0.4, water: true },
   drop: { additive: false, life: [0.4, 0.8], size: [0.15, 0.1], alpha: 0.9, gravity: 14, drag: 0.2, water: true },
-  mist: { additive: false, life: [0.8, 1.6], size: [1.0, 3.6], alpha: 0.08, gravity: -0.4, drag: 1.4, water: false },
+  mist: { additive: false, life: [0.8, 1.6], size: [1.0, 3.2], alpha: 0.06, gravity: -0.4, drag: 1.4, water: false },
   ripple: { additive: false, life: [0.2, 0.35], size: [0.2, 0.7], alpha: 0.5, gravity: 0, drag: 0, water: false },
   boost: { additive: true, life: [0.18, 0.4], size: [0.7, 0.1], alpha: 1, gravity: 0, drag: 3, water: false },
   spark: { additive: true, life: [0.3, 0.6], size: [0.25, 0.05], alpha: 1, gravity: 9.8, drag: 0.8, water: false },
@@ -49,7 +49,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
   gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.5), 0.0, 160.0);
   // Fade out particles right in front of the lens so they never white-out the frame.
-  vAlpha = aAlpha * smoothstep(1.5, 6.0, -mv.z);
+  vAlpha = aAlpha * smoothstep(2.0, 9.0, -mv.z);
   vColor = aColor;
   float fd = uFogDensity * -mv.z;
   vFog = 1.0 - exp(-fd * fd);

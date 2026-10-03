@@ -307,7 +307,7 @@ export class Hud {
       const deg = Math.round((-ang * 180) / Math.PI);
       this.set('cpang', deg, () => (this.cpArrow.style.transform = `rotate(${deg}deg)`));
       const dist = Math.round(Math.hypot(dx, dz));
-      const label = s.hasLaps && p.checkpoints % s.track.gates.length === 0 ? 'FINISH' : 'CHECKPOINT';
+      const label = s.hasLaps && p.checkpoints % s.track.gates.length === 0 ? (p.checkpoints === 0 ? 'START' : 'FINISH') : 'CHECKPOINT';
       this.set('cpd', dist + label, () => (this.cpText.textContent = `${label} ${dist} m`));
     }
 

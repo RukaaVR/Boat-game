@@ -141,12 +141,12 @@ void main() {
   // Speed lines: sparse radial streaks at the frame edge.
   if (uSpeed > 0.01) {
     float ang = atan(d.y, d.x * aspect);
-    float seg = floor(ang * 70.0);
+    float seg = floor(ang * 160.0);
     float n = h11(seg);
     float r = length(vec2(d.x * aspect, d.y));
-    float on = step(1.0 - 0.22 * uSpeed, n) * step(0.5, fract(n * 17.0 + uTime * (3.0 + n * 4.0)));
-    float edge = smoothstep(0.36, 0.75, r);
-    col = mix(col, vec3(1.0), on * edge * 0.35 * uSpeed);
+    float on = step(1.0 - 0.16 * uSpeed, n) * step(0.55, fract(n * 17.0 + uTime * (3.0 + n * 4.0)));
+    float edge = smoothstep(0.42, 0.8, r);
+    col = mix(col, vec3(1.0), on * edge * 0.22 * min(uSpeed, 1.0));
   }
 
   // Grade (linear): exposure, saturation, contrast around mid-grey, soft shoulder.

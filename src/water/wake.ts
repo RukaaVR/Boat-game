@@ -78,15 +78,18 @@ void main() {
   float age = vInfo.x;
   float e = abs(vInfo.y);
   float str = vInfo.z;
-  vec4 f = texture2D(uFoamMap, vXZ * 0.11 + vec2(0.0, uTime * 0.02));
-  vec4 f2 = texture2D(uFoamMap, vXZ * 0.045);
-  // Kelvin arms: bright edges that thin with age; churned centre that dies fast.
-  float arms = smoothstep(0.72, 0.93, e) * (1.0 - smoothstep(0.93, 1.0, e));
-  float centre = (1.0 - smoothstep(0.0, 0.45, e)) * (1.0 - smoothstep(0.0, 0.25, age));
-  float lace = smoothstep(0.5, 0.75, f.r) * (1.0 - smoothstep(0.2, 0.7, age)) * 0.35;
-  float pattern = smoothstep(0.2, 0.62, f.r * 0.8 + f2.r * 0.5 + (1.0 - age) * 0.25);
-  float a = (arms * 0.85 + centre * 0.75) * pattern + lace;
-  a *= str * pow(1.0 - age, 1.8) * 0.7;
+  // Soft fbm breakup in world space + streaks running along the trail.
+  float n = texture2D(uFoamMap, vXZ * 0.07).g;
+  float n2 = texture2D(uFoamMap, vXZ * 0.21 + vec2(uTime * 0.03, 0.0)).g;
+  float streak = texture2D(uFoamMap, vec2(vInfo.y * 0.35 + 0.5, age * 3.0)).b;
+  float bub = texture2D(uFoamMap, vXZ * 0.35).r;
+  float arms = smoothstep(0.7, 0.92, e) * (1.0 - smoothstep(0.92, 1.0, e));
+  float centre = (1.0 - smoothstep(0.0, 0.5, e)) * (1.0 - smoothstep(0.0, 0.3, age));
+  float body = (1.0 - smoothstep(0.3, 0.95, e)) * (1.0 - smoothstep(0.1, 0.6, age)) * 0.35;
+  float breakup = smoothstep(0.25, 0.75, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.3);
+  float a = (arms * 0.8 + centre * 0.8 + body * streak) * breakup;
+  a += centre * bub * 0.25;
+  a *= str * pow(1.0 - age, 1.6) * 0.75;
   if (a < 0.02) discard;
   vec3 col = mix(uFoam, vColor, 0.18 * (1.0 - age));
   float d = length(cameraPosition.xz - vXZ) * uFogDensity;

@@ -31,8 +31,9 @@ import { Hud } from '../ui/hud';
 import { Nav } from '../ui/nav';
 import { Screens } from '../ui/screens';
 import { DebugOverlay } from '../debug/debug';
+import { waveAgreement } from '../debug/waveCheck';
 import { settleBoat } from '../boat/boatPhysics';
-import { oceanHeight } from '../water/waves';
+import { getSeaState, oceanHeight } from '../water/waves';
 import type { Boat } from '../boat/boat';
 
 export interface EventRequest {
@@ -177,6 +178,7 @@ export class Game {
     this.session = new RaceSession(cfg, this.events);
     this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather);
     this.rig.ramps = this.session.track.ramps;
+    this.rig.seaLift = Math.max(0, (getSeaState() - 1) * 2.2);
     this.renderTime = 0;
   }
 
@@ -483,6 +485,11 @@ export class Game {
     if (simDt > 0 || this.garage) this.rig.update(simDt || dt, target, s.track, s.time);
 
     w.update(simDt, s.time, this.rig, this.events);
+    if (!racing) {
+      // No screen-space race FX behind menus.
+      const fx = this.renderer.fx;
+      fx.speed = fx.radial = fx.chroma = fx.flash = fx.drops = fx.damage = 0;
+    }
     if (this.hud) this.hud.update(simDt);
 
     // Events → audio + HUD.
@@ -567,11 +574,17 @@ export class Game {
         g.scripted = false;
         g.last = performance.now();
       },
+      /** Process exactly one frame (handles queued key presses deterministically). */
+      tick(dt = 1 / 60) {
+        g.frame(dt);
+        return api.stats();
+      },
       autopilot(on: boolean) {
         if (g.session) g.session.playerAutopilot = on;
         if (on) g.controlOverride = null;
       },
       setControls(c: Record<string, number | boolean>) {
+        if (g.session) g.session.playerAutopilot = false;
         g.controlOverride = { ...(g.controlOverride ?? {}), ...c };
       },
       clearControls() {
@@ -715,6 +728,9 @@ export class Game {
       },
       render() {
         g.render(0);
+      },
+      waveCheck() {
+        return waveAgreement(g.renderer.gl);
       },
     };
     (window as unknown as { __RIPTIDE__: typeof api }).__RIPTIDE__ = api;

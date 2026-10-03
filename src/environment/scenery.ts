@@ -274,7 +274,7 @@ export class Scenery {
           for (let i = -1; i <= 1; i++) {
             const lx = p.x + Math.cos(p.rot) * i * 14 + Math.sin(p.rot) * 3.3;
             const lz = p.z - Math.sin(p.rot) * i * 14 + Math.cos(p.rot) * 3.3;
-            glowPts.push({ x: lx, y: 9.2, z: lz, c: 0xffd27a, s: 70, blink: false });
+            glowPts.push({ x: lx, y: 9.2, z: lz, c: 0xffd27a, s: 40, blink: false });
           }
         }
         if (kind === 'dock') glowPts.push({ x: p.x + Math.sin(p.rot) * 8.5, y: 4.5, z: p.z + Math.cos(p.rot) * 8.5, c: 0xffd27a, s: 40, blink: false });
@@ -473,7 +473,7 @@ export class Scenery {
     const sinR = Math.sin(p.rot);
     for (let i = -4; i <= 4; i++) {
       const lx = (i / 4) * span;
-      glow.push({ x: p.x + cosR * lx, y: deckY - 1.6, z: p.z - sinR * lx, c: neon ? (i % 2 ? style.glow : style.glow2) : 0xffd27a, s: 50, blink: false });
+      glow.push({ x: p.x + cosR * lx, y: deckY - 1.6, z: p.z - sinR * lx, c: neon ? (i % 2 ? style.glow : style.glow2) : 0xffd27a, s: 28, blink: false });
     }
     this.waterLights.push({ x: p.x, y: deckY, z: p.z, color: neon ? style.glow2 : 0xffd27a, intensity: 1.2 });
   }

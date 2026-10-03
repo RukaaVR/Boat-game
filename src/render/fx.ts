@@ -78,7 +78,7 @@ export class FxDirector {
 
       if (inWater && speed > 6) {
         // Rooster tail.
-        const tailRate = (10 + 30 * sp * sp + 26 * b.boostLevel) * lod;
+        const tailRate = (14 + 44 * sp * sp + 34 * b.boostLevel) * lod;
         let n = P.count(tailRate, dt);
         const nx = b.position.x - fx * L * 0.52;
         const nz = b.position.z - fz * L * 0.52;
@@ -189,7 +189,7 @@ export class FxDirector {
             const out = 3 + Math.random() * 5 * (0.5 + e.value);
             P.emit('splash', e.x + Math.cos(a) * 1.2, e.y + 0.2, e.z + Math.sin(a) * 1.2, Math.cos(a) * out, 3 + e.value * 9 * Math.random(), Math.sin(a) * out, WHITE, 1, 1 + e.value, e.y - 0.3);
           }
-          for (let k = 0; k < 6; k++) P.emit('mist', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 4, 1, (Math.random() - 0.5) * 4, MIST, 1, 2);
+          for (let k = 0; k < 3; k++) P.emit('mist', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 4, 1, (Math.random() - 0.5) * 4, MIST, 1, 2);
           if (mine) {
             rig.addTrauma(0.15 + 0.45 * e.value);
             if (e.value > 0.35) this.drops = Math.max(this.drops, 0.6 + e.value * 0.4);
@@ -300,7 +300,7 @@ export class FxDirector {
     this.drops = Math.max(0, this.drops - dt * 0.45);
     this.damage = Math.max(0, this.damage - dt * 1.6);
     fx.flash = this.flash;
-    fx.speed = damp(fx.speed, smoothstep(27, 40, pb.speed) + pb.boostLevel * 0.6, 5, dt);
+    fx.speed = damp(fx.speed, smoothstep(34, 46, pb.speed) * 0.6 + pb.boostLevel * 0.7, 5, dt);
     fx.radial = Math.max(pb.boostLevel * 0.5, this.radialPulse * 0.6);
     fx.chroma = Math.max(pb.boostLevel * 0.7, this.chromaPulse);
     fx.drops = this.drops + (weatherRain > 0 ? 0.25 : 0);

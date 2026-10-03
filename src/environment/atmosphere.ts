@@ -51,7 +51,7 @@ void main() {
   p.y = max(p.y, uCam.y - 23.0);
   vec3 tail = vec3(uWind.x, -fall, uWind.y) * 0.035;
   p += tail * aEnd;
-  vA = 0.25 + 0.35 * fract(s * 5.3);
+  vA = 0.12 + 0.2 * fract(s * 5.3);
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `;

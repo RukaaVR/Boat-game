@@ -55,6 +55,8 @@ export class CameraRig {
   orbitRadius = 9;
   orbitHeight = 3;
   private snap = true;
+  /** Extra chase height in heavy seas so the lens stays above the swell. */
+  seaLift = 0;
   /** Solid ramps the camera must stay above. */
   ramps: readonly Ramp[] | null = null;
 
@@ -155,8 +157,8 @@ export class CameraRig {
       case 'chase':
       case 'far': {
         const far = this.mode === 'far';
-        const dist = (far ? 12.5 : 7.4) + sp01 * 1.4 + b.boostLevel * 1.1 * this.motionScale;
-        const height = (far ? 4.6 : 2.5) + this.lift + this.dip;
+        const dist = (far ? 12.5 : 7.8) + sp01 * 1.4 + b.boostLevel * 1.1 * this.motionScale;
+        const height = (far ? 4.6 : 2.9) + this.lift + this.dip + this.seaLift;
         _want.set(b.position.x - _fwd.x * dist + _right.x * this.side, b.surfaceY + height + Math.max(0, b.position.y - b.surfaceY) * 0.6, b.position.z - _fwd.z * dist + _right.z * this.side);
         const ahead = far ? 9 : 7 + sp01 * 4;
         _look.set(b.position.x + _fwd.x * ahead, b.position.y + (far ? 0.6 : 1.1) + this.lift * 0.3, b.position.z + _fwd.z * ahead);

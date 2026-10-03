@@ -156,7 +156,7 @@ export function applyRewards(session: RaceSession, store: SaveStore): RewardSumm
   d.credits += credits;
   const after = levelFromXp(d.xp);
   const unlocks = unlocksBetween(before.level, after.level);
-  store.save();
+  store.save(true);
   return {
     xp,
     credits,
@@ -188,6 +188,6 @@ export function finishChampionship(store: SaveStore): { place: number; xp: numbe
   d.xp += xp;
   d.credits += credits;
   d.champ = null;
-  store.save();
+  store.save(true);
   return { place, xp, credits, unlocks: unlocksBetween(before, levelFromXp(d.xp).level) };
 }

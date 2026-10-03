@@ -4,6 +4,7 @@
  */
 
 import { formatTime, ordinal } from '../core/mathx';
+import { Vector3, type Camera } from 'three';
 import type { GameEvent } from '../core/events';
 import type { RaceSession } from '../race/session';
 import { Minimap } from './minimap';
@@ -49,6 +50,10 @@ export class Hud {
   private tutorial: HTMLElement;
   private camLabel: HTMLElement;
   private draftEl: HTMLElement;
+  private tags: HTMLElement[] = [];
+  private tagPos = new Vector3();
+  /** Set by the game each frame for name-tag projection. */
+  camera: Camera | null = null;
   private wrong: HTMLElement | null = null;
   private msgs: Msg[] = [];
   private cache: Record<string, string | number> = {};
@@ -107,6 +112,12 @@ export class Hud {
     this.draftEl.style.opacity = '0';
     this.camLabel = el('div', 'camlabel', root);
     this.camLabel.style.opacity = '0';
+    for (let i = 1; i < session.racers.length; i++) {
+      const r = session.racers[i];
+      const t = el('div', 'tag', root, `<i style="background:${r.livery.hull}"></i>${r.name}`);
+      t.style.opacity = '0';
+      this.tags.push(t);
+    }
     requestAnimationFrame(() => this.minimap.resize());
 
     this.tutorialSteps = [
@@ -375,6 +386,31 @@ export class Hud {
           this.tutorial.style.opacity = '1';
         });
       } else this.set('tut', -1, () => (this.tutorial.style.opacity = '0'));
+    }
+
+    // Rival name tags (nearby, in front of the lens).
+    if (this.camera) {
+      const cam = this.camera;
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      for (let i = 1; i < s.racers.length; i++) {
+        const r = s.racers[i];
+        const tag = this.tags[i - 1];
+        const d = cam.position.distanceTo(r.boat.position);
+        this.tagPos.copy(r.boat.position);
+        this.tagPos.y += 2.6;
+        this.tagPos.project(cam);
+        const vis = d > 6 && d < 70 && this.tagPos.z < 1 && Math.abs(this.tagPos.x) < 1.1 && Math.abs(this.tagPos.y) < 1.1 && s.phase !== 'results';
+        const op = vis ? Math.min(1, (70 - d) / 20) * Math.min(1, (d - 6) / 6) : 0;
+        const key = vis ? `${Math.round((this.tagPos.x * 0.5 + 0.5) * W)},${Math.round((0.5 - this.tagPos.y * 0.5) * H)},${op.toFixed(1)},${r.place}` : '0';
+        this.set('tag' + i, key, () => {
+          tag.style.opacity = op.toFixed(2);
+          if (vis) {
+            tag.style.transform = `translate(${((this.tagPos.x * 0.5 + 0.5) * W).toFixed(0)}px, ${((0.5 - this.tagPos.y * 0.5) * H).toFixed(0)}px) translate(-50%, -100%)`;
+            tag.dataset.place = String(r.place);
+          }
+        });
+      }
     }
 
     this.minimap.draw(p.checkpoints);

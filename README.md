@@ -47,6 +47,10 @@ Every keyboard binding can be changed in **Settings → Controls**.
   build bigger seas, storms make everything bigger. In the air you can trim
   pitch, flip, spin and barrel-roll. Land level and aligned with the course for
   a PERFECT LANDING boost; land mid-trick or badly and you wipe out.
+- **Readability**: buoy-marked edges, chevron corner signs, a glowing arch on
+  the next checkpoint, a checkpoint direction pointer, a rotating minimap,
+  rival name tags with positions, edge arrows for boats alongside, an optional
+  racing-line assist (Settings → Gameplay), and an unmissable WRONG WAY banner.
 - **Starts**: holding the throttle when "2" shows floods the engine (FALSE START,
   1.2 s penalty). Hitting the throttle on "1" gives a PERFECT START launch.
 - **Shortcuts**: every course has a narrow channel through the rocks, marked

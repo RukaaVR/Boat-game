@@ -266,3 +266,7 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .msg.msg-pink { color: #ff4fd8; }
 
 .hud .draft { position: absolute; left: 50%; bottom: calc(96px * var(--hud)); transform: translateX(-50%) skewX(-10deg); font-size: calc(18px * var(--hud)); transition: opacity .25s; animation: none; }
+
+.hud .tag { position: absolute; left: 0; top: 0; font-family: var(--font2); font-style: normal; font-weight: 800; font-size: 12px; letter-spacing: 1px; color: #fff; background: rgba(5,10,30,.6); padding: 2px 8px 2px 4px; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: opacity .2s; text-shadow: 0 1px 2px #000; }
+.hud .tag i { width: 4px; height: 12px; display: inline-block; }
+.hud .tag::before { content: attr(data-place); color: var(--yellow); font-family: var(--font); font-style: italic; }

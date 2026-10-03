@@ -518,6 +518,7 @@ export class Game {
     if (simDt > 0 || this.garage) this.rig.update(simDt || dt, target, s.track, s.time);
 
     w.update(simDt, s.time, this.rig, this.events);
+    if (this.hud) this.hud.camera = this.rig.camera;
     if (!racing) {
       // No screen-space race FX behind menus.
       const fx = this.renderer.fx;

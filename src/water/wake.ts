@@ -90,13 +90,19 @@ void main() {
   float breakup = smoothstep(0.3, 0.78, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.2);
   // Churned centre is broken into streaks so it never reads as a solid band.
   float churn = centre * smoothstep(0.35, 0.7, streak * 0.7 + n2 * 0.5) * (0.45 + 0.55 * bub);
-  float a = (arms * 0.75 + body * streak) * breakup + churn * 0.55;
+  float a = (arms * 0.75 + body * streak * 0.6) * breakup + churn * 0.55;
   a *= str * pow(1.0 - age, 1.6) * 0.7 * uOpacity;
-  if (a < 0.02) discard;
-  vec3 col = mix(uFoam, vColor, 0.18 * (1.0 - age));
+  // Toon foam: threshold the soft field into flat white shapes with a crisp
+  // (1-2px) edge. The threshold rises with age so the trail breaks into
+  // islands of foam and shrinks away instead of fading to grey.
+  float thr = 0.16 + age * 0.12;
+  float aw = fwidth(a) * 0.75 + 0.004;
+  float shape = smoothstep(thr - aw, thr + aw, a);
+  if (shape < 0.02) discard;
+  vec3 col = mix(uFoam, vColor, 0.1 * (1.0 - age));
   float d = length(cameraPosition.xz - vXZ) * uFogDensity;
   col = mix(col, uFogColor, 1.0 - exp(-d * d));
-  gl_FragColor = vec4(col, clamp(a, 0.0, 0.7));
+  gl_FragColor = vec4(col, shape * 0.95);
   #include <colorspace_fragment>
 }
 `;
@@ -139,11 +145,16 @@ void main() {
   float stern = smoothstep(-0.48, -0.8, q.y) * (1.0 - smoothstep(0.05, 0.45, abs(q.x)));
   float n = texture2D(uFoamMap, vXZ * 0.09 + vec2(uTime * 0.05, 0.0)).g;
   float bub = texture2D(uFoamMap, vXZ * 0.6 + vec2(0.0, uTime * 0.3)).r;
-  float a = ring * (0.45 + 0.35 * speed) + bow * speed * 0.85 + stern * (0.2 + 0.7 * speed) + vParams.w * ring * 0.4;
-  a *= smoothstep(0.2, 0.62, n * 0.75 + bub * 0.45) * wet;
+  // Second, thinner ring a little further out: the cartoon "double collar".
+  float ring2 = smoothstep(1.18, 1.24, e + (n - 0.5) * 0.12) * (1.0 - smoothstep(1.3, 1.36, e + (n - 0.5) * 0.12));
+  float a = ring * (0.75 + 0.35 * speed) + ring2 * (0.5 + 0.4 * speed) + bow * speed * 0.85 + stern * (0.2 + 0.7 * speed) + vParams.w * ring * 0.4;
+  a *= smoothstep(0.12, 0.45, n * 0.75 + bub * 0.3) * wet;
   a *= 1.0 - smoothstep(0.8, 1.0, max(abs(q.x), abs(q.y)));
-  if (a < 0.02) discard;
-  gl_FragColor = vec4(uFoam, clamp(a, 0.0, 0.85));
+  // Flat white with a crisp edge (toon), not a soft translucent smear.
+  float aw = fwidth(a) * 0.75 + 0.004;
+  float shape = smoothstep(0.22 - aw, 0.22 + aw, a);
+  if (shape < 0.02) discard;
+  gl_FragColor = vec4(uFoam, shape * 0.95);
   #include <colorspace_fragment>
 }
 `;

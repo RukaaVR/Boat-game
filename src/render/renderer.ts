@@ -229,7 +229,9 @@ export class Renderer {
 
     const mk = (frag: string, uniforms: Record<string, { value: unknown }>) =>
       new FullScreenQuad(new ShaderMaterial({ uniforms, vertexShader: quadVert, fragmentShader: frag, depthTest: false, depthWrite: false }));
-    this.bright = mk(brightFrag, { tIn: { value: null }, uThreshold: { value: 0.78 } });
+    // High threshold: only true highlights glow, so flat white foam and clouds
+    // stay crisp instead of haloing (toon look).
+    this.bright = mk(brightFrag, { tIn: { value: null }, uThreshold: { value: 0.95 } });
     this.down = mk(downFrag, { tIn: { value: null }, uTexel: { value: new Vector2() } });
     this.blur = mk(blurFrag, { tIn: { value: null }, uDir: { value: new Vector2() } });
     this.compMat = new ShaderMaterial({

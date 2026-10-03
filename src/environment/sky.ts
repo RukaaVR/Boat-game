@@ -67,7 +67,8 @@ float fbm(vec2 p) {
 void main() {
   vec3 d = normalize(vDir);
   float y = d.y;
-  vec3 col = mix(uHorizon, uTop, pow(smoothstep(0.0, 0.75, y), 0.8));
+  // Clean pastel gradient: a wide pale band at the horizon, flat blue overhead.
+  vec3 col = mix(uHorizon, uTop, smoothstep(0.02, 0.6, y));
   col = mix(col, uBottom, smoothstep(0.0, -0.2, y));
   // Theme horizon glow (lava, city light) hugging the horizon.
   col += uGlow * uGlowAmt * exp(-max(y, 0.0) * 9.0) * 0.8;
@@ -75,7 +76,8 @@ void main() {
   // Sun / moon.
   float sd = dot(d, uSunDir);
   float disc = smoothstep(0.9993 - uSunSize * 0.0009, 0.9995 - uSunSize * 0.0009, sd);
-  float halo = pow(max(sd, 0.0), 160.0) * 0.6 + pow(max(sd, 0.0), 12.0) * 0.18;
+  // Halo as two flat rings rather than a photographic bloom.
+  float halo = step(0.9965, sd) * 0.35 + step(0.985, sd) * 0.12 + pow(max(sd, 0.0), 12.0) * 0.08;
   // Moon crescent shadow.
   vec3 off = normalize(uSunDir + vec3(0.012, 0.006, 0.0));
   float bite = uMoon * smoothstep(0.9994 - uSunSize * 0.0009, 0.9996 - uSunSize * 0.0009, dot(d, off));
@@ -98,13 +100,14 @@ void main() {
     vec2 uv = d.xz / (y + 0.08) * 1.4 + vec2(uTime * 0.006, uTime * 0.002);
     float n = fbm(uv);
     float n2 = fbm(uv + uSunDir.xz * 0.12);
-    float cover = smoothstep(1.0 - uCloud * 0.85, 1.05 - uCloud * 0.55, n);
-    float lit = clamp((n - n2) * 6.0 + 0.55, 0.0, 1.0);
-    lit = floor(lit * 3.0 + 0.5) / 3.0; // cel bands
-    vec3 cc = mix(uCloudShade, uCloudColor, lit);
-    cc += uSunColor * pow(max(sd, 0.0), 8.0) * 0.35 * (1.0 - cover * 0.5);
+    // Flat cartoon cloud shapes: hard edge, lit top / tinted underside.
+    float t0 = 1.0 - uCloud * 0.7;
+    float cover = smoothstep(t0, t0 + 0.015, n);
+    float lit = step(0.0, (n - n2) * 6.0 + 0.1);
+    vec3 cc = mix(uCloudShade, uCloudColor, 0.35 + 0.65 * lit);
+    cc += uSunColor * pow(max(sd, 0.0), 8.0) * 0.2;
     float fade = smoothstep(0.0, 0.12, y);
-    col = mix(col, cc, cover * fade * 0.95);
+    col = mix(col, cc, cover * fade);
   }
 
   // Seamless hand-off to the ocean's fog at the horizon.

@@ -14,30 +14,49 @@ import { BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, type Material, S
 import { clamp, damp } from '../core/mathx';
 import { addOutline, cel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
-import { shade } from '../render/textures';
 import type { Boat } from './boat';
 import type { Livery } from './livery';
 
+/** Character palette — chosen per racer from the livery so the field varies. */
+const SKINS = ['#ffdcc0', '#f6c79e', '#e0a878', '#b97a4e', '#8a5634', '#ffe6d2'];
+const HAIRS = ['#3a2616', '#f2c94c', '#c0442b', '#1e1e28', '#7b4b2a', '#f4f0e8', '#6a4fb5', '#2f8f6a'];
+const PANTS = '#f4ecd8';
+const BOOT = '#7a4a2a';
+const BOOT_SOLE = '#4a2c18';
+const BELT = '#5a3a22';
+const BUCKLE = '#ffd24a';
+const EYE = '#1d2236';
+const WHITE = '#ffffff';
+const BLUSH = '#ff9aa6';
+const LENS = '#7fd8ff';
+const STRAP = '#2a2f3c';
 export const SUIT = 0x1d2030;
-const SUIT_LIGHT = shade('#1d2030', 0.3);
-const RUBBER = 0x15171d;
-const STRAP = 0x111318;
-const STEEL = 0x8c96a6;
+
+/** Small stable hash of the livery so each racer gets the same look every race. */
+function pick<T>(liv: Livery, arr: T[], salt: number) {
+  const key = `${liv.hull}|${liv.accent}|${liv.number}|${salt}`;
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  return arr[(h >>> 0) % arr.length];
+}
 
 /** Forward lean of the chest over the hips at rest. */
-const T = 0.25;
-const UPPER_ARM = 0.3;
-const FOREARM = 0.3;
-const THIGH = 0.46;
-const SHIN = 0.45;
+const T = 0.22;
+const UPPER_ARM = 0.25;
+const FOREARM = 0.24;
+const HAND = 0.07;
+const THIGH = 0.34;
+const SHIN = 0.33;
 /** Hip joints relative to the pelvis centre. */
-const HIP_X = 0.09;
-const HIP_Y = -0.05;
+const HIP_X = 0.085;
+const HIP_Y = -0.04;
+/** Head radius: chibi proportions, about a third of the figure. */
+const HEAD_R = 0.25;
 
 const leanX = (x: number, y: number, z: number) => new Vector3(x, y * Math.cos(T) - z * Math.sin(T), y * Math.sin(T) + z * Math.cos(T));
 /** Shoulder joints and neck base in torso space (left = +x). */
-const SHOULDER = [leanX(0.18, 0.48, -0.005), leanX(-0.18, 0.48, -0.005)];
-const NECK = leanX(0, 0.56, 0.0);
+const SHOULDER = [leanX(0.15, 0.28, 0), leanX(-0.15, 0.28, 0)];
+const NECK = leanX(0, 0.34, 0.01);
 
 /**
  * Lofted body part: elliptical cross-sections stacked along an axis, closed
@@ -91,40 +110,46 @@ function loft(sections: [number, number, number, number][], axis: 'y' | 'z', seg
   return g;
 }
 
-/** Torso cross-sections from the crotch to the base of the neck. */
+/** Torso cross-sections from the seat to the base of the neck: a round tunic. */
 const TORSO: [number, number, number, number][] = [
-  [-0.11, 0.1, 0.08, -0.01],
-  [-0.06, 0.155, 0.11, -0.015], // hips and seat
-  [0.02, 0.16, 0.11, -0.01],
-  [0.1, 0.145, 0.1, 0.0], // waist
-  [0.18, 0.138, 0.098, 0.006],
-  [0.27, 0.15, 0.108, 0.016], // lower ribs
-  [0.36, 0.165, 0.118, 0.022], // chest
-  [0.43, 0.172, 0.112, 0.018],
-  [0.48, 0.168, 0.096, 0.004], // shoulder line
-  [0.52, 0.12, 0.078, 0.0], // trapezius
-  [0.56, 0.058, 0.055, 0.008], // neck base
+  [-0.08, 0.09, 0.07, -0.005],
+  [-0.03, 0.135, 0.11, -0.01],
+  [0.05, 0.145, 0.115, 0.0],
+  [0.14, 0.142, 0.112, 0.008],
+  [0.22, 0.138, 0.104, 0.008],
+  [0.28, 0.122, 0.09, 0.0],
+  [0.32, 0.08, 0.066, 0.0],
+  [0.35, 0.04, 0.04, 0.0],
 ];
-
-/** Same shape, inflated a hair, over a height band (suit panels). */
-function band(lo: number, hi: number, grow = 1.04) {
-  const out: [number, number, number, number][] = [];
-  for (const [a, w, d, o] of TORSO) if (a >= lo && a <= hi) out.push([a, w * grow, d * grow, o]);
-  return out;
-}
 
 function buildTorso(liv: Livery) {
   const gb = new GeoBuilder();
-  gb.add(loft(TORSO, 'y', 20), SUIT);
-  // Racing-leathers colour yoke across chest and shoulders, a waist band,
-  // and a spine hump on the back.
-  gb.add(loft(band(0.36, 0.52, 1.035), 'y', 20), liv.hull);
-  gb.add(loft(band(0.1, 0.18, 1.03), 'y', 20), liv.accent);
-  gb.capsule(0.05, 0.22, SUIT_LIGHT, { y: 0.36, z: -0.1, sx: 1.3, sz: 0.6, rx: 0.08 });
-  // Deltoids.
-  for (const s of [-1, 1]) gb.sphere(0.06, liv.hull, { x: s * 0.175, y: 0.47, z: -0.005, sx: 1.05, sy: 1.0 }, 12, 8);
-  // Collar.
-  gb.cyl(0.062, 0.07, 0.04, liv.accent, { y: 0.555, z: 0.008 }, 14);
+  // Shorts below, tunic above, a flared hem, belt with a gold buckle.
+  gb.add(loft(TORSO.slice(0, 3), 'y', 18), PANTS);
+  gb.add(loft(TORSO.slice(2), 'y', 18), liv.hull);
+  gb.add(
+    loft(
+      [
+        [-0.04, 0.162, 0.13, -0.005],
+        [0.03, 0.15, 0.12, 0],
+        [0.06, 0.146, 0.117, 0],
+      ],
+      'y',
+      18,
+    ),
+    liv.hull,
+  );
+  gb.cyl(0.15, 0.15, 0.035, BELT, { y: 0.05, sz: 0.8 }, 18);
+  gb.box(0.05, 0.045, 0.02, BUCKLE, { y: 0.05, z: 0.122 });
+  // Tunic trim and a chest emblem in the accent colour.
+  gb.cyl(0.165, 0.165, 0.02, liv.accent, { y: -0.035, sz: 0.8 }, 18);
+  gb.cyl(0.035, 0.035, 0.012, liv.accent, { x: 0.06, y: 0.2, z: 0.108, rx: Math.PI / 2 - 0.15 }, 12);
+  // Scarf round the neck with two tails blowing back.
+  gb.torus(0.07, 0.035, liv.accent, { y: 0.31, rx: Math.PI / 2, sy: 0.9 });
+  gb.box(0.07, 0.2, 0.025, liv.accent, { x: 0.035, y: 0.24, z: -0.1, rx: -0.5, rz: 0.15 });
+  gb.box(0.06, 0.16, 0.025, liv.accent, { x: -0.03, y: 0.25, z: -0.11, rx: -0.75, rz: -0.2 });
+  // Puffy shoulders.
+  for (const s of [-1, 1]) gb.sphere(0.07, liv.hull, { x: s * 0.14, y: 0.27, z: 0 }, 12, 8);
   const g = gb.build();
   g.rotateX(T);
   return g;
@@ -132,169 +157,170 @@ function buildTorso(liv: Livery) {
 
 function buildHead(liv: Livery) {
   const gb = new GeoBuilder();
-  // Neck up from the pivot; a full-face helmet centred above it.
-  gb.cyl(0.048, 0.054, 0.12, SUIT, { y: 0.04 }, 12);
-  const hy = 0.17;
-  const hz = 0.025;
-  const shell = { y: hy, z: hz, sy: 1.06, sz: 1.16 };
-  gb.sphere(0.145, liv.hull, shell, 22, 16);
-  // Visor: a tinted band across the face with a sky highlight.
-  gb.add(new SphereGeometry(0.149, 20, 6, Math.PI / 2 - 0.95, 1.9, 1.2, 0.48), 0x0f1a2c, shell);
-  gb.add(new SphereGeometry(0.151, 10, 2, Math.PI / 2 - 0.75, 0.45, 1.26, 0.1), 0x7cc4ff, shell);
-  // Chin bar, a single crest stripe and the lower rim.
-  gb.add(new SphereGeometry(0.152, 20, 4, Math.PI / 2 - 0.8, 1.6, 1.76, 0.38), liv.accent, shell);
-  gb.torus(0.148, 0.014, liv.accent, { y: hy, z: hz, ry: Math.PI / 2, sx: 1.16, sy: 1.06 }, Math.PI);
-  gb.torus(0.13, 0.016, STRAP, { y: hy - 0.1, z: hz - 0.01, rx: Math.PI / 2, sy: 1.15 });
+  const skin = pick(liv, SKINS, 1);
+  const hair = pick(liv, HAIRS, 2);
+  const R = HEAD_R;
+  // Head centre above the neck pivot; slightly wide, flat-ish face.
+  const hc = { y: 0.27, z: 0.02 };
+  const shape = { sx: 1.04, sy: 0.96, sz: 0.94 };
+  gb.cyl(0.05, 0.055, 0.08, skin, { y: 0.03 }, 12);
+  gb.sphere(R, skin, { ...hc, ...shape }, 24, 18);
+  // Point on the face surface for (x, y) offsets from the head centre.
+  const face = (x: number, y: number, lift = 0) => {
+    const zz = Math.sqrt(Math.max(0, 1 - (x / (R * shape.sx)) ** 2 - (y / (R * shape.sy)) ** 2)) * R * shape.sz;
+    return { x, y: hc.y + y, z: hc.z + zz + lift };
+  };
+  // Big oval eyes with a white glint, eyebrows, nose, blush and a smile.
+  for (const s of [-1, 1]) {
+    const e = face(s * 0.085, -0.01, -0.012);
+    gb.sphere(0.046, EYE, { ...e, sx: 0.78, sy: 1.25, sz: 0.45, ry: s * 0.35 }, 14, 10);
+    const g1 = face(s * 0.085 + 0.016, 0.022, 0.006);
+    gb.sphere(0.016, WHITE, { ...g1, sz: 0.5 }, 8, 6);
+    const g2 = face(s * 0.085 - 0.012, -0.03, 0.004);
+    gb.sphere(0.007, WHITE, { ...g2, sz: 0.5 }, 6, 4);
+    const b = face(s * 0.09, 0.085, 0.004);
+    gb.capsule(0.009, 0.05, hair, { ...b, rz: Math.PI / 2 + s * 0.18, sz: 0.6 });
+    const c = face(s * 0.135, -0.075, -0.004);
+    gb.sphere(0.03, BLUSH, { ...c, sy: 0.6, sz: 0.3, ry: s * 0.5 }, 10, 6);
+    // Round ears.
+    gb.sphere(0.045, skin, { x: s * R * 1.0, y: hc.y - 0.02, z: hc.z - 0.01, sx: 0.5, sy: 0.9 }, 10, 8);
+  }
+  gb.sphere(0.022, skin, { ...face(0, -0.055, -0.004), sy: 0.8 }, 10, 6);
+  const m = face(0, -0.115, -0.006);
+  gb.torus(0.03, 0.007, '#8a3a3a', { ...m, rz: Math.PI, sy: 0.7 }, Math.PI);
+  // Hair: a cap over the top and back, a swept fringe of tufts, a back tuft.
+  gb.add(new SphereGeometry(R * 1.05, 24, 12, 0, Math.PI * 2, 0, 0.95), hair, { ...hc, ...shape });
+  gb.add(new SphereGeometry(R * 1.04, 20, 10, Math.PI / 2 + 1.1, Math.PI * 2 - 2.2, 0.9, 1.45), hair, { ...hc, ...shape });
+  const tufts: [number, number, number, number][] = [
+    [-0.12, 0.13, 0.3, 0.6],
+    [-0.04, 0.15, 0.1, 0.35],
+    [0.05, 0.15, -0.15, 0.4],
+    [0.13, 0.12, -0.35, 0.55],
+  ];
+  for (const [x, y, rz, rx] of tufts) {
+    const f = face(x, y, -0.02);
+    gb.cone(0.055, 0.15, hair, { ...f, rx: Math.PI / 2 + rx, rz, sx: 1.2, sz: 0.6 }, 8);
+  }
+  // Messy clumps round the hairline so the silhouette reads as hair, not a helmet.
+  const onHead = (theta: number, phi: number, k = 1) => ({
+    x: -Math.cos(phi) * Math.sin(theta) * R * shape.sx * k,
+    y: hc.y + Math.cos(theta) * R * shape.sy * k,
+    z: hc.z + Math.sin(phi) * Math.sin(theta) * R * shape.sz * k,
+  });
+  for (let phi = Math.PI / 2 + 1.05; phi < Math.PI * 2.5 - 1.0; phi += 0.62) {
+    gb.sphere(0.09, hair, { ...onHead(1.75, phi, 0.9), sx: 0.9, sy: 1.5, sz: 0.8, ry: -phi }, 12, 8);
+  }
+  // Spikes on the crown.
+  for (const [th, ph, len] of [
+    [0.35, 4.4, 0.16],
+    [0.55, 3.6, 0.14],
+    [0.55, 5.3, 0.14],
+    [0.8, 4.7, 0.13],
+  ] as const) {
+    const p = onHead(th, ph, 0.95);
+    gb.cone(0.06, len, hair, { ...p, rx: -th * Math.sin(ph) * -1, rz: th * Math.cos(ph) * -1, sz: 0.8 }, 7);
+  }
+  // Racing goggles pushed up on the forehead.
+  const sr = R * Math.sqrt(1 - (0.12 / (R * shape.sy)) ** 2) * 1.07;
+  gb.torus(sr, 0.016, STRAP, { y: hc.y + 0.12, z: hc.z, rx: Math.PI / 2, sx: shape.sx, sy: shape.sz });
+  for (const s of [-1, 1]) {
+    const g = face(s * 0.07, 0.13, 0.02);
+    gb.cyl(0.05, 0.05, 0.035, liv.accent, { ...g, rx: Math.PI / 2 - 0.55 }, 14);
+    gb.cyl(0.038, 0.038, 0.04, LENS, { ...g, y: g.y + 0.004, z: g.z + 0.006, rx: Math.PI / 2 - 0.55 }, 14);
+  }
   return gb.build();
 }
 
 function buildUpperArm(liv: Livery) {
   const gb = new GeoBuilder();
-  // Shoulder ball → bicep → elbow. +Y = elbow tip side, so biceps sit in −Y.
+  // Puffy sleeve in the tunic colour.
   gb.add(
     loft(
       [
-        [-0.02, 0.05, 0.05, 0],
-        [0.04, 0.052, 0.054, -0.002],
-        [0.13, 0.048, 0.054, -0.008],
-        [0.22, 0.042, 0.044, -0.002],
-        [UPPER_ARM, 0.04, 0.04, 0.004],
+        [-0.03, 0.05, 0.05, 0],
+        [0.05, 0.058, 0.058, 0],
+        [0.16, 0.052, 0.052, 0],
+        [UPPER_ARM, 0.045, 0.045, 0],
       ],
       'z',
+      14,
     ),
-    SUIT,
+    liv.hull,
   );
-  gb.sphere(0.042, SUIT, { z: UPPER_ARM }, 12, 8);
-  // Sleeve stripe down the outside.
-  gb.box(0.012, 0.03, UPPER_ARM * 0.8, liv.hull, { x: 0.048, z: UPPER_ARM * 0.48 });
+  gb.cyl(0.05, 0.05, 0.02, liv.accent, { z: UPPER_ARM - 0.01, rx: Math.PI / 2 }, 14);
   return gb.build();
 }
 
 function buildForearm(liv: Livery) {
   const gb = new GeoBuilder();
+  const skin = pick(liv, SKINS, 1);
   gb.add(
     loft(
       [
-        [0, 0.04, 0.04, 0],
-        [0.07, 0.046, 0.044, 0.004],
-        [0.17, 0.038, 0.034, 0],
-        [FOREARM - 0.04, 0.032, 0.026, 0],
-      ],
-      'z',
-    ),
-    SUIT,
-  );
-  // Gauntlet glove: cuff, back of hand, curled fingers and thumb.
-  gb.add(
-    loft(
-      [
-        [FOREARM - 0.07, 0.04, 0.036, 0],
-        [FOREARM - 0.02, 0.042, 0.036, 0],
-        [FOREARM + 0.0, 0.036, 0.026, 0],
+        [-0.02, 0.04, 0.04, 0],
+        [0.08, 0.042, 0.04, 0],
+        [FOREARM, 0.034, 0.032, 0],
       ],
       'z',
       12,
     ),
-    liv.hull,
+    skin,
   );
-  gb.add(
-    loft(
-      [
-        [FOREARM, 0.03, 0.022, 0],
-        [FOREARM + 0.05, 0.042, 0.026, 0.004],
-        [FOREARM + 0.09, 0.04, 0.03, 0],
-      ],
-      'z',
-      12,
-    ),
-    RUBBER,
-  );
-  for (let f = 0; f < 4; f++) gb.capsule(0.012, 0.03, RUBBER, { x: -0.027 + f * 0.018, y: -0.02, z: FOREARM + 0.1, rx: 1.2 });
-  gb.capsule(0.013, 0.035, RUBBER, { x: 0.03, y: -0.028, z: FOREARM + 0.05, rx: 0.9, rz: -0.4 });
+  // Fingerless glove cuff and a big round mitt of a hand with a thumb.
+  gb.cyl(0.046, 0.042, 0.06, liv.accent, { z: FOREARM - 0.02, rx: Math.PI / 2 }, 12);
+  gb.sphere(0.058, skin, { z: FOREARM + HAND * 0.6, sx: 1.0, sy: 0.85, sz: 1.05 }, 14, 10);
+  gb.capsule(0.022, 0.035, skin, { x: 0.035, y: -0.02, z: FOREARM + 0.04, rx: 1.0, rz: -0.4 });
   return gb.build();
 }
 
-function buildThigh(liv: Livery) {
+function buildThigh() {
   const gb = new GeoBuilder();
-  // Hip → quads (front, +Y) → knee.
   gb.add(
     loft(
       [
-        [-0.03, 0.075, 0.075, 0],
-        [0.05, 0.082, 0.084, 0.004],
-        [0.16, 0.076, 0.08, 0.008],
-        [0.3, 0.064, 0.064, 0.004],
-        [THIGH, 0.05, 0.052, 0.002],
+        [-0.03, 0.07, 0.07, 0],
+        [0.06, 0.075, 0.075, 0.004],
+        [0.2, 0.065, 0.065, 0.002],
+        [THIGH, 0.055, 0.055, 0],
       ],
       'z',
+      14,
     ),
-    SUIT,
+    PANTS,
   );
-  gb.sphere(0.052, SUIT, { z: THIGH }, 12, 8);
-  // Outer-thigh colour panel.
-  gb.add(
-    loft(
-      [
-        [0.06, 0.02, 0.05, 0],
-        [0.2, 0.024, 0.05, 0],
-        [0.36, 0.016, 0.036, 0],
-      ],
-      'z',
-      10,
-    ),
-    liv.hull,
-    { x: -0.07 },
-  );
+  gb.sphere(0.056, PANTS, { z: THIGH }, 12, 8);
   return gb.build();
 }
 
-function buildShin(liv: Livery) {
+function buildShin() {
   const gb = new GeoBuilder();
-  // Knee → calf (back, −Y) → ankle.
   gb.add(
     loft(
       [
-        [0, 0.05, 0.05, 0],
-        [0.1, 0.05, 0.058, -0.012],
-        [0.2, 0.046, 0.052, -0.01],
-        [0.33, 0.036, 0.036, -0.002],
-        [SHIN, 0.034, 0.034, 0],
+        [0, 0.054, 0.054, 0],
+        [0.1, 0.052, 0.056, -0.006],
+        [SHIN, 0.045, 0.045, 0],
       ],
       'z',
+      14,
     ),
-    SUIT,
+    PANTS,
   );
-  // Small knee slider in the livery colour.
-  gb.sphere(0.042, liv.hull, { y: 0.03, z: 0.01, sy: 0.6, sz: 1.2 }, 12, 8);
   return gb.build();
 }
 
-/** Boots: static, merged into the hull parts. */
+/** Chunky cartoon boots: static, merged into the hull parts. */
 export function addBoots(gb: GeoBuilder, deck: number, zRider: number) {
   for (const s of [-1, 1]) {
-    const x = s * 0.17;
-    // Shaft up the lower shin, then a slim foot with toe cap and sole.
-    gb.cyl(0.044, 0.05, 0.24, RUBBER, { x, y: deck + 0.15, z: zRider + 0.1 }, 14);
-    gb.add(
-      loft(
-        [
-          [-0.06, 0.05, 0.05, 0.02],
-          [0.02, 0.052, 0.055, 0.0],
-          [0.12, 0.048, 0.04, -0.012],
-          [0.2, 0.042, 0.032, -0.02],
-        ],
-        'z',
-        14,
-      ),
-      RUBBER,
-      { x, y: deck + 0.07, z: zRider + 0.1 },
-    );
-    gb.box(0.1, 0.022, 0.3, 0xd8d8d0, { x, y: deck + 0.013, z: zRider + 0.17 });
-    gb.box(0.104, 0.018, 0.05, STEEL, { x, y: deck + 0.18, z: zRider + 0.1 });
+    const x = s * 0.16;
+    gb.cyl(0.062, 0.07, 0.2, BOOT, { x, y: deck + 0.15, z: zRider + 0.08 }, 14);
+    gb.cyl(0.075, 0.07, 0.04, BOOT_SOLE, { x, y: deck + 0.255, z: zRider + 0.08 }, 14); // turned-down cuff
+    gb.sphere(0.09, BOOT, { x, y: deck + 0.08, z: zRider + 0.17, sx: 0.85, sy: 0.7, sz: 1.35 }, 14, 10);
+    gb.box(0.15, 0.03, 0.3, BOOT_SOLE, { x, y: deck + 0.017, z: zRider + 0.16 });
   }
 }
 export function foothold(side: number, deck: number, zRider: number) {
-  return new Vector3(side === 0 ? 0.17 : -0.17, deck + 0.19, zRider + 0.1);
+  return new Vector3(side === 0 ? 0.16 : -0.16, deck + 0.22, zRider + 0.08);
 }
 
 const _m = new Matrix4();
@@ -366,17 +392,17 @@ export class Rider {
     private at: RiderAnchors,
     ghostMat: Material | null,
   ) {
-    const mat = ghostMat ?? cel('riderBody', { vertexColors: true, gloss: 0.55 });
+    const mat = ghostMat ?? cel('riderBody', { vertexColors: true, gloss: 0.25 });
     this.torso = new Mesh(buildTorso(liv), mat);
     this.pelvis.add(this.torso);
-    const headMesh = new Mesh(buildHead(liv), ghostMat ?? cel('riderHelmet', { vertexColors: true, gloss: 1 }));
+    const headMesh = new Mesh(buildHead(liv), ghostMat ?? cel('riderHead', { vertexColors: true, gloss: 0.2 }));
     this.head.add(headMesh);
     this.head.position.copy(NECK);
     this.torso.add(this.head);
     const ua = buildUpperArm(liv);
     const fa = buildForearm(liv);
-    const th = buildThigh(liv);
-    const sh = buildShin(liv);
+    const th = buildThigh();
+    const sh = buildShin();
     this.arms = [0, 1].map(() => [new Mesh(ua, mat), new Mesh(fa, mat)] as [Mesh, Mesh]);
     this.legs = [0, 1].map(() => [new Mesh(th, mat), new Mesh(sh, mat)] as [Mesh, Mesh]);
     this.meshes.push(this.torso, headMesh, ...this.arms.flat(), ...this.legs.flat());
@@ -469,7 +495,7 @@ export class Rider {
       } else if (b.wipeout > 0) {
         grip.set(sg * 0.85, sh.y + 0.3 + Math.sin(time * 13 + side) * 0.35, sh.z - 0.15);
       } else grip.copy(side === 0 ? this.at.gripL : this.at.gripR);
-      solve(this.arms[side][0], this.arms[side][1], sh.clone(), grip.clone(), UPPER_ARM, FOREARM + 0.05, _pole.set(sg, -0.75, -0.45));
+      solve(this.arms[side][0], this.arms[side][1], sh.clone(), grip.clone(), UPPER_ARM, FOREARM + HAND * 0.6, _pole.set(sg, -0.75, -0.45));
     }
     // Legs: hip → foothold, knees forward and slightly out.
     for (let side = 0; side < 2; side++) {

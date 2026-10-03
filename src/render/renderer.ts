@@ -117,9 +117,11 @@ void main() {
   // Lens droplets refract the image.
   if (uDrops > 0.01) {
     vec4 dr = texture2D(tDrops, vec2(uv.x * aspect, uv.y) * 0.9 + vec2(0.0, uTime * 0.015));
-    uv += (dr.rg - 0.5) * 0.05 * dr.b * uDrops;
+    uv += (dr.rg - 0.5) * 0.09 * dr.b * uDrops;
   }
 
+  float dropMask = 0.0;
+  if (uDrops > 0.01) dropMask = texture2D(tDrops, vec2(vUv.x * aspect, vUv.y) * 0.9 + vec2(0.0, uTime * 0.015)).b * uDrops;
   vec3 col;
   if (uRadial > 0.005) {
     col = vec3(0.0);
@@ -162,6 +164,8 @@ void main() {
   col = mix(col, vec3(0.9, 0.05, 0.05), uDamage * (1.0 - v) * 0.5);
 
   col += uFlashColor * uFlash;
+  // Droplets catch a little light so they read as water on the lens.
+  col += vec3(0.75, 0.85, 1.0) * dropMask * 0.025;
   if (uAssist > 0) col = daltonize(col, uAssist);
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>

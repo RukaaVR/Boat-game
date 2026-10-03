@@ -83,13 +83,14 @@ void main() {
 
   // Stars.
   if (uStars > 0.0 && y > 0.0) {
-    vec2 g = d.xz / (y + 0.35) * 160.0;
+    vec2 g = d.xz / (y + 0.35) * 70.0;
     vec2 cell = floor(g);
     float h = hash(cell);
-    vec2 f = fract(g) - 0.5;
-    float star = step(0.985, h) * smoothstep(0.12, 0.0, length(f));
-    star *= 0.6 + 0.4 * sin(uTime * 2.0 + h * 50.0);
-    col += vec3(0.85, 0.9, 1.0) * star * uStars * smoothstep(0.02, 0.25, y);
+    vec2 f = fract(g) - 0.5 + (vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5) * 0.5;
+    float big = step(0.996, h);
+    float star = step(0.975, h) * smoothstep(0.16 + big * 0.12, 0.0, length(f));
+    star *= 0.75 + 0.25 * sin(uTime * 2.0 + h * 50.0);
+    col += mix(vec3(0.8, 0.88, 1.0), vec3(1.0, 0.9, 0.75), big) * star * uStars * 1.6 * smoothstep(0.03, 0.3, y);
   }
 
   // Stylised banded clouds on a plane above the sea.

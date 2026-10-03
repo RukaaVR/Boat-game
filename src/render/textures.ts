@@ -271,10 +271,10 @@ export function dropletTexture(): Texture {
   ctx.fillStyle = 'rgb(128,128,0)';
   ctx.fillRect(0, 0, 512, 512);
   const rng = new Rng(31);
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 55; i++) {
     const x = rng.next() * 512;
     const y = rng.next() * 512;
-    const r = rng.range(3, 16);
+    const r = rng.range(4, 18);
     const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
     // R,G encode refraction offset direction; B encodes droplet mask.
     g.addColorStop(0, 'rgb(90,90,255)');

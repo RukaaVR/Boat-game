@@ -13,6 +13,8 @@ import { ACTIONS, DEFAULT_BINDINGS, type Bindings } from '../input/input';
 import type { Difficulty } from '../core/types';
 import type { GhostData } from '../race/session';
 import { CUPS, TRACKS } from '../race/trackDefs';
+import { BOTTLES_PER_TRACK, emptyStats, emptyUpgrades, UPGRADE_KINDS, UPGRADE_MAX, ACHIEVEMENTS, CAREER, type LifetimeStats, type Upgrades } from './progress';
+import { LANGS, type Lang } from '../ui/i18n';
 
 export const SAVE_KEY = 'riptide.save.v1';
 
@@ -33,6 +35,19 @@ export interface Settings {
   laps: number;
   hudScale: number;
   bindings: Bindings;
+  /** On-screen touch controls: auto-detect, always, never. */
+  touch: 'auto' | 'on' | 'off';
+  /** Steer by tilting the device (touch only). */
+  tilt: boolean;
+  lang: Lang;
+  /** Shape symbols alongside colour cues (drift tiers, buoys, medals). */
+  symbols: boolean;
+  /** Boats cast shadows. */
+  shadows: boolean;
+  /** Weather may change during a race. */
+  dynamicWeather: boolean;
+  /** Ambient wildlife and traffic. */
+  wildlife: boolean;
 }
 
 export interface Medals {
@@ -72,6 +87,16 @@ export interface SaveData {
   wins: number;
   settings: Settings;
   seenTutorial: boolean;
+  tutorialDone: boolean;
+  upgrades: Partial<Record<BoatId, Upgrades>>;
+  /** Achievement id → unlock timestamp. */
+  achievements: Record<string, number>;
+  stats: LifetimeStats;
+  /** Completed challenge keys (daily `YYYY-MM-DD`, weekly `YYYY-Www`). */
+  challengesDone: string[];
+  career: { stage: number };
+  /** Bitmask of message bottles found per track. */
+  bottles: Record<string, number>;
 }
 
 export function defaultSettings(): Settings {
@@ -92,6 +117,13 @@ export function defaultSettings(): Settings {
     laps: 3,
     hudScale: 1,
     bindings: structuredClone(DEFAULT_BINDINGS),
+    touch: 'auto',
+    tilt: false,
+    lang: 'en',
+    symbols: false,
+    shadows: true,
+    dynamicWeather: false,
+    wildlife: true,
   };
 }
 
@@ -115,6 +147,13 @@ export function defaultSave(): SaveData {
     wins: 0,
     settings: defaultSettings(),
     seenTutorial: false,
+    tutorialDone: false,
+    upgrades: {},
+    achievements: {},
+    stats: emptyStats(),
+    challengesDone: [],
+    career: { stage: 0 },
+    bottles: {},
   };
 }
 
@@ -151,6 +190,13 @@ function sanitizeSettings(v: unknown): Settings {
     laps: Math.round(num(o.laps, d.laps, 1, 9)),
     hudScale: num(o.hudScale, d.hudScale, 0.75, 1.3),
     bindings,
+    touch: oneOf(o.touch, ['auto', 'on', 'off'] as const, d.touch),
+    tilt: bool(o.tilt, d.tilt),
+    lang: oneOf(o.lang, LANGS, d.lang),
+    symbols: bool(o.symbols, d.symbols),
+    shadows: bool(o.shadows, d.shadows),
+    dynamicWeather: bool(o.dynamicWeather, d.dynamicWeather),
+    wildlife: bool(o.wildlife, d.wildlife),
   };
 }
 
@@ -160,6 +206,18 @@ function sanitizeGhost(v: unknown): GhostData | null {
   if (o.samples.length % 6 !== 0 || o.samples.length > 6 * 10 * 600) return null;
   if (!o.samples.every((x) => typeof x === 'number' && Number.isFinite(x))) return null;
   return { trackId: o.trackId, boatId: o.boatId, time: o.time, samples: o.samples as number[] };
+}
+
+function sanitizeStats(v: unknown): LifetimeStats {
+  const d = emptyStats();
+  const o = obj(v);
+  const out = { ...d };
+  for (const k of Object.keys(d) as (keyof LifetimeStats)[]) {
+    if (k === 'weathers') continue;
+    (out as unknown as Record<string, number>)[k] = num(o[k], 0, 0, 1e9);
+  }
+  out.weathers = Array.isArray(o.weathers) ? (o.weathers.filter((w) => ['clear', 'sunset', 'storm', 'night'].includes(w as string)) as LifetimeStats['weathers']).slice(0, 4) : [];
+  return out;
 }
 
 export function sanitizeSave(raw: unknown): SaveData {
@@ -214,7 +272,42 @@ export function sanitizeSave(raw: unknown): SaveData {
     wins: Math.round(num(o.wins, 0, 0, 1e7)),
     settings: sanitizeSettings(o.settings),
     seenTutorial: bool(o.seenTutorial, false),
+    tutorialDone: bool(o.tutorialDone, false),
+    upgrades: sanitizeUpgrades(o.upgrades),
+    achievements: sanitizeAchievements(o.achievements),
+    stats: sanitizeStats(o.stats),
+    challengesDone: Array.isArray(o.challengesDone) ? (o.challengesDone.filter((k) => typeof k === 'string' && /^\d{4}-(W\d{2}|\d{2}-\d{2})$/.test(k)) as string[]).slice(-60) : [],
+    career: { stage: Math.round(num(obj(o.career).stage, 0, 0, CAREER.length)) },
+    bottles: sanitizeBottles(o.bottles),
   };
+}
+
+function sanitizeUpgrades(v: unknown): SaveData['upgrades'] {
+  const o = obj(v);
+  const out: SaveData['upgrades'] = {};
+  for (const b of BOATS) {
+    const u = obj(o[b.id]);
+    if (!Object.keys(u).length) continue;
+    const up = emptyUpgrades();
+    for (const k of UPGRADE_KINDS) up[k] = Math.round(num(u[k], 0, 0, UPGRADE_MAX));
+    out[b.id] = up;
+  }
+  return out;
+}
+function sanitizeAchievements(v: unknown): Record<string, number> {
+  const o = obj(v);
+  const out: Record<string, number> = {};
+  for (const a of ACHIEVEMENTS) if (typeof o[a.id] === 'number' && Number.isFinite(o[a.id])) out[a.id] = o[a.id] as number;
+  return out;
+}
+function sanitizeBottles(v: unknown): Record<string, number> {
+  const o = obj(v);
+  const out: Record<string, number> = {};
+  for (const t of TRACKS) {
+    const m = Math.round(num(o[t.id], 0, 0, (1 << BOTTLES_PER_TRACK) - 1));
+    if (m) out[t.id] = m;
+  }
+  return out;
 }
 
 // ── Progression ─────────────────────────────────────────────────────────────
@@ -316,5 +409,9 @@ export class SaveStore {
 
   livery(id: BoatId): Livery {
     return this.data.liveries[id] ?? defaultLivery();
+  }
+
+  upgrades(id: BoatId): Upgrades {
+    return this.data.upgrades[id] ?? emptyUpgrades();
   }
 }

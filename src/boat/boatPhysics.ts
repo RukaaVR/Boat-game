@@ -44,6 +44,28 @@ const PROBE_LAYOUT: readonly [number, number][] = [
   [0, -0.48],
 ];
 
+/**
+ * Global live-tuning multipliers (admin panel). All 1 / false by default, so
+ * the shipped handling is exactly the numbers in specs.ts.
+ */
+export const TUNE = {
+  speed: 1,
+  grip: 1,
+  drift: 1,
+  gravity: 1,
+  buoyancy: 1,
+  boost: 1,
+  /** Power multiplier for every boat except the player (AI strength). */
+  aiPower: 1,
+  /** Player cheats. */
+  infiniteNitro: false,
+  godMode: false,
+};
+
+export function resetTune() {
+  Object.assign(TUNE, { speed: 1, grip: 1, drift: 1, gravity: 1, buoyancy: 1, boost: 1, aiPower: 1, infiniteNitro: false, godMode: false });
+}
+
 export interface PhysicsEnv {
   time: number;
   ramps: readonly Ramp[];
@@ -108,6 +130,16 @@ const TRICK_VALUE: Record<TrickKind, number> = { none: 0, frontflip: 600, backfl
 
 function startWipeout(b: Boat, id: number, env: PhysicsEnv) {
   if (b.wipeout > 0) return;
+  if (id === 0 && TUNE.godMode) {
+    // Admin god mode: shrug it off and right the hull.
+    b.pitch *= 0.3;
+    b.roll *= 0.3;
+    b.pitchRate = b.rollRate = 0;
+    b.trick = 'none';
+    b.trickT = 0;
+    b.visPitch = b.visYaw = b.visRoll = 0;
+    return;
+  }
   b.wipeout = 1.5;
   b.drifting = false;
   b.driftCharge = 0;
@@ -135,6 +167,7 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   b.ghostTime = Math.max(0, b.ghostTime - dt);
   b.sinceLand += dt;
   b.impact = Math.max(0, b.impact - dt * 2.5);
+  if (id === 0 && TUNE.infiniteNitro) b.nitro = 1;
 
   // ── Effective controls (wipeout and penalty hold take them away) ───────────
   const locked = b.wipeout > 0 || b.holdTime > 0;
@@ -263,9 +296,9 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
 
   // ── Vertical integration ────────────────────────────────────────────────
   if (!b.onRamp) {
-    let ay = -G;
+    let ay = -G * TUNE.gravity;
     if (wetCount > 0) {
-      ay += (BUOYANCY * sumDepth) / PROBE_COUNT;
+      ay += (BUOYANCY * TUNE.buoyancy * sumDepth) / PROBE_COUNT;
       // Damp heave relative to the surface the hull is riding along.
       ay -= (3.2 + 2.4 * s.stability) * (b.velocity.y - pathVy) * wet;
     } else {
@@ -313,12 +346,13 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   const boostRaw = Math.max(b.boostTime > 0 ? b.boostStrength : 0, b.nitroActive ? 1 : 0);
   b.boostLevel = damp(b.boostLevel, boostRaw, boostRaw > b.boostLevel ? 10 : 3, dt);
 
-  const T = s.thrust;
-  const top = s.topSpeed;
+  const power = TUNE.speed * (id === 0 ? 1 : TUNE.aiPower) * b.powerScale;
+  const T = s.thrust * power;
+  const top = s.topSpeed * power;
   const k1 = (0.12 * T) / top;
   const k2 = (0.88 * T) / (top * top);
-  const bt = s.boostTopSpeed;
-  const boostThrust = (k1 * bt + k2 * bt * bt - T) * s.boostPower;
+  const bt = s.boostTopSpeed * power;
+  const boostThrust = (k1 * bt + k2 * bt * bt - T) * s.boostPower * TUNE.boost;
   // Drafting adds a little free thrust.
   const draftThrust = b.draft * 1.6;
 
@@ -346,7 +380,7 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   if (driftNow) {
     // ── Arcade drift: the path carves, the hull holds a slide angle into the turn.
     const into = steer * b.driftDir; // -1 counter-steer … +1 full into the turn
-    const omega = -b.driftDir * s.turnRate * s.driftYaw * 0.62 * (0.5 + 0.5 * into + 0.08);
+    const omega = -b.driftDir * s.turnRate * s.driftYaw * TUNE.drift * 0.62 * (0.5 + 0.5 * into + 0.08);
     let phi = Math.atan2(b.velocity.x, b.velocity.z) + omega * dt;
     const spd = Math.max(0, vSpd + au * dt - vSpd * 0.12 * dt);
     b.velocity.x = Math.sin(phi) * spd;
@@ -365,7 +399,7 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
     u += au * dt;
     u = clamp(u, -9, bt * 1.2);
     // Lateral grip; when carving most of the bled energy returns to surge.
-    const grip = b.airborne ? 0.25 : s.grip * (0.6 + 0.4 * wet);
+    const grip = b.airborne ? 0.25 : s.grip * TUNE.grip * (0.6 + 0.4 * wet);
     const dw = w * (1 - Math.exp(-grip * dt));
     w -= dw;
     if (!b.airborne) u += Math.abs(dw) * 0.6 * Math.sign(u || 1);

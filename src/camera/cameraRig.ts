@@ -22,7 +22,7 @@ export type CamMode = 'chase' | 'far' | 'bow' | 'cinematic' | 'aerial';
 export const CAM_MODES: CamMode[] = ['chase', 'far', 'bow', 'cinematic', 'aerial'];
 export const CAM_LABEL: Record<CamMode, string> = { chase: 'CLOSE CHASE', far: 'FAR CHASE', bow: 'BOW CAM', cinematic: 'CINEMATIC', aerial: 'AERIAL' };
 
-type Scripted = 'none' | 'intro' | 'finish' | 'orbit';
+type Scripted = 'none' | 'intro' | 'finish' | 'orbit' | 'free';
 
 const _fwd = new Vector3();
 const _want = new Vector3();
@@ -103,6 +103,35 @@ export class CameraRig {
     this.orbitRadius = radius;
     this.orbitHeight = height;
   }
+  /** Free-flying camera (admin / photo mode), starting from the current view. */
+  startFree() {
+    if (this.scripted === 'free') return;
+    this.scripted = 'free';
+    const cam = this.camera;
+    this.freePos.copy(cam.position);
+    const d = new Vector3();
+    cam.getWorldDirection(d);
+    this.freeYaw = Math.atan2(d.x, d.z);
+    this.freePitch = Math.asin(clamp(d.y, -1, 1));
+    this.freeFov = cam.fov;
+    this.freeRoll = 0;
+  }
+  readonly freePos = new Vector3();
+  freeYaw = 0;
+  freePitch = 0;
+  freeFov = 60;
+  freeRoll = 0;
+  /** Move in camera space (fwd, right, up) metres and turn by (yaw, pitch) radians. */
+  freeMove(fwd: number, right: number, up: number, yaw: number, pitch: number) {
+    this.freeYaw += yaw;
+    this.freePitch = clamp(this.freePitch + pitch, -1.5, 1.5);
+    const fx = Math.sin(this.freeYaw);
+    const fz = Math.cos(this.freeYaw);
+    this.freePos.x += fx * fwd - fz * right;
+    this.freePos.z += fz * fwd + fx * right;
+    this.freePos.y += up;
+  }
+
   endScripted() {
     if (this.scripted !== 'none') this.snap = true;
     this.scripted = 'none';
@@ -136,6 +165,16 @@ export class CameraRig {
     this.dip = damp(this.dip, -landK * 0.9, 14, dt);
     this.side = damp(this.side, b.drifting ? -b.driftDir * 1.3 : clamp(b.yawRate * 0.6, -1, 1), 3, dt);
 
+    if (this.scripted === 'free') {
+      this.pos.copy(this.freePos);
+      const cp = Math.cos(this.freePitch);
+      this.look.set(this.freePos.x + Math.sin(this.freeYaw) * cp, this.freePos.y + Math.sin(this.freePitch), this.freePos.z + Math.cos(this.freeYaw) * cp);
+      this.fov = this.freeFov;
+      this.roll = this.freeRoll;
+      this.commit(time);
+      this.freePos.y = this.pos.y;
+      return;
+    }
     if (this.scripted === 'intro' && track) {
       // Sweeping fly-by from ahead of the grid to behind the player.
       this.introT += dt;

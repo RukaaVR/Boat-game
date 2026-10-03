@@ -3,6 +3,7 @@
  * field (CPU for instanced props, `WAVE_GLSL` in-shader for ribbons/pads).
  */
 
+import type { Ramp } from '../core/types';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -224,58 +225,7 @@ export class CourseVisuals {
     this.add(this.gateHighlight, hGeo);
 
     // ── Ramps ────────────────────────────────────────────────────────────────
-    if (track.ramps.length) {
-      const rampTex = chevronTexture('#ffffff', '#ff8a1e', 'ramp_chev');
-      const pos: number[] = [];
-      const uv: number[] = [];
-      const idx: number[] = [];
-      const side = new GeoBuilder();
-      for (const r of track.ramps) {
-        const sh = Math.sin(r.heading);
-        const ch = Math.cos(r.heading);
-        const W2 = r.width / 2;
-        const toW = (along: number, across: number, y: number): [number, number, number] => [r.x + sh * along + ch * across, y, r.z + ch * along - sh * across];
-        const y0 = -0.5 + 0.12;
-        const y1 = -0.5 + r.height + 0.12;
-        const base = pos.length / 3;
-        for (const [al, ac, y, u, v] of [
-          [0, -W2, y0, 1, 0],
-          [0, W2, y0, 0, 0],
-          [r.length, -W2, y1, 1, 1],
-          [r.length, W2, y1, 0, 1],
-        ] as const) {
-          pos.push(...toW(al, ac, y));
-          uv.push(v * 3, u);
-        }
-        idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
-        // Side skirts and the lip, as boxes oriented along the ramp.
-        const ang = Math.atan2(r.height, r.length);
-        const mid = r.length / 2;
-        const cy = (y0 + y1) / 2 - 0.9;
-        for (const s of [-1, 1]) {
-          const [x, , z] = toW(mid, s * (W2 + 0.25), 0);
-          side.box(0.5, 2.2, Math.hypot(r.length, r.height), 0x23262e, { x, y: cy + 0.75, z, ry: r.heading, rx: -ang });
-          const [x2, , z2] = toW(mid, s * (W2 + 0.3), 0);
-          side.box(0.35, 0.35, Math.hypot(r.length, r.height), 0xffd21e, { x: x2, y: cy + 1.95, z: z2, ry: r.heading, rx: -ang });
-        }
-        const [lx, , lz] = toW(r.length - 0.2, 0, 0);
-        side.box(r.width + 1, r.height + 0.6, 0.5, 0x23262e, { x: lx, y: y1 / 2 - 0.5, z: lz, ry: r.heading });
-        const [fx, , fz] = toW(r.length * 0.5, 0, 0);
-        side.box(r.width + 1.4, 1.2, r.length + 1, 0x3a3e48, { x: fx, y: -0.9, z: fz, ry: r.heading });
-      }
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
-      geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      const top = new Mesh(geo, cel('rampTop', { map: rampTex, emissive: 0x221100 }));
-      addOutline(top, 1.8);
-      const sGeo = side.build();
-      const sides = new Mesh(sGeo, cel('rampSide', { vertexColors: true }));
-      addOutline(sides, 1.8);
-      this.add(top, geo);
-      this.add(sides, sGeo);
-    }
+    if (track.ramps.length) this.addRamps(track.ramps);
 
     // ── Boost pads ───────────────────────────────────────────────────────────
     if (track.pads.length) {
@@ -423,6 +373,60 @@ export class CourseVisuals {
       addOutline(this.mineMesh, 1.6);
       this.add(this.mineMesh, geo);
     }
+  }
+
+  /** Build ramp meshes (course ramps at construction, admin-spawned ramps later). */
+  addRamps(ramps: readonly Ramp[]) {
+    const rampTex = chevronTexture('#ffffff', '#ff8a1e', 'ramp_chev');
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    const side = new GeoBuilder();
+    for (const r of ramps) {
+      const sh = Math.sin(r.heading);
+      const ch = Math.cos(r.heading);
+      const W2 = r.width / 2;
+      const toW = (along: number, across: number, y: number): [number, number, number] => [r.x + sh * along + ch * across, y, r.z + ch * along - sh * across];
+      const y0 = -0.5 + 0.12;
+      const y1 = -0.5 + r.height + 0.12;
+      const base = pos.length / 3;
+      for (const [al, ac, y, u, v] of [
+        [0, -W2, y0, 1, 0],
+        [0, W2, y0, 0, 0],
+        [r.length, -W2, y1, 1, 1],
+        [r.length, W2, y1, 0, 1],
+      ] as const) {
+        pos.push(...toW(al, ac, y));
+        uv.push(v * 3, u);
+      }
+      idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+      // Side skirts and the lip, as boxes oriented along the ramp.
+      const ang = Math.atan2(r.height, r.length);
+      const mid = r.length / 2;
+      const cy = (y0 + y1) / 2 - 0.9;
+      for (const s of [-1, 1]) {
+        const [x, , z] = toW(mid, s * (W2 + 0.25), 0);
+        side.box(0.5, 2.2, Math.hypot(r.length, r.height), 0x23262e, { x, y: cy + 0.75, z, ry: r.heading, rx: -ang });
+        const [x2, , z2] = toW(mid, s * (W2 + 0.3), 0);
+        side.box(0.35, 0.35, Math.hypot(r.length, r.height), 0xffd21e, { x: x2, y: cy + 1.95, z: z2, ry: r.heading, rx: -ang });
+      }
+      const [lx, , lz] = toW(r.length - 0.2, 0, 0);
+      side.box(r.width + 1, r.height + 0.6, 0.5, 0x23262e, { x: lx, y: y1 / 2 - 0.5, z: lz, ry: r.heading });
+      const [fx, , fz] = toW(r.length * 0.5, 0, 0);
+      side.box(r.width + 1.4, 1.2, r.length + 1, 0x3a3e48, { x: fx, y: -0.9, z: fz, ry: r.heading });
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+    geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const top = new Mesh(geo, cel('rampTop', { map: rampTex, emissive: 0x221100 }));
+    addOutline(top, 1.8);
+    const sGeo = side.build();
+    const sides = new Mesh(sGeo, cel('rampSide', { vertexColors: true }));
+    addOutline(sides, 1.8);
+    this.add(top, geo);
+    this.add(sides, sGeo);
   }
 
   /** Optional racing-line assist ribbon. */

@@ -57,6 +57,10 @@ export class DebugOverlay {
     parent.appendChild(this.el);
   }
 
+  dispose() {
+    this.el.remove();
+  }
+
   onEvent(e: GameEvent) {
     this.evCount++;
     if (e.racer === 0 || e.racer === -1) this.lastEvent = `${e.type}${e.text ? ':' + e.text : ''} ${e.value.toFixed(2)}`;

@@ -30,7 +30,13 @@ export type GameEventType =
   | 'lightning'
   | 'ring' // stunt ring collected
   | 'boostPad'
-  | 'reset'; // racer respawned on track
+  | 'reset' // racer respawned on track
+  | 'shieldHit' // a shield absorbed a hit
+  | 'itemPickup' // battle item box; text = item id
+  | 'itemUse' // text = item id
+  | 'itemHit' // racer hit by a battle item; text = item id
+  | 'collectible' // hidden bottle found; value = index
+  | 'weatherShift'; // mid-race weather change; text = new weather id
 
 export interface GameEvent {
   type: GameEventType;

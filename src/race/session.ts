@@ -9,7 +9,7 @@
 import { EventQueue } from '../core/events';
 import { clamp, clamp01, damp } from '../core/mathx';
 import { Rng } from '../core/rng';
-import type { Buoy, Difficulty, ModeId, StuntRing, WeatherId } from '../core/types';
+import type { Buoy, Difficulty, ModeId, Ramp, StuntRing, WeatherId } from '../core/types';
 import { settleBoat, stepBoat, type PhysicsEnv } from '../boat/boatPhysics';
 import { resolveCollisions, StaticWorld, type CollisionHost } from '../boat/collision';
 import { boatSpec, BOATS, type BoatId } from '../boat/specs';
@@ -118,6 +118,8 @@ export class RaceSession {
   /** Player throttle discipline at the start. */
   startState: 'none' | 'false' | 'perfect' = 'none';
   playerAutopilot = false;
+  /** Admin: rivals cut their engines. */
+  aiFrozen = false;
   playerDriver: AIDriver;
 
   // Mode state
@@ -212,9 +214,8 @@ export class RaceSession {
       r.raceDist = _proj.s > this.track.length / 2 ? _proj.s - this.track.length : _proj.s;
       r.maxRaceDist = r.raceDist;
     });
-    if (cfg.mode === 'endless') {
-      for (let i = 0; i < 14; i++) this.mines.push({ x: 0, z: 0, active: false, t: 0 });
-    }
+    // Mine pool: endless spawns them; the admin panel can drop them in any mode.
+    for (let i = 0; i < 14; i++) this.mines.push({ x: 0, z: 0, active: false, t: 0 });
     setWaveTime(0);
   }
 
@@ -286,6 +287,11 @@ export class RaceSession {
         this.view.lap = r.lap;
         drive.update(b, r.controls, this.track, this.view, dt);
         if (r.finished && r.ai) r.controls.boost = false;
+        if (r.ai && this.aiFrozen) {
+          r.controls.throttle = 0;
+          r.controls.boost = false;
+          r.controls.drift = false;
+        }
       } else if (r.ai) {
         r.controls.throttle = 0;
       }
@@ -547,6 +553,7 @@ export class RaceSession {
         }
       }
     }
+    this.updateMines(dt);
     if (this.phase !== 'racing') return;
     if (this.mode === 'stunt') {
       this.stuntTimeLeft -= dt;
@@ -569,31 +576,7 @@ export class RaceSession {
       this.nextMineAt -= dt;
       if (this.nextMineAt <= 0) {
         this.nextMineAt = Math.max(1.2, 4.5 - this.endlessLevel * 0.4);
-        const m = this.mines.find((x) => !x.active);
-        if (m) {
-          const s = p.s + this.rng.range(140, 240);
-          this.track.sample(s, _tp);
-          const lat = this.rng.range(-0.42, 0.42) * this.track.width;
-          m.x = _tp.x - _tp.tz * lat;
-          m.z = _tp.z + _tp.tx * lat;
-          m.active = true;
-          m.t = 0;
-        }
-      }
-      for (const m of this.mines) {
-        if (!m.active) continue;
-        m.t += dt;
-        const d = Math.hypot(b.position.x - m.x, b.position.z - m.z);
-        if (d < 2.6 && !(b.airborne && b.clearance > 1.5)) {
-          m.active = false;
-          b.velocity.y += 8;
-          b.velocity.x *= 0.5;
-          b.velocity.z *= 0.5;
-          b.pitchRate += 3;
-          b.impact = 1;
-          this.endlessTimeLeft = Math.max(0, this.endlessTimeLeft - 3);
-          this.events.push('collide', p.id, m.x, b.surfaceY, m.z, 1, 'mine');
-        } else if (m.t > 40) m.active = false;
+        this.spawnMine(140, 240);
       }
       if (this.endlessTimeLeft <= 0) {
         this.endlessTimeLeft = 0;
@@ -601,6 +584,130 @@ export class RaceSession {
         p.finishTime = this.raceTime;
         this.onPlayerFinish();
       }
+    }
+  }
+
+  /** Re-derive the sea from a weather preset (mid-race weather change). */
+  applyWeatherSea(w: WeatherId) {
+    const p = WEATHER[w];
+    this.baseSea = p.sea;
+    setSeaState(p.sea, p.chop);
+    const zones: SwellZone[] = this.track.swells.map((z) => ({ ...z, gain: z.gain * (w === 'storm' ? 1.0 : 0.85) }));
+    setSwellZones(zones);
+  }
+
+  /** Admin: drop a launch ramp on the course `ahead` metres in front of the player. */
+  spawnRamp(ahead: number): Ramp | null {
+    const s = this.player.s + ahead;
+    this.track.sample(s, _tp);
+    const r: Ramp = { x: _tp.x, z: _tp.z, heading: _tp.heading, length: 11, width: 9, height: 2.6 };
+    if (this.statics.blocked(r.x, r.z, 10)) return null;
+    this.track.ramps.push(r);
+    return r;
+  }
+
+  // ── Admin helpers ─────────────────────────────────────────────────────────
+  /** Credit the player k extra laps (never past the final lap). */
+  adminSkipLaps(k: number) {
+    const p = this.player;
+    if (!this.hasLaps || p.finished || p.lap < 1) return;
+    k = Math.min(k, this.totalLaps - p.lap);
+    if (k <= 0) return;
+    const L = this.track.length;
+    p.raceDist += L * k;
+    p.maxRaceDist += L * k;
+    p.checkpoints += this.gateCount * k;
+    p.lap += k;
+    this.events.push('lap', p.id, p.boat.position.x, p.boat.position.y, p.boat.position.z, p.lap);
+  }
+
+  /** Teleport the player to the next checkpoint gate. */
+  adminNextCheckpoint() {
+    const p = this.player;
+    const gateLen = this.track.length / this.gateCount;
+    const target = Math.max(p.raceDist + 5, p.checkpoints * gateLen + 6);
+    const ds = target - p.raceDist;
+    const s = this.track.wrapS(p.s + ds);
+    this.track.sample(s, _tp);
+    const b = p.boat;
+    const spd = Math.max(15, b.speed);
+    b.place(_tp.x, _tp.z, _tp.heading);
+    settleBoat(b, this.time);
+    b.velocity.set(_tp.tx * spd, 0, _tp.tz * spd);
+    b.forwardSpeed = spd;
+    b.engine = 1;
+    p.s = s;
+    p.raceDist += ds;
+    p.maxRaceDist = Math.max(p.maxRaceDist, p.raceDist);
+    this.track.project(b.position.x, b.position.z, -1, _proj);
+    p.hint = _proj.index;
+  }
+
+  /** End the event now with the player in `place` (races) or just finished (other modes). */
+  adminFinish(place = 1) {
+    if (this.phase !== 'racing') return;
+    const p = this.player;
+    if (this.isRace) {
+      place = clamp(Math.round(place), 1, this.racers.length);
+      const rivals = this.order.filter((r) => !r.isPlayer);
+      rivals.slice(0, place - 1).forEach((r, i) => {
+        if (!r.finished) {
+          r.finished = true;
+          r.finishTime = this.raceTime - (place - 1 - i) * 0.8;
+        }
+      });
+      for (const r of rivals.slice(place - 1)) r.raceDist = Math.min(r.raceDist, p.raceDist - 1);
+      p.lap = this.totalLaps;
+      if (!isFinite(p.bestLap)) p.bestLap = this.raceTime / Math.max(1, this.totalLaps);
+    }
+    p.finished = true;
+    p.finishTime = this.raceTime;
+    this.order.sort(byStanding);
+    for (let i = 0; i < this.order.length; i++) this.order[i].place = i + 1;
+    this.events.push('finish', p.id, p.boat.position.x, p.boat.position.y, p.boat.position.z, p.place);
+    this.onPlayerFinish();
+  }
+
+  /** Drop a mine on the course between `min` and `max` metres ahead of the player. */
+  spawnMine(min: number, max: number) {
+    const m = this.mines.find((x) => !x.active);
+    if (!m) return false;
+    const s = this.player.s + this.rng.range(min, max);
+    this.track.sample(s, _tp);
+    const lat = this.rng.range(-0.42, 0.42) * this.track.width;
+    m.x = _tp.x - _tp.tz * lat;
+    m.z = _tp.z + _tp.tx * lat;
+    m.active = true;
+    m.t = 0;
+    return true;
+  }
+
+  private updateMines(dt: number) {
+    for (const m of this.mines) {
+      if (!m.active) continue;
+      m.t += dt;
+      for (const r of this.racers) {
+        const b = r.boat;
+        const d = Math.hypot(b.position.x - m.x, b.position.z - m.z);
+        if (d < 2.6 && !(b.airborne && b.clearance > 1.5) && b.ghostTime <= 0) {
+          m.active = false;
+          if (b.shield > 0) {
+            b.shield = 0;
+            this.events.push('shieldHit', r.id, m.x, b.surfaceY, m.z, 1);
+          } else {
+            b.velocity.y += 8;
+            b.velocity.x *= 0.5;
+            b.velocity.z *= 0.5;
+            b.pitchRate += 3;
+            b.impact = 1;
+            b.damage = Math.min(1, b.damage + 0.25);
+            if (r.isPlayer && this.mode === 'endless') this.endlessTimeLeft = Math.max(0, this.endlessTimeLeft - 3);
+          }
+          this.events.push('collide', r.id, m.x, b.surfaceY, m.z, 1, 'mine');
+          break;
+        }
+      }
+      if (m.active && m.t > 40) m.active = false;
     }
   }
 

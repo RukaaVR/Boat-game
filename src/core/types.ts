@@ -69,6 +69,6 @@ export interface StuntRing {
 }
 
 export type WeatherId = 'clear' | 'sunset' | 'storm' | 'night';
-export type ThemeId = 'tropical' | 'storm' | 'neon' | 'volcanic';
-export type ModeId = 'quick' | 'championship' | 'timetrial' | 'freeride' | 'stunt' | 'endless';
+export type ThemeId = 'tropical' | 'storm' | 'neon' | 'volcanic' | 'arctic' | 'jungle' | 'canal';
+export type ModeId = 'quick' | 'championship' | 'timetrial' | 'freeride' | 'stunt' | 'endless' | 'battle' | 'career' | 'tutorial';
 export type Difficulty = 'easy' | 'normal' | 'hard';

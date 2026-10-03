@@ -224,6 +224,11 @@ export class Input {
     }
   }
 
+  /** Raw key state (free camera, photo mode). */
+  isDown(code: string) {
+    return this.down.has(code);
+  }
+
   /** Testing hook: inject a key state. */
   simulateKey(code: string, isDown: boolean) {
     if (isDown) {

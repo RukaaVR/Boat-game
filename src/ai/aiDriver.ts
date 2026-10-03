@@ -16,7 +16,7 @@ import { Rng } from '../core/rng';
 import { angleDelta, clamp, clamp01, damp, noise1 } from '../core/mathx';
 import type { Controls, Difficulty } from '../core/types';
 import type { Boat } from '../boat/boat';
-import { DRIFT_TIER_AT } from '../boat/boatPhysics';
+import { DRIFT_TIER_AT, TUNE } from '../boat/boatPhysics';
 import { projectOnShortcut, shortcutPoint, Track, type Projection, type TrackPoint } from '../race/track';
 
 export type Style = 'aggressive' | 'technical' | 'speed' | 'balanced' | 'reckless';
@@ -251,7 +251,7 @@ export class AIDriver {
     for (let o = 0; o <= 60; o += 10) corner = Math.min(corner, track.speedAt(s + o + speed * 0.3));
     let pace = p.pace * d.pace * this.band;
     if (this.mistake === 'overshoot') pace *= 1.18;
-    let target = Math.min(corner * pace * boatScale, boat.spec.topSpeed * d.straight * this.band);
+    let target = Math.min(corner * pace * boatScale * Math.min(1.15, TUNE.aiPower), boat.spec.topSpeed * TUNE.speed * TUNE.aiPower * boat.powerScale * d.straight * this.band);
     if (usingShortcut) target = Math.min(target, boat.spec.topSpeed * 0.92);
     target = Math.min(target, speedCap);
     // Big heading error = slow down to make the turn.

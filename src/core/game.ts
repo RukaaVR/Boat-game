@@ -35,6 +35,7 @@ import { waveAgreement } from '../debug/waveCheck';
 import { settleBoat } from '../boat/boatPhysics';
 import { getSeaState, oceanHeight } from '../water/waves';
 import type { Boat } from '../boat/boat';
+import { AdminPanel } from '../admin/admin';
 
 export interface EventRequest {
   mode: ModeId;
@@ -83,6 +84,9 @@ export class Game {
   private champPendingFinal = false;
   /** Smoothed CPU cost of simulation + scene update per frame (excludes GPU work). */
   cpuMs = 0;
+  /** Global sim speed (admin slow-motion). */
+  timeScale = 1;
+  readonly admin: AdminPanel;
   /** Harness-scripted player controls (merged over live input). */
   controlOverride: Record<string, number | boolean> | null = null;
 
@@ -100,6 +104,7 @@ export class Game {
     this.nav.onMove = () => this.audio.click('move');
     this.applySettings();
     if (params.has('debug')) this.debug = new DebugOverlay(this, ui);
+    this.admin = new AdminPanel(this);
     window.addEventListener('resize', () => this.onResize());
     // Device pixel ratio changes (moving between monitors, zoom).
     const watchDpr = () => {
@@ -135,6 +140,24 @@ export class Game {
       setTimeout(() => document.getElementById('boot')?.classList.add('gone'), 200);
       if (this.harness) this.installHarness();
     }, 30);
+  }
+
+  get debugOn() {
+    return !!this.debug;
+  }
+  toggleDebug() {
+    if (this.debug) {
+      this.debug.dispose();
+      this.debug = null;
+    } else this.debug = new DebugOverlay(this, this.ui);
+  }
+
+  /** Fly the free camera from raw keys (admin free cam / photo mode). */
+  private driveFreeCam(dt: number) {
+    const k = (c: string) => (this.input.isDown(c) ? 1 : 0);
+    const fast = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight') ? 4 : 1;
+    const v = 18 * fast * dt;
+    this.rig.freeMove((k('KeyW') - k('KeyS')) * v, (k('KeyD') - k('KeyA')) * v, (k('KeyE') - k('KeyQ')) * v, (k('ArrowLeft') - k('ArrowRight')) * 1.6 * dt, (k('ArrowUp') - k('ArrowDown')) * 1.2 * dt);
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────
@@ -489,7 +512,11 @@ export class Game {
       }
       if (this.input.pressed('respawn') && s.phase === 'racing') s.respawn(s.player);
       if (s.phase === 'intro' && (this.input.pressed('confirm') || this.input.pressed('drift'))) s.skipIntro();
-      if (!s.playerAutopilot && !s.player.finished) {
+      if (this.rig.scripted === 'free') {
+        const c = s.player.controls;
+        c.throttle = c.brake = c.steer = c.pitch = 0;
+        c.drift = c.boost = c.roll = false;
+      } else if (!s.playerAutopilot && !s.player.finished) {
         this.input.read(s.player.controls, dt);
         if (this.controlOverride) Object.assign(s.player.controls, this.controlOverride);
       }
@@ -497,7 +524,7 @@ export class Game {
       this.input.pressed('pause'); // consumed by the pause screen's ESC handler
     }
 
-    const simDt = racing && this.paused ? 0 : dt;
+    const simDt = racing && this.paused ? 0 : dt * this.timeScale;
     if (simDt > 0) s.step(simDt);
 
     // Camera state machine.
@@ -510,12 +537,13 @@ export class Game {
         this.finishCamStarted = true;
         this.rig.startFinish();
       }
-    } else if (!this.garage) {
+    } else if (!this.garage && this.rig.scripted !== 'free') {
       this.rig.endScripted();
       this.rig.mode = 'cinematic';
     }
     const target = s.player.boat;
-    if (simDt > 0 || this.garage) this.rig.update(simDt || dt, target, s.track, s.time);
+    if (this.rig.scripted === 'free') this.driveFreeCam(dt);
+    if (simDt > 0 || this.garage || this.rig.scripted === 'free') this.rig.update(simDt || dt, target, s.track, s.time);
 
     w.update(simDt, s.time, this.rig, this.events);
     if (this.hud) this.hud.camera = this.rig.camera;
@@ -571,6 +599,7 @@ export class Game {
       this.screens.results(this.rewards);
     }
     this.debug?.update(dt);
+    this.admin.update(dt);
   }
 
   private render(dt: number) {

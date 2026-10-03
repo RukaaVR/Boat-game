@@ -16,16 +16,12 @@ import { drawTrackPreview } from './minimap';
 import { ACTION_LABEL, ACTIONS, DEFAULT_BINDINGS, keyLabel, type Action } from '../input/input';
 import type { ModeId, WeatherId } from '../core/types';
 import { RIVALS } from '../race/session';
+import { t } from './i18n';
 import { endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
 
-const MODE_INFO: Record<ModeId, { name: string; blurb: string }> = {
-  quick: { name: 'QUICK RACE', blurb: 'Six boats, three laps, no mercy.' },
-  championship: { name: 'CHAMPIONSHIP', blurb: 'A cup of races with points on the line.' },
-  timetrial: { name: 'TIME TRIAL', blurb: 'Just you, the clock, and your own ghost.' },
-  freeride: { name: 'FREE RIDE', blurb: 'No clock. Explore, jump, chase rings.' },
-  stunt: { name: 'STUNT RUN', blurb: 'Two minutes. Flips, drifts, rings. Score big.' },
-  endless: { name: 'ENDLESS WAVE', blurb: 'The sea keeps rising. Hit checkpoints to survive.' },
-};
+const MODE_SUB: Record<ModeId, string> = { quick: 'quickSub', championship: 'champSub', timetrial: 'ttSub', freeride: 'freeSub', stunt: 'stuntSub', endless: 'endlessSub', battle: 'battleSub', career: 'careerSub', tutorial: 'tutorialSub' };
+const modeName = (m: ModeId) => t(m);
+const modeBlurb = (m: ModeId) => t(MODE_SUB[m]);
 
 const trackCache = new Map<string, Track>();
 function trackGeo(id: string) {
@@ -286,7 +282,7 @@ export class Screens {
     else if (g.save.level < trackDef(this.setup.trackId).unlockLevel) this.setup.trackId = 'coral';
     this.mount(
       'setup',
-      `<h1 class="h">${MODE_INFO[mode].name}</h1><div class="sub">${MODE_INFO[mode].blurb}</div>
+      `<h1 class="h">${modeName(mode)}</h1><div class="sub">${modeBlurb(mode)}</div>
       <div class="scroll" style="flex:1" id="setupBody"></div>
       <div class="footer">
         <button class="btn" data-nav data-act="back"><span>BACK</span></button>

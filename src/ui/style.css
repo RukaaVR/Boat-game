@@ -270,3 +270,39 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .hud .tag { position: absolute; left: 0; top: 0; font-family: var(--font2); font-style: normal; font-weight: 800; font-size: 12px; letter-spacing: 1px; color: #fff; background: rgba(5,10,30,.6); padding: 2px 8px 2px 4px; display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: opacity .2s; text-shadow: 0 1px 2px #000; }
 .hud .tag i { width: 4px; height: 12px; display: inline-block; }
 .hud .tag::before { content: attr(data-place); color: var(--yellow); font-family: var(--font); font-style: italic; }
+
+/* ── Admin panel ─────────────────────────────────────────────────────── */
+.admin {
+  position: absolute; top: 12px; right: 12px; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 24px);
+  display: flex; flex-direction: column; z-index: 60; background: rgba(6, 10, 26, 0.94); border: 1px solid #ff3b5c;
+  box-shadow: 0 10px 40px rgba(0,0,0,.6); font: 12px/1.4 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: #e8eeff;
+  pointer-events: auto !important; visibility: visible;
+}
+.admin .adm-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: #ff3b5c; color: #fff; }
+.admin .adm-head b { letter-spacing: 3px; margin-right: 6px; }
+.admin .adm-tabs { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; }
+.admin .adm-head button { background: rgba(0,0,0,.25); color: #fff; border: 0; }
+.admin .adm-head button.on { background: #fff; color: #ff3b5c; }
+.admin .adm-body { padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.admin button { font: inherit; cursor: pointer; padding: 5px 8px; background: #1a2550; color: #e8eeff; border: 1px solid #34407a; }
+.admin button:hover { background: #26e8ff; color: #06102a; }
+.admin button.on { background: #26e8ff; color: #06102a; }
+.admin button.danger { border-color: #ff3b5c; color: #ff8aa0; }
+.admin .adm-tg { text-align: left; }
+.admin .adm-tg.on { background: #12324a; color: #8ff7ff; border-color: #26e8ff; }
+.admin .adm-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.admin .adm-row > span:first-child { min-width: 64px; color: #8ea0c8; }
+.admin input[type=number], .admin input[type=password], .admin select, .admin textarea {
+  font: inherit; background: #0a1230; color: #fff; border: 1px solid #34407a; padding: 5px 7px;
+}
+.admin input[type=number] { width: 120px; }
+.admin input[type=password] { width: 100%; font-size: 15px; }
+.admin textarea { width: 100%; height: 90px; resize: vertical; }
+.admin .adm-sl { display: grid; grid-template-columns: 150px 1fr 44px; gap: 8px; align-items: center; }
+.admin .adm-sl span { color: #8ea0c8; }
+.admin .adm-sl em { font-style: normal; text-align: right; color: #8ff7ff; }
+.admin .adm-sub { color: #ff8aa0; letter-spacing: 2px; margin-top: 6px; }
+.admin .adm-dim { color: #8ea0c8; }
+.admin .adm-msg { padding: 6px 10px; color: #ffd21e; border-top: 1px solid #34407a; }
+.admin .adm-lock { font-size: 15px; }
+.admin .adm-stats { color: #a6ff3d; white-space: pre-wrap; }

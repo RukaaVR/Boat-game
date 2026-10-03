@@ -100,6 +100,12 @@ export class Boat {
   splashCooldown = 0;
   /** Penalty hold (false start). */
   holdTime = 0;
+  /** Engine power multiplier (damage, battle items); 1 = healthy. */
+  powerScale = 1;
+  /** Hull damage 0..1 (cosmetic scuffs + smoke; slight power loss). */
+  damage = 0;
+  /** Battle-mode shield seconds remaining. */
+  shield = 0;
   /** Stunt score accumulated in the session. */
   stuntScore = 0;
 

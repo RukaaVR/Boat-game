@@ -50,9 +50,9 @@ varying float vFog;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.5), 0.0, 160.0);
+  gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.5), 0.0, 96.0);
   // Fade out particles right in front of the lens so they never white-out the frame.
-  vAlpha = aAlpha * smoothstep(2.0, 9.0, -mv.z);
+  vAlpha = aAlpha * smoothstep(3.0, 12.0, -mv.z);
   vColor = aColor;
   float fd = uFogDensity * -mv.z;
   vFog = 1.0 - exp(-fd * fd);

@@ -47,7 +47,7 @@ varying vec2 vUv;
 void main() {
   vUv = aUv;
   vec3 p = oceanAtWorld(position.xz, uTime);
-  p.y += 0.12;
+  p.y += 0.12 + length(p.xz - cameraPosition.xz) * 0.006;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `;
@@ -77,8 +77,9 @@ void main() {
   vS = aS;
   vEdge = aEdge;
   vec3 p = oceanAtWorld(position.xz, uTime);
-  p.y += 0.09;
   vDist = length(p.xz - cameraPosition.xz);
+  // Lift with distance so the overlay clears the coarser far ocean mesh.
+  p.y += 0.09 + vDist * 0.006;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `;
@@ -90,11 +91,17 @@ varying float vS;
 varying float vEdge;
 varying float vDist;
 void main() {
+  // Chevrons flowing along the line, with a dark rim so they read on any water.
   float arrow = fract(vS / 7.0 - uTime * 0.6 - abs(vEdge) * 0.35);
-  float a = smoothstep(0.0, 0.12, arrow) * (1.0 - smoothstep(0.35, 0.5, arrow));
-  a *= 1.0 - smoothstep(0.6, 1.0, abs(vEdge));
-  a *= (1.0 - smoothstep(60.0, 160.0, vDist)) * smoothstep(4.0, 12.0, vDist);
-  gl_FragColor = vec4(uColor * a * uOpacity, 1.0);
+  float body = smoothstep(0.02, 0.1, arrow) * (1.0 - smoothstep(0.32, 0.4, arrow));
+  float rim = smoothstep(0.0, 0.04, arrow) * (1.0 - smoothstep(0.4, 0.46, arrow));
+  float side = 1.0 - smoothstep(0.75, 1.0, abs(vEdge));
+  float fade = (1.0 - smoothstep(70.0, 170.0, vDist)) * smoothstep(5.0, 14.0, vDist);
+  float a = max(body, rim * 0.6) * side * fade * uOpacity;
+  if (a < 0.01) discard;
+  vec3 col = mix(vec3(0.02, 0.08, 0.15), uColor, body);
+  gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
 }
 `;
 
@@ -439,8 +446,9 @@ export class CourseVisuals {
           aE.push(e);
         }
         if (i < n) {
+          // Counter-clockwise seen from above, so the faces point up (+Y).
           const a = i * 2;
-          idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
       }
       const geo = new BufferGeometry();
@@ -449,14 +457,14 @@ export class CourseVisuals {
       geo.setAttribute('aEdge', new BufferAttribute(new Float32Array(aE), 1));
       geo.setIndex(idx);
       this.lineMat = new ShaderMaterial({
-        uniforms: { ...waveUniforms, uColor: { value: new Color(0x7ff6ff) }, uOpacity: { value: 0.55 } },
+        uniforms: { ...waveUniforms, uColor: { value: new Color(0x8ffcff) }, uOpacity: { value: 0.8 } },
         vertexShader: lineVert,
         fragmentShader: lineFrag,
         transparent: true,
-        blending: AdditiveBlending,
         depthWrite: false,
       });
       this.lineMesh = new Mesh(geo, this.lineMat);
+      this.lineMesh.name = 'racingLine';
       this.lineMesh.frustumCulled = false;
       this.lineMesh.renderOrder = 2;
       this.add(this.lineMesh, geo, this.lineMat);

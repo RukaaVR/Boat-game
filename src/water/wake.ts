@@ -58,7 +58,7 @@ varying vec3 vColor;
 varying vec2 vXZ;
 void main() {
   vec3 p = oceanAtWorld(position.xz, uTime);
-  p.y += 0.06 + aInfo.x * 0.02;
+  p.y += 0.06 + aInfo.x * 0.02 + length(p.xz - cameraPosition.xz) * 0.005;
   vInfo = aInfo;
   vColor = aColor;
   vXZ = position.xz;
@@ -111,7 +111,7 @@ void main() {
   vec4 wp = instanceMatrix * vec4(position, 1.0);
   wp = modelMatrix * wp;
   vec3 p = oceanAtWorld(wp.xz, uTime);
-  p.y += 0.07;
+  p.y += 0.07 + length(p.xz - cameraPosition.xz) * 0.005;
   vLocal = position.xz; // x = across (-1..1), z = along (-1..1)
   vParams = aParams;
   vXZ = wp.xz;

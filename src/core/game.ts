@@ -692,6 +692,10 @@ export class Game {
           trick: b?.trick,
           sinceLand: b?.sinceLand,
           screen: g.screens.current,
+          flash: g.world?.atmosphere.flash ?? 0,
+          drops: g.renderer.fx.drops,
+          ghostVisible: !!g.world?.ghost?.root.visible,
+          ghostDist: g.world?.ghost && b ? g.world.ghost.root.position.distanceTo(b.position) : -1,
           state: g.state,
           save: { xp: g.save.data.xp, credits: g.save.data.credits, races: g.save.data.races },
         };
@@ -785,6 +789,27 @@ export class Game {
         return true;
       },
       /** Test hook: jump the active championship to a round. */
+      /** Scene inspection for debugging: meshes with their visibility and size. */
+      sceneInfo(filter = '') {
+        const out: { name: string; type: string; visible: boolean; verts: number; draw: number; renderOrder: number }[] = [];
+        g.world?.scene.traverse((o) => {
+          const m = o as import('three').Mesh;
+          if (!m.geometry || (filter && !o.name.includes(filter))) return;
+          const pos = m.geometry.getAttribute('position');
+          out.push({ name: o.name, type: o.type, visible: o.visible, verts: pos ? pos.count : 0, draw: m.geometry.drawRange.count, renderOrder: o.renderOrder });
+        });
+        return out;
+      },
+      racingLine(on: boolean) {
+        g.world?.course.setRacingLine(on);
+      },
+      wipeoutPlayer() {
+        const b = g.session?.player.boat;
+        if (b) {
+          b.wipeout = 1.5;
+          g.events.push('wipeout', 0, b.position.x, b.position.y, b.position.z, 1);
+        }
+      },
       setChampRound(n: number) {
         if (g.save.data.champ) g.save.data.champ.round = n;
       },

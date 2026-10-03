@@ -74,6 +74,18 @@ const SHOTS = {
   results: { what: 'Results screen (1-lap race)', race: { trackId: 'atoll', laps: 1 }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulateUntil("s.phase === 'results'", 140, 1 / 30); r.simulate(0.5, 1 / 30); }) },
 };
 
+// Effect verification shots.
+Object.assign(SHOTS, {
+  racingline: { what: 'Racing-line assist ribbon (aerial)', race: { trackId: 'atoll' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.racingLine(true); r.autopilot(true); r.skipIntro(); r.simulate(9, 1 / 30); r.camera('aerial'); r.simulate(0.5, 1 / 30); }) },
+  wipeout: { what: 'Wipeout with lens droplets', race: { trackId: 'coral' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(8, 1 / 30); r.wipeoutPlayer(); r.simulate(0.5, 1 / 30); }) },
+  lightning: { what: 'Lightning strike in the storm', race: { trackId: 'thunder' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(4, 1 / 30); return r.simulateUntil('s.flash > 0.6', 30, 1 / 30); }) },
+  flip: { what: 'Mid-air front flip (side-on via cinematic)', race: { trackId: 'coral' }, run: async (p) => R(p, () => {
+    const r = window.__RIPTIDE__; r.skipIntro(); r.simulate(3.3, 1 / 30); r.placeAtRamp(0, 34); r.setControls({ throttle: 1, steer: 0 });
+    r.simulateUntil('s.airborne && s.clearance > 2.0', 6, 1 / 60); r.setControls({ drift: true, pitch: 1 });
+    return r.simulateUntil("s.trick !== 'none' && s.clearance > 2.5", 1.5, 1 / 60);
+  }) },
+});
+
 // Set pieces (writes prop_<track>_<kind>.png).
 SHOTS.props = { what: 'Orbit shots of set pieces on each theme', run: async (p) => {
   const list = [['coral', 'waterfall', 45, 38], ['thunder', 'lighthouse', 70, 25], ['thunder', 'bridge', 90, 30], ['neon', 'crane', 80, 30], ['neon', 'bridge', 90, 25], ['cinder', 'volcano', 900, 250], ['thunder', 'wreck', 60, 18]];

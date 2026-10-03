@@ -209,7 +209,7 @@ void main() {
   col = mix(col, uFoam * (0.85 + 0.15 * band), foam * 0.92);
 
   // Lightning.
-  col += vec3(0.55, 0.62, 0.8) * uFlash * (0.3 + 0.7 * fres);
+  col += vec3(0.45, 0.52, 0.7) * uFlash * (0.15 + 0.5 * fres);
 
   // ── Fog: resolves to the sky horizon so the seam vanishes ───────────────
   float fd = uFogDensity * vDist;

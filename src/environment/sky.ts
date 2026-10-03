@@ -108,7 +108,7 @@ void main() {
 
   // Seamless hand-off to the ocean's fog at the horizon.
   col = mix(col, uFog, 1.0 - smoothstep(-0.01, 0.06, y));
-  col += vec3(0.6, 0.65, 0.9) * uFlash * 0.6;
+  col += vec3(0.6, 0.65, 0.9) * uFlash * 0.45;
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }

@@ -159,8 +159,10 @@ export class CourseVisuals {
     // ── Gates (merged pylons + banners) ───────────────────────────────────
     const gp = new GeoBuilder();
     const half = track.width * 0.5 + 2.5;
+    const lastGate = track.gates.length - 1;
+    const gateKind = (i: number) => (i === 0 ? (track.sprint ? 'start' : 'startfinish') : track.sprint && i === lastGate ? 'finish' : 'cp');
     for (const g of track.gates) {
-      const start = g.index === 0;
+      const start = gateKind(g.index) !== 'cp';
       for (const s of [-1, 1]) {
         const x = g.x - Math.cos(g.heading) * half * s;
         const z = g.z + Math.sin(g.heading) * half * s;
@@ -175,12 +177,13 @@ export class CourseVisuals {
     gates.name = 'gates';
     addOutline(gates, 1.8);
     this.add(gates, gGeo);
-    for (const startOnly of [true, false]) {
+    for (const kind of ['startfinish', 'start', 'finish', 'cp'] as const) {
+      const startOnly = kind !== 'cp';
       const pos: number[] = [];
       const uv: number[] = [];
       const idx: number[] = [];
       for (const g of track.gates) {
-        if ((g.index === 0) !== startOnly) continue;
+        if (gateKind(g.index) !== kind) continue;
         const base = pos.length / 3;
         const h0 = 10.2;
         const h1 = startOnly ? 13.4 : 12.4;
@@ -215,8 +218,15 @@ export class CourseVisuals {
       geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
       geo.setIndex(idx);
       geo.computeVertexNormals();
-      const tex = startOnly ? bannerTexture('RIPTIDE  •  START / FINISH', '#ff3b5c', 'banner_start') : bannerTexture('CHECKPOINT', '#26e8ff', 'banner_cp');
-      const m = new Mesh(geo, cel(startOnly ? 'bannerStart' : 'bannerCp', { map: tex, emissive: 0x333333 }));
+      const tex =
+        kind === 'startfinish'
+          ? bannerTexture('RIPTIDE  •  START / FINISH', '#ff3b5c', 'banner_start')
+          : kind === 'start'
+            ? bannerTexture('RIPTIDE  •  START', '#ff3b5c', 'banner_s')
+            : kind === 'finish'
+              ? bannerTexture('FINISH  •  FINISH', '#ffd21e', 'banner_f')
+              : bannerTexture('CHECKPOINT', '#26e8ff', 'banner_cp');
+      const m = new Mesh(geo, cel(`banner_${kind}`, { map: tex, emissive: 0x333333 }));
       this.add(m, geo);
     }
     // Next-checkpoint highlight arch.

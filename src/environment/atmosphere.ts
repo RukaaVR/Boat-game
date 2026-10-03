@@ -182,7 +182,12 @@ export class Atmosphere {
       const ou = ocean.material.uniforms;
       ou.uDeep.value.setHex(w.waterDeep);
       ou.uMid.value.setHex(w.waterMid);
-      ou.uShallow.value.setHex(theme === 'volcanic' ? 0x2a4a4a : w.waterShallow);
+      ou.uShallow.value.setHex(theme === 'volcanic' ? 0x2a4a4a : theme === 'arctic' ? 0x6cc2d6 : theme === 'jungle' ? 0x4a8a52 : theme === 'canal' ? 0x3f7d72 : w.waterShallow);
+      // River and canal water is greener and murkier than the open sea.
+      if (theme === 'jungle' || theme === 'canal') {
+        ou.uDeep.value.setHex(w.waterDeep).lerp(_c.setHex(theme === 'jungle' ? 0x1a3a22 : 0x173a3a), 0.6);
+        ou.uMid.value.setHex(w.waterMid).lerp(_c.setHex(theme === 'jungle' ? 0x2e6a3a : 0x2a5a58), 0.6);
+      }
       ou.uFoam.value.setHex(w.waterFoam);
       ou.uCrest.value.setHex(w.waterCrest);
       ou.uSkyTop.value.setHex(w.skyTop);

@@ -233,7 +233,7 @@ export class Scenery {
     // ── Instanced props ──────────────────────────────────────────────────────
     const byKind = new Map<string, Prop[]>();
     for (const p of layout.props) {
-      if (p.kind === 'island' || p.kind === 'bridge' || p.kind === 'volcano' || p.kind === 'waterfall' || p.kind === 'vent') continue;
+      if (p.kind === 'island' || p.kind === 'bridge' || p.kind === 'volcano' || p.kind === 'waterfall' || p.kind === 'vent' || p.kind === 'ruin' || p.kind === 'barrier') continue;
       const variants = VARIANTS[p.kind] ?? 1;
       const key = `${p.kind}:${p.variant % variants}`;
       if (!byKind.has(key)) byKind.set(key, []);
@@ -261,6 +261,8 @@ export class Scenery {
         switch (kind) {
           case 'rock':
           case 'lavarock':
+          case 'iceberg':
+          case 'floe':
             return p.size;
           case 'seastack':
             return p.size * 0.9;
@@ -275,7 +277,27 @@ export class Scenery {
         continue;
       }
       const mat = cel(`prop_${kind}`, { vertexColors: true, gloss: kind === 'container' || kind === 'crane' ? 0.4 : 0 });
-      this.instance(geo, mat, list, (p) => [p.x, kind === 'rock' || kind === 'lavarock' ? -0.4 : kind === 'hut' || kind === 'pine' ? this.ground(p.x, p.z) - 0.3 : 0, p.z, p.rot, scaleOf(p)], kind === 'rock' ? 1.8 : 1.6);
+      const yOf = (p: Prop) => {
+        switch (kind) {
+          case 'rock':
+          case 'lavarock':
+            return -0.4;
+          case 'iceberg':
+            return -p.size * 0.35;
+          case 'floe':
+            return 0.12;
+          case 'hut':
+          case 'pine':
+          case 'jungletree':
+            return this.ground(p.x, p.z) - 0.3;
+          case 'lamp':
+            return p.y;
+          default:
+            return 0;
+        }
+      };
+      const thin = kind === 'lamp' || kind === 'canalwall';
+      this.instance(geo, mat, list, (p) => [p.x, yOf(p), p.z, p.rot, scaleOf(p)], kind === 'rock' ? 1.8 : thin ? 1.2 : 1.6);
 
       // Lamps and lights that belong to props.
       for (const p of list) {
@@ -297,6 +319,12 @@ export class Scenery {
         }
         if (kind === 'dock') glowPts.push({ x: p.x + Math.sin(p.rot) * 8.5, y: 4.5, z: p.z + Math.cos(p.rot) * 8.5, c: 0xffd27a, s: 40, blink: false });
         if (kind === 'lavarock') this.emitters.push({ kind: 'embers', x: p.x, y: 0.5, z: p.z, rate: 1.5, radius: p.size });
+        if (kind === 'lamp') {
+          const lx = p.x + Math.sin(p.rot) * 0.7;
+          const lz = p.z + Math.cos(p.rot) * 0.7;
+          glowPts.push({ x: lx, y: p.y + 4.2, z: lz, c: 0xffc46a, s: 34, blink: false });
+          if (this.waterLights.length < 6 && list.indexOf(p) % 7 === 0) this.waterLights.push({ x: lx, y: p.y + 4.2, z: lz, color: 0xffc46a, intensity: 0.8 });
+        }
       }
     }
 
@@ -315,6 +343,24 @@ export class Scenery {
       }
       if (p.kind === 'vent') this.emitters.push({ kind: 'steam', x: p.x, y: 2, z: p.z, rate: 5, radius: p.size * 0.3 });
       if (p.kind === 'waterfall') this.buildWaterfall(p);
+      if (p.kind === 'ruin') {
+        const g = P.ruinGeometry();
+        const m = new Mesh(g, cel('ruin', { vertexColors: true }));
+        m.position.set(p.x, Math.min(0, this.ground(p.x, p.z)) - 1.5, p.z);
+        m.rotation.y = p.rot;
+        addOutline(m, 1.6);
+        this.add(m, g);
+      }
+      if (p.kind === 'barrier') {
+        const g = P.barrierGeometry(p.variant);
+        const m = new Mesh(g, cel(`barrier${p.variant}`, { vertexColors: true }));
+        m.position.set(p.x, -0.6, p.z);
+        // Local X spans the course; scale it to the full width, keep it a few metres tall.
+        m.rotation.y = p.rot;
+        m.scale.set(p.size * 1.05, p.variant === 1 ? 3.2 : 2.6, 7);
+        addOutline(m, 1.6);
+        this.add(m, g);
+      }
     }
 
     // ── Distant range ───────────────────────────────────────────────────────
@@ -462,6 +508,7 @@ export class Scenery {
   }
 
   private buildBridge(p: Prop, style: ThemeStyle, glow: { x: number; y: number; z: number; c: number; s: number; blink: boolean }[]) {
+    if (p.variant === 2) return this.buildArchBridge(p, glow);
     const gb = new GeoBuilder();
     const span = p.size;
     const deckY = 15;
@@ -494,6 +541,45 @@ export class Scenery {
       glow.push({ x: p.x + cosR * lx, y: deckY - 1.6, z: p.z - sinR * lx, c: neon ? (i % 2 ? style.glow : style.glow2) : 0xffd27a, s: 28, blink: false });
     }
     this.waterLights.push({ x: p.x, y: deckY, z: p.z, color: neon ? style.glow2 : 0xffd27a, intensity: 1.2 });
+  }
+
+  /** Canal: a stone arch bridge with balustrades and lamps, springing from the embankments. */
+  private buildArchBridge(p: Prop, glow: { x: number; y: number; z: number; c: number; s: number; blink: boolean }[]) {
+    const gb = new GeoBuilder();
+    const span = p.size + 1;
+    const rise = 6.5;
+    const stone = 0xd8cdb8;
+    const N = 18;
+    for (let i = 0; i < N; i++) {
+      // Voussoirs around a segmental arch (local X across the canal).
+      const a0 = Math.PI * (i / N);
+      const a1 = Math.PI * ((i + 1) / N);
+      const am = (a0 + a1) / 2;
+      const x = -Math.cos(am) * span;
+      const y = Math.sin(am) * rise + 0.5;
+      const len = Math.hypot(Math.cos(a0) - Math.cos(a1), (Math.sin(a0) - Math.sin(a1)) * (rise / span)) * span + 0.2;
+      gb.box(len, 1.1, 6, i % 2 ? stone : 0xcabfa8, { x, y, rz: Math.atan2(Math.cos(am) * rise, Math.sin(am) * span) });
+    }
+    // Deck and spandrel walls on top of the arch.
+    gb.box(span * 2 + 6, 0.8, 6.4, 0xb8ab94, { y: rise + 1.6 });
+    for (const z of [-3, 3]) {
+      gb.box(span * 2 + 6, 1.1, 0.4, stone, { y: rise + 2.5, z });
+      for (let i = -5; i <= 5; i++) gb.cyl(0.14, 0.18, 1.0, 0xe8e0d0, { x: (i / 5) * (span + 2), y: rise + 2.4, z: z * 0.98 }, 5);
+    }
+    for (const s of [-1, 1]) gb.box(5, rise + 4, 7, 0xa89a82, { x: s * (span + 3), y: (rise + 4) / 2 - 2 });
+    const g = gb.build();
+    const m = new Mesh(g, cel('archbridge', { vertexColors: true }));
+    m.position.set(p.x, 0, p.z);
+    m.rotation.y = p.rot;
+    addOutline(m, 1.6);
+    this.add(m, g);
+    const cosR = Math.cos(p.rot);
+    const sinR = Math.sin(p.rot);
+    for (const s of [-1, 1]) {
+      const lx = s * (span + 2);
+      glow.push({ x: p.x + cosR * lx, y: rise + 4.6, z: p.z - sinR * lx, c: 0xffc46a, s: 40, blink: false });
+    }
+    this.waterLights.push({ x: p.x, y: rise, z: p.z, color: 0xffc46a, intensity: 1.0 });
   }
 
   private addBeam(x: number, y: number, z: number) {
@@ -610,7 +696,7 @@ export class Scenery {
   }
 }
 
-const VARIANTS: Partial<Record<PropKind, number>> = { rock: 4, lavarock: 3, seastack: 3, palm: 3, container: 4 };
+const VARIANTS: Partial<Record<PropKind, number>> = { rock: 4, lavarock: 3, seastack: 3, palm: 3, container: 4, iceberg: 3, floe: 3, jungletree: 3, townhouse: 6 };
 
 function buildProp(kind: PropKind, v: number, style: ThemeStyle): BufferGeometry | null {
   switch (kind) {
@@ -638,6 +724,20 @@ function buildProp(kind: PropKind, v: number, style: ThemeStyle): BufferGeometry
       return P.quayGeometry();
     case 'tower':
       return new BoxGeometry(1, 1, 1);
+    case 'iceberg':
+      return P.icebergGeometry(v);
+    case 'floe':
+      return P.floeGeometry(v);
+    case 'jungletree':
+      return P.jungleTreeGeometry(v);
+    case 'townhouse':
+      return P.townhouseGeometry(v);
+    case 'canalwall':
+      return P.canalWallGeometry();
+    case 'gondola':
+      return P.gondolaGeometry();
+    case 'lamp':
+      return P.lampGeometry();
     default:
       return null;
   }

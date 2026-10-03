@@ -22,7 +22,7 @@ export interface IslandMesh {
 export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed: number, variant: number): IslandMesh {
   const rng = new Rng(seed);
   const seg = Math.max(28, Math.round(r * 0.9));
-  const tall = theme === 'storm' ? 1.9 : theme === 'volcanic' ? 1.3 : theme === 'neon' ? 0.35 : 1;
+  const tall = theme === 'storm' ? 1.9 : theme === 'volcanic' ? 1.3 : theme === 'neon' ? 0.35 : theme === 'arctic' ? 1.7 : theme === 'jungle' ? 1.15 : 1;
   const peak = (r * 0.32 + rng.range(4, 12)) * tall * (variant === 2 ? 1.5 : 1);
   // Radial profile: [radius fraction, height]
   const prof: [number, number][] =
@@ -72,6 +72,17 @@ export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed
         _c.setHex(y < 1 ? style.rockDark : y > peak * 0.9 ? style.grass : style.rock).offsetHSL(0, 0, (rng.next() - 0.5) * 0.05);
       } else if (theme === 'volcanic') {
         _c.setHex(y < 0.6 ? style.rockDark : style.rock).offsetHSL(0, 0, (rng.next() - 0.5) * 0.04);
+      } else if (theme === 'jungle') {
+        // Muddy bank, then dense green; the odd mossy rock face.
+        if (y < 0.7) _c.setHex(style.sand);
+        else if (y < 1.6) _c.setHex(style.sand).lerp(_c2.setHex(style.grass), 0.55);
+        else _c.setHex(style.grass).offsetHSL(0.02 * (rng.next() - 0.5), 0.05, (rng.next() - 0.5) * 0.08);
+        if (variant === 2 && y > peak * 0.55 && rng.next() < 0.5) _c.setHex(style.rock);
+      } else if (theme === 'arctic') {
+        // Dark wet rock at the waterline, grey cliffs, snow on top.
+        if (y < 0.8) _c.setHex(style.rockDark);
+        else if (y < peak * 0.38) _c.setHex(0x7d8b99).lerp(_c2.setHex(style.rock), rng.next() * 0.4);
+        else _c.setHex(style.sand).offsetHSL(0, 0, (rng.next() - 0.5) * 0.04);
       } else {
         _c.setHex(y < 0.6 ? 0x3a3e48 : 0x5c6070);
       }
@@ -487,5 +498,162 @@ export function sailboatGeometry(variant: number): BufferGeometry {
     gb.cyl(1, 1.2, 5, 0xe0a020, { y: 11, z: -18 }, 8);
     for (let i = 0; i < 5; i++) gb.box(8, 2.6, 6, CONTAINER_COLORS[i % CONTAINER_COLORS.length], { y: 3.9, z: -6 + i * 6.4 });
   }
+  return gb.build();
+}
+
+// ── Arctic ─────────────────────────────────────────────────────────────────
+/** A faceted iceberg: white crown, blue-green underside, unit footprint ≈ 1. */
+export function icebergGeometry(variant: number): BufferGeometry {
+  const g = new DodecahedronGeometry(1, 1);
+  lumpify(g, 0.45, variant * 5.3 + 2, -0.5);
+  g.scale(1, 1.1 + variant * 0.45, 1);
+  const ng = g.index ? g.toNonIndexed() : g;
+  const pos = ng.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  const rng = new Rng(variant * 31 + 7);
+  for (let i = 0; i < pos.count; i += 3) {
+    const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+    _c.setHex(y < -0.15 ? 0x6fc8d8 : y < 0.25 ? 0xbfe9f2 : 0xf6fbff).offsetHSL(0, 0, (rng.next() - 0.5) * 0.06);
+    for (let k = 0; k < 3; k++) col.set([_c.r, _c.g, _c.b], (i + k) * 3);
+  }
+  ng.setAttribute('color', new BufferAttribute(col, 3));
+  ng.computeVertexNormals();
+  return ng;
+}
+
+/** A flat drifting ice floe slab (unit radius). */
+export function floeGeometry(variant: number): BufferGeometry {
+  const g = new CylinderGeometry(1, 1.06, 0.5, 7 + variant, 1);
+  lumpify(g, 0.18, variant * 2.7 + 9);
+  g.translate(0, 0.05, 0);
+  const ng = g.index ? g.toNonIndexed() : g;
+  const pos = ng.getAttribute('position');
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    _c.setHex(pos.getY(i) > 0.2 ? 0xf4faff : 0x9fd6e6);
+    col.set([_c.r, _c.g, _c.b], i * 3);
+  }
+  ng.setAttribute('color', new BufferAttribute(col, 3));
+  ng.computeVertexNormals();
+  return ng;
+}
+
+// ── Jungle ─────────────────────────────────────────────────────────────────
+/** Rainforest giant: buttressed trunk, layered canopy blobs, hanging vines. */
+export function jungleTreeGeometry(variant: number): BufferGeometry {
+  const gb = new GeoBuilder();
+  const h = 9 + variant * 3;
+  gb.cyl(0.45, 0.85, h, 0x6b5338, { y: h / 2 }, 7);
+  for (let k = 0; k < 4; k++) gb.box(0.25, 1.8, 1.4, 0x5d4730, { y: 0.8, ry: (k * Math.PI) / 2, z: 0.6 });
+  const greens = [0x2f7d32, 0x3a8f3a, 0x276b2c, 0x4aa04a];
+  const blobs = 5 + variant;
+  for (let k = 0; k < blobs; k++) {
+    const a = (k / blobs) * Math.PI * 2 + variant;
+    const d = k === 0 ? 0 : 2.2 + (k % 2) * 0.8;
+    gb.sphere(2.4 - (k === 0 ? -0.6 : 0.3 * (k % 3)), greens[k % 4], { x: Math.cos(a) * d, y: h + 0.6 + (k % 2) * 0.9, z: Math.sin(a) * d, sy: 0.62 }, 9, 6);
+  }
+  for (let k = 0; k < 4; k++) {
+    const a = k * 1.7 + variant;
+    gb.cyl(0.05, 0.05, 3.5 + k * 0.6, 0x3f6b2a, { x: Math.cos(a) * 2.6, y: h - 1.8 - k * 0.3, z: Math.sin(a) * 2.6 }, 4);
+  }
+  return gb.build();
+}
+
+/** A stepped temple ruin with a shrine on top, overgrown. */
+export function ruinGeometry(): BufferGeometry {
+  const gb = new GeoBuilder();
+  const stone = [0x8a8a72, 0x7a7c64, 0x9a9880];
+  for (let i = 0; i < 6; i++) {
+    const w = 22 - i * 3.2;
+    gb.box(w, 2.6, w, stone[i % 3], { y: 1.3 + i * 2.6 });
+  }
+  gb.box(5, 4, 5, 0x6a6c56, { y: 15.6 + 2 });
+  gb.box(2, 2.6, 0.4, 0x2a2a20, { y: 15.6 + 1.3, z: 2.55 });
+  gb.box(6, 0.8, 6, 0x8a8a72, { y: 15.6 + 4.4 });
+  // Stairs up the front.
+  for (let i = 0; i < 6; i++) gb.box(4, 0.5, 1.4, 0xa4a28a, { y: 0.5 + i * 2.6, z: 11 - i * 1.6 });
+  // Moss and vines.
+  for (let i = 0; i < 10; i++) gb.sphere(1.2 + (i % 3) * 0.4, i % 2 ? 0x3a7d34 : 0x2f6b2c, { x: Math.cos(i * 2.4) * (10 - (i % 4) * 2), y: 2 + (i % 5) * 2.6, z: Math.sin(i * 2.4) * (10 - (i % 4) * 2), sy: 0.5 }, 7, 5);
+  return gb.build();
+}
+
+/**
+ * Course barrier closing off a point-to-point sprint behind the start and
+ * past the finish. Local X spans the course (unit = half-width), Z is along it.
+ * 0 = log jam (jungle), 1 = ice wall (arctic), 2 = rock wall.
+ */
+export function barrierGeometry(variant: number): BufferGeometry {
+  const gb = new GeoBuilder();
+  if (variant === 0) {
+    for (let i = 0; i < 9; i++) {
+      const y = (i % 3) * 0.9;
+      gb.cyl(0.55, 0.6, 2.4 + (i % 2) * 0.3, i % 2 ? 0x6b5338 : 0x5a432c, { x: -0.1 + (i % 4) * 0.05, y: y + 0.2, z: (i - 4) * 0.12, rz: Math.PI / 2, ry: (i - 4) * 0.06, sy: 1 }, 7);
+    }
+    for (let i = 0; i < 6; i++) gb.sphere(0.5, 0x2f7d32, { x: (i - 2.5) * 0.4, y: 2.4, z: (i % 2) * 0.4, sy: 0.6 }, 7, 5);
+  } else if (variant === 1) {
+    for (let i = 0; i < 7; i++) gb.rock(0.42 + (i % 3) * 0.08, i % 2 ? 0xe8f4fa : 0xbfe2ee, { x: (i - 3) * 0.33, y: 0.6 + (i % 2) * 0.4, z: (i % 3 - 1) * 0.3, sy: 2.4, sx: 0.9 });
+  } else {
+    for (let i = 0; i < 7; i++) gb.rock(0.42, i % 2 ? 0x5a5650 : 0x4a4640, { x: (i - 3) * 0.33, y: 0.5, z: (i % 3 - 1) * 0.3, sy: 2 });
+  }
+  return gb.build();
+}
+
+// ── Canal city ─────────────────────────────────────────────────────────────
+const FACADES = [0xd8a26a, 0xc9705a, 0xe8d8b0, 0x8fb0a8, 0xd9c27a, 0xb87a8a];
+/** A narrow three/four-storey townhouse; local +Z faces the water. */
+export function townhouseGeometry(variant: number): BufferGeometry {
+  const gb = new GeoBuilder();
+  const floors = 3 + (variant % 2);
+  const H = floors * 3.2;
+  const col = FACADES[variant % FACADES.length];
+  // Foundations run down into the water, Venetian style.
+  gb.box(7.6, H + 2.5, 8, col, { y: (H + 2.5) / 2 - 3 });
+  gb.box(7.7, 1.2, 8.1, 0x6a6a5a, { y: -1.2 });
+  gb.box(8.0, 0.5, 8.4, 0xf2ece0, { y: H - 0.3 });
+  // Roof: pitched tiles or a flat parapet.
+  if (variant % 3 === 0) gb.box(7.4, 2.6, 8.2, 0xa04a32, { y: H + 1.0, sx: 1, rz: 0 });
+  else gb.cone(5.8, 3, 0xa8503a, { y: H + 1.5, ry: Math.PI / 4, sx: 1, sz: 1.06 }, 4);
+  // Windows and shutters.
+  for (let f = 0; f < floors; f++) {
+    for (const x of [-2.2, 0, 2.2]) {
+      gb.box(1.1, 1.6, 0.2, 0x2a3440, { x, y: 1.6 + f * 3.2, z: 4.05 });
+      gb.box(0.35, 1.7, 0.22, 0x3a6a5a, { x: x - 0.75, y: 1.6 + f * 3.2, z: 4.06 });
+      gb.box(0.35, 1.7, 0.22, 0x3a6a5a, { x: x + 0.75, y: 1.6 + f * 3.2, z: 4.06 });
+    }
+    if (f > 0 && variant % 2 === 0) gb.box(3.4, 0.2, 1, 0x3a3a3a, { y: 0.6 + f * 3.2, z: 4.5 });
+  }
+  gb.box(1.6, 2.6, 0.2, 0x5a3a22, { y: 0.8, z: 4.05 });
+  gb.cyl(0.25, 0.3, 1.2, 0x8a3a2a, { x: 2.6, y: H + 2.6, z: -1.5 }, 6);
+  return gb.build();
+}
+
+/** 12 m of stone canal wall with a coping and mooring rings; local Z along the wall. */
+export function canalWallGeometry(): BufferGeometry {
+  const gb = new GeoBuilder();
+  gb.box(2.2, 4.4, 12.2, 0x8a7a66, { y: -0.6 });
+  gb.box(2.6, 0.4, 12.4, 0xd8cfbf, { y: 1.8 });
+  for (const z of [-4, 0, 4]) gb.box(0.2, 0.9, 0.2, 0x3a3a3a, { x: -1.2, y: 0.6, z });
+  // Waterline stain.
+  gb.box(2.24, 0.5, 12.24, 0x4a5a4a, { y: -0.2 });
+  return gb.build();
+}
+
+/** A moored gondola, bow along +Z. */
+export function gondolaGeometry(): BufferGeometry {
+  const gb = new GeoBuilder();
+  gb.box(1.4, 0.7, 9, 0x14141a, { y: 0.2 });
+  gb.cone(0.7, 2.2, 0x14141a, { y: 0.4, z: 5.4, rx: Math.PI / 2 - 0.4, sz: 0.4 }, 4);
+  gb.box(0.1, 1.4, 0.6, 0xd8c88a, { y: 1.5, z: 6.2 });
+  gb.box(1.2, 0.3, 1.6, 0x8a2a3a, { y: 0.65, z: -0.5 });
+  gb.cyl(0.08, 0.08, 4, 0x6b5338, { y: 1.8, z: -3.6, rx: 0.3 }, 4);
+  return gb.build();
+}
+
+/** Iron street lamp (the glow is added by the scenery as a light point). */
+export function lampGeometry(): BufferGeometry {
+  const gb = new GeoBuilder();
+  gb.cyl(0.12, 0.18, 4.6, 0x22262c, { y: 2.3 }, 6);
+  gb.box(0.9, 0.12, 0.12, 0x22262c, { y: 4.5, z: 0.3 });
+  gb.cyl(0.25, 0.32, 0.6, 0xffd27a, { y: 4.2, z: 0.7 }, 6);
   return gb.build();
 }

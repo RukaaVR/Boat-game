@@ -23,6 +23,8 @@ const STEAM = new Color(0.9, 0.92, 0.95);
 const EMBER = new Color(1, 0.45, 0.1);
 const DUST = new Color(1, 0.9, 0.6);
 const ASH = new Color(0.35, 0.32, 0.33);
+const SNOW = new Color(0.95, 0.97, 1);
+const POLLEN = new Color(0.85, 1, 0.55);
 const TIER = [new Color(1, 1, 1), new Color(0.3, 0.75, 1), new Color(1, 0.55, 0.15), new Color(1, 0.3, 0.85)];
 const CONFETTI = [new Color(1, 0.23, 0.36), new Color(0.16, 0.83, 1), new Color(1, 0.88, 0.3), new Color(0.65, 1, 0.24), new Color(0.48, 0.36, 1)];
 const _c = new Color();
@@ -181,6 +183,13 @@ export class FxDirector {
         const n = P.count(14, dt);
         for (let k = 0; k < n; k++) P.emit('dust', cam.x + (Math.random() - 0.5) * 40, cam.y + (Math.random() - 0.3) * 8, cam.z + (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 0.6, 0.1, (Math.random() - 0.5) * 0.6, DUST);
       }
+    } else if (theme === 'arctic') {
+      // Snow drifting past the lens.
+      const n = P.count(40, dt);
+      for (let k = 0; k < n; k++) P.emit('ash', cam.x + (Math.random() - 0.5) * 60, cam.y + Math.random() * 16 - 2, cam.z + (Math.random() - 0.5) * 60, 0.6 + Math.random() * 0.6, -1.2, 0.3, SNOW, 1.4, 1.1);
+    } else if (theme === 'jungle' && weatherRain === 0) {
+      const n = P.count(10, dt);
+      for (let k = 0; k < n; k++) P.emit('dust', cam.x + (Math.random() - 0.5) * 40, cam.y + (Math.random() - 0.3) * 8, cam.z + (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 0.4, 0.1, (Math.random() - 0.5) * 0.4, POLLEN);
     } else if (theme === 'volcanic') {
       const n = P.count(30, dt);
       for (let k = 0; k < n; k++) {

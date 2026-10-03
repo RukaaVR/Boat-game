@@ -24,6 +24,7 @@ import { boatSpec } from '../boat/specs';
 import { BattleVisuals } from './battle';
 import { Wildlife } from './wildlife';
 import { BoatShadows } from './shadows';
+import { Aurora } from '../environment/aurora';
 import { blendWeather, WEATHER } from '../environment/weatherDefs';
 
 const _ghost = { x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
@@ -44,6 +45,7 @@ export class World {
   readonly battle: BattleVisuals | null;
   readonly wildlife: Wildlife;
   readonly shadows: BoatShadows;
+  readonly aurora: Aurora | null;
   weather: WeatherId;
   private blend: { from: WeatherId; to: WeatherId; t: number } | null = null;
   /** Photo mode: hide every boat. */
@@ -89,6 +91,8 @@ export class World {
     this.battle = session.items ? new BattleVisuals(session, session.items) : null;
     if (this.battle) scene.add(this.battle.group);
     this.wildlife = new Wildlife(session, this.particles, opts.wildlife !== false);
+    this.aurora = session.track.def.theme === 'arctic' ? new Aurora() : null;
+    if (this.aurora) scene.add(this.aurora.mesh);
     this.shadows = new BoatShadows(session);
     this.shadows.mesh.visible = opts.shadows !== false;
     scene.add(this.shadows.mesh);
@@ -170,10 +174,11 @@ export class World {
     this.scenery.update(time, dt);
     this.scenery.setPixelScale(this.renderer.drawingHeight);
     const pr = s.player;
-    this.course.update(time, cam.position.x, cam.position.z, pr.checkpoints % s.track.gates.length, s.hasLaps && (s.phase === 'racing' || s.phase === 'countdown'));
+    this.course.update(time, cam.position.x, cam.position.z, s.track.gateIndexFor(pr.checkpoints), s.hasLaps && (s.phase === 'racing' || s.phase === 'countdown'));
     this.wake.update(time);
     this.battle?.update(time);
     this.wildlife.update(dt, time, cam.position);
+    this.aurora?.update(cam.position, time, this.atmosphere.night);
     if (this.shadows.mesh.visible) this.shadows.update(time, this.atmosphere.sunDir, this.weather === 'storm' ? 1 : this.weather === 'night' ? 0.7 : 0);
     this.fx.update(dt, time, rig, this.renderer, events, this.atmosphere.preset.rain * this.atmosphere.rainScale);
     this.particles.update(dt);
@@ -201,6 +206,7 @@ export class World {
     this.battle?.dispose();
     this.wildlife.dispose();
     this.shadows.dispose();
+    this.aurora?.dispose();
     this.scene.clear();
   }
 }

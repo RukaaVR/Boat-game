@@ -26,12 +26,15 @@ export class Minimap {
     this.ctx = this.canvas.getContext('2d')!;
     const t = session.track;
     this.course = new Path2D();
-    for (let i = 0; i <= t.n; i += 2) {
-      const k = i % t.n;
-      if (i === 0) this.course.moveTo(t.px[k], t.pz[k]);
+    // A sprint draws only the raced stretch (plus the grid behind the start).
+    const first = t.sprint ? -Math.round(60 / 2.5) : 0;
+    const last = t.sprint ? Math.round(t.lapLength / 2.5) : t.n;
+    for (let i = first; i <= last; i += 2) {
+      const k = ((i % t.n) + t.n) % t.n;
+      if (i === first) this.course.moveTo(t.px[k], t.pz[k]);
       else this.course.lineTo(t.px[k], t.pz[k]);
     }
-    this.course.closePath();
+    if (!t.sprint) this.course.closePath();
     this.shortcuts = new Path2D();
     for (const sc of t.shortcuts) {
       for (let i = 0; i < sc.pts.length; i += 2) {
@@ -100,14 +103,15 @@ export class Minimap {
     const gates = s.track.gates;
     const half = s.track.width * 0.6;
     for (const g of gates) {
-      const isNext = s.hasLaps && g.index === nextGate % gates.length;
-      if (g.index !== 0 && !isNext) continue;
+      const isNext = s.hasLaps && g.index === s.track.gateIndexFor(nextGate);
+      const isFinish = s.track.sprint && g.index === gates.length - 1;
+      if (g.index !== 0 && !isNext && !isFinish) continue;
       const rx = -Math.cos(g.heading);
       const rz = Math.sin(g.heading);
       c.beginPath();
       c.moveTo(g.x - rx * half, g.z - rz * half);
       c.lineTo(g.x + rx * half, g.z + rz * half);
-      c.strokeStyle = g.index === 0 ? '#ffffff' : '#ffd21e';
+      c.strokeStyle = g.index === 0 || isFinish ? '#ffffff' : '#ffd21e';
       c.lineWidth = (isNext ? 5 : 4) * lw * this.dpr;
       c.stroke();
     }

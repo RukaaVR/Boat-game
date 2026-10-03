@@ -31,7 +31,16 @@ export type PropKind =
   | 'vent'
   | 'volcano'
   | 'mine'
-  | 'pine';
+  | 'pine'
+  | 'iceberg'
+  | 'floe'
+  | 'jungletree'
+  | 'ruin'
+  | 'barrier'
+  | 'townhouse'
+  | 'canalwall'
+  | 'gondola'
+  | 'lamp';
 
 export interface Prop {
   kind: PropKind;
@@ -102,8 +111,74 @@ export function buildLayout(track: Track): Layout {
     return { x: cx + Math.cos(a) * r * 1.2, z: cz + Math.sin(a) * r };
   };
 
+  // ── River / fjord: the course runs between continuous banks ─────────────
+  const fjord = theme === 'arctic' && track.sprint;
+  if (theme === 'jungle' || fjord) {
+    for (let s = 0; s < track.length; s += fjord ? 38 : 30) {
+      track.sample(s, _p);
+      for (const side of [-1, 1]) {
+        const r = fjord ? rng.range(34, 52) : rng.range(26, 40);
+        const lat = side * (W * 0.5 + r * 0.92 + 5);
+        const x = _p.x - _p.tz * lat;
+        const z = _p.z + _p.tx * lat;
+        if (track.distToCentre(x, z) < W * 0.5 + r * 0.82) continue;
+        if (track.distToShortcut(x, z) < 12 + r + 4) continue;
+        place({ kind: 'island', x, z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) }, r * 0.86, 'island', r * 0.7);
+        islands.push({ x, z, r });
+        const trees = fjord ? rng.int(0, 2) : 2 + rng.int(0, 2);
+        for (let k = 0; k < trees; k++) {
+          const a = rng.range(0, 6.28);
+          const d = rng.range(0.1, 0.55) * r;
+          props.push({ kind: fjord ? 'pine' : rng.chance(0.75) ? 'jungletree' : 'palm', x: x + Math.cos(a) * d, z: z + Math.sin(a) * d, y: 0, rot: rng.range(0, 6.28), scale: rng.range(0.9, 1.4), size: 0, variant: rng.int(0, 2) });
+        }
+      }
+    }
+  }
+
+  // ── Canal city: stone embankments, waterfront houses, lamps, gondolas ────
+  if (theme === 'canal') {
+    const mouthsC: { x: number; z: number }[] = [];
+    for (const sc of track.shortcuts) mouthsC.push({ x: sc.pts[0], z: sc.pts[1] }, { x: sc.pts[sc.pts.length - 2], z: sc.pts[sc.pts.length - 1] });
+    const nearMouth = (x: number, z: number, d: number) => mouthsC.some((m) => Math.hypot(m.x - x, m.z - z) < d);
+    let k = 0;
+    for (let s = 0; s < track.length; s += 12, k++) {
+      track.sample(s, _p);
+      for (const side of [-1, 1]) {
+        const wl = side * (W * 0.5 + 1.2);
+        const wx = _p.x - _p.tz * wl;
+        const wz = _p.z + _p.tx * wl;
+        if (nearMouth(wx, wz, 22) || track.distToShortcut(wx, wz) < 10) continue;
+        if (track.distToCentre(wx, wz) < W * 0.5 - 0.5) continue;
+        props.push({ kind: 'canalwall', x: wx, z: wz, y: 0, rot: _p.heading, scale: 1, size: 0, variant: 0 });
+        for (let q = -1; q <= 1; q++) colliders.push({ x: wx + _p.tx * q * 4, z: wz + _p.tz * q * 4, r: 1.7, kind: 'pile' });
+        occupied.push({ x: wx, z: wz, r: 6 });
+        if (k % 2 === 0) {
+          const hl = side * (W * 0.5 + 6.6);
+          const hx = _p.x - _p.tz * hl;
+          const hz = _p.z + _p.tx * hl;
+          if (track.distToCentre(hx, hz) > W * 0.5 + 4 && track.distToShortcut(hx, hz) > 16) {
+            props.push({ kind: 'townhouse', x: hx, z: hz, y: 0, rot: _p.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2), scale: rng.range(0.95, 1.15), size: 0, variant: rng.int(0, 5) });
+            // A second, taller row behind for depth.
+            const bl = side * (W * 0.5 + 15.5);
+            const bx = _p.x - _p.tz * bl;
+            const bz = _p.z + _p.tx * bl;
+            if (track.distToCentre(bx, bz) > W * 0.5 + 12 && track.distToShortcut(bx, bz) > 20) props.push({ kind: 'townhouse', x: bx, z: bz, y: 0, rot: _p.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2), scale: rng.range(1.15, 1.4), size: 0, variant: rng.int(0, 5) });
+          }
+        }
+        if (k % 3 === 1) props.push({ kind: 'lamp', x: _p.x - _p.tz * side * (W * 0.5 + 1.6), z: _p.z + _p.tx * side * (W * 0.5 + 1.6), y: 2, rot: _p.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2), scale: 1, size: 0, variant: 0 });
+        if (k % 9 === 4 && side === (k % 2 ? 1 : -1)) {
+          const gl = side * (W * 0.5 - 1.4);
+          const gx = _p.x - _p.tz * gl;
+          const gz = _p.z + _p.tx * gl;
+          props.push({ kind: 'gondola', x: gx, z: gz, y: 0, rot: _p.heading, scale: 1, size: 0, variant: 0 });
+          colliders.push({ x: gx + _p.tx * 2.5, z: gz + _p.tz * 2.5, r: 1.1, kind: 'pile' }, { x: gx - _p.tx * 2.5, z: gz - _p.tz * 2.5, r: 1.1, kind: 'pile' });
+        }
+      }
+    }
+  }
+
   // ── Infield & outfield islands ───────────────────────────────────────────
-  const islandCount = theme === 'neon' ? 3 : theme === 'storm' ? 9 : 11;
+  const islandCount = theme === 'neon' || theme === 'canal' ? (theme === 'canal' ? 0 : 3) : theme === 'storm' || theme === 'arctic' ? 9 : theme === 'jungle' ? 4 : 11;
   for (let tries = 0, n = 0; tries < 900 && n < islandCount; tries++) {
     const big = n < 3;
     const r = big ? rng.range(45, 85) : rng.range(16, 38);
@@ -135,13 +210,21 @@ export function buildLayout(track: Track): Layout {
       }
     } else if (theme === 'volcanic') {
       if (rng.chance(0.6)) props.push({ kind: 'vent', x: pt.x, z: pt.z, y: 0, rot: 0, scale: 1, size: r, variant: 0 });
+    } else if (theme === 'arctic' || theme === 'jungle') {
+      const n2 = Math.round(r / (theme === 'arctic' ? 10 : 7));
+      for (let k = 0; k < n2; k++) {
+        const a = rng.range(0, 6.28);
+        const d = rng.range(0.15, 0.6) * r;
+        props.push({ kind: theme === 'arctic' ? 'pine' : 'jungletree', x: pt.x + Math.cos(a) * d, z: pt.z + Math.sin(a) * d, y: 0, rot: rng.range(0, 6.28), scale: rng.range(0.8, 1.4), size: 0, variant: rng.int(0, 2) });
+      }
     }
   }
 
   // ── Course-side features: docks, rocks, lighthouses, quays ─────────────────
-  const sideFeatures = theme === 'neon' ? 16 : 12;
+  const sideFeatures = theme === 'neon' ? 16 : theme === 'canal' || theme === 'jungle' ? 0 : 12;
   for (let tries = 0, n = 0; tries < 1200 && n < sideFeatures; tries++) {
     const s = rng.range(0, track.length);
+    if (!track.inPlay(s)) continue;
     track.sample(s, _p);
     const side = rng.chance(0.5) ? 1 : -1;
     const off = W * 0.5 + rng.range(16, 40);
@@ -159,6 +242,9 @@ export function buildLayout(track: Track): Layout {
     } else if (theme === 'neon') {
       kind = rng.chance(0.55) ? 'container' : rng.chance(0.5) ? 'crane' : 'quay';
       r = kind === 'quay' ? 14 : kind === 'crane' ? 8 : 7;
+    } else if (theme === 'arctic') {
+      kind = rng.chance(0.45) ? 'iceberg' : 'floe';
+      r = kind === 'iceberg' ? rng.range(8, 14) : rng.range(4, 8);
     } else {
       kind = rng.chance(0.6) ? 'lavarock' : 'rock';
       r = rng.range(4, 9);
@@ -182,12 +268,12 @@ export function buildLayout(track: Track): Layout {
   }
 
   // ── Scattered rocks / stacks for silhouette and danger ───────────────────────
-  const rockCount = theme === 'neon' ? 8 : 26;
+  const rockCount = theme === 'neon' ? 8 : theme === 'canal' ? 0 : theme === 'jungle' ? 10 : 26;
   for (let tries = 0, n = 0; tries < 1500 && n < rockCount; tries++) {
     const pt = randomPoint(0, Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.8);
     const r = rng.range(2, 6.5);
     if (!clear(pt.x, pt.z, r, 3)) continue;
-    const kind: PropKind = theme === 'volcanic' ? (rng.chance(0.5) ? 'lavarock' : 'rock') : theme === 'storm' ? (rng.chance(0.4) ? 'seastack' : 'rock') : theme === 'neon' ? 'container' : 'rock';
+    const kind: PropKind = theme === 'volcanic' ? (rng.chance(0.5) ? 'lavarock' : 'rock') : theme === 'storm' ? (rng.chance(0.4) ? 'seastack' : 'rock') : theme === 'neon' ? 'container' : theme === 'arctic' ? (rng.chance(0.3) ? 'iceberg' : 'floe') : 'rock';
     place({ kind, x: pt.x, z: pt.z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) }, r * 0.8, kind === 'container' ? 'pile' : 'rock', r);
     n++;
   }
@@ -210,8 +296,8 @@ export function buildLayout(track: Track): Layout {
         const z = az + nz * off * side;
         if (track.distToCentre(x, z) < W * 0.5 + 6) continue;
         const r = rng.range(2.2, 4);
-        const kind: PropKind = theme === 'neon' ? 'container' : theme === 'volcanic' ? 'lavarock' : 'rock';
-        props.push({ kind, x, z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) });
+        const kind: PropKind = theme === 'neon' ? 'container' : theme === 'volcanic' ? 'lavarock' : theme === 'arctic' ? 'floe' : theme === 'canal' ? 'canalwall' : 'rock';
+        props.push({ kind, x, z, y: 0, rot: kind === 'canalwall' ? Math.atan2(bx - ax, bz - az) : rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) });
         colliders.push({ x, z, r: r * 0.85, kind: kind === 'container' ? 'pile' : 'rock' });
         occupied.push({ x, z, r });
       }
@@ -220,11 +306,54 @@ export function buildLayout(track: Track): Layout {
 
   // ── On-course hazards from the track generator ─────────────────────────────
   for (const h of track.hazards) {
-    props.push({ kind: h.kind === 'mine' ? 'mine' : theme === 'volcanic' ? 'lavarock' : 'rock', x: h.x, z: h.z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: h.r, variant: rng.int(0, 3) });
+    props.push({ kind: h.kind === 'mine' ? 'mine' : theme === 'volcanic' ? 'lavarock' : theme === 'arctic' ? 'floe' : 'rock', x: h.x, z: h.z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: h.r, variant: rng.int(0, 3) });
     colliders.push({ x: h.x, z: h.z, r: h.r * (h.kind === 'mine' ? 1 : 0.85), kind: h.kind === 'mine' ? 'mine' : 'rock' });
   }
 
   // ── Set pieces: a bridge over a straight (neon / storm), volcano, lighthouse ──
+  if (theme === 'canal') {
+    // Three stone arch bridges on the straightest stretches.
+    const picks: number[] = [];
+    const cands: { s: number; k: number }[] = [];
+    for (let s = 120; s < track.lapLength - 120; s += 15) {
+      let k = 0;
+      for (let o = -25; o <= 25; o += 5) k = Math.max(k, Math.abs(track.curvAt(s + o)));
+      cands.push({ s, k });
+    }
+    cands.sort((a, c) => a.k - c.k);
+    for (const c of cands) {
+      if (picks.length >= 3) break;
+      if (picks.some((p) => Math.abs(p - c.s) < 220)) continue;
+      if (track.ramps.some((r) => Math.hypot(r.x - track.px[track.indexAt(c.s)], r.z - track.pz[track.indexAt(c.s)]) < 60)) continue;
+      picks.push(c.s);
+      track.sample(c.s, _p);
+      const span = W * 0.5 + 3;
+      props.push({ kind: 'bridge', x: _p.x, z: _p.z, y: 0, rot: _p.heading, scale: 1, size: span, variant: 2 });
+    }
+  }
+  if (theme === 'jungle') {
+    // A temple ruin on a bank about two-thirds of the way down the river.
+    const s = track.lapLength * 0.62;
+    track.sample(s, _p);
+    for (const side of [1, -1]) {
+      const lat = side * (W * 0.5 + 34);
+      const x = _p.x - _p.tz * lat;
+      const z = _p.z + _p.tx * lat;
+      if (track.distToCentre(x, z) < W * 0.5 + 22) continue;
+      props.push({ kind: 'ruin', x, z, y: 0, rot: _p.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2), scale: 1, size: 12, variant: 0 });
+      colliders.push({ x, z, r: 11, kind: 'island' });
+      break;
+    }
+  }
+  if (track.sprint) {
+    // Wall off the unraced part of the loop: past the finish and behind the grid.
+    for (const s of [track.lapLength + 75, track.length - 95]) {
+      track.sample(s, _p);
+      const half = W * 0.5 + 16;
+      props.push({ kind: 'barrier', x: _p.x, z: _p.z, y: 0, rot: _p.heading, scale: 1, size: half, variant: theme === 'jungle' ? 0 : theme === 'arctic' ? 1 : 2 });
+      for (let q = -half; q <= half; q += 3) colliders.push({ x: _p.x - _p.tz * q, z: _p.z + _p.tx * q, r: 2.6, kind: 'rock' });
+    }
+  }
   if (theme === 'neon' || theme === 'storm') {
     let bestS = -1;
     let bestK = Infinity;
@@ -269,6 +398,7 @@ export function buildLayout(track: Track): Layout {
   }
   const step = 19;
   for (let s = 0; s < track.length; s += step) {
+    if (!track.inPlay(s)) continue;
     track.sample(s, _p);
     for (const side of [-1, 1]) {
       const lat = side * W * 0.5;
@@ -299,6 +429,7 @@ export function buildLayout(track: Track): Layout {
   const signs: Sign[] = [];
   let lastSign = -999;
   for (let s = 0; s < track.length; s += 10) {
+    if (!track.inPlay(s, -20) || theme === 'canal') continue;
     const k = track.curvAt(s);
     if (Math.abs(k) < 0.011 || s - lastSign < 70) continue;
     lastSign = s;
@@ -320,7 +451,7 @@ export function buildLayout(track: Track): Layout {
     rings.push({ x: r.x + Math.sin(r.heading) * d, y: 7.5, z: r.z + Math.cos(r.heading) * d, heading: r.heading, radius: 4.2, taken: false, respawn: 0 });
   }
   for (let i = 0; i < 8; i++) {
-    const s = ((i + 0.5) / 8) * track.length;
+    const s = ((i + 0.5) / 8) * track.lapLength;
     track.sample(s, _p);
     const lat = track.lineAt(s) + rng.range(-8, 8);
     rings.push({ x: _p.x - _p.tz * lat, y: 2.5, z: _p.z + _p.tx * lat, heading: _p.heading, radius: 3.8, taken: false, respawn: 0 });
@@ -343,7 +474,7 @@ export function buildLayout(track: Track): Layout {
     bottles.push({ x: ramp.x + Math.sin(ramp.heading) * d + Math.cos(ramp.heading) * 3, y: 6.5, z: ramp.z + Math.cos(ramp.heading) * d - Math.sin(ramp.heading) * 3 });
   }
   for (let tries = 0; bottles.length < 5 && tries < 200; tries++) {
-    const s = brng.range(0, track.length);
+    const s = brng.range(0, track.lapLength);
     track.sample(s, _p);
     const side = brng.chance(0.5) ? 1 : -1;
     const lat = side * (W * 0.5 + brng.range(6, 16));

@@ -585,7 +585,7 @@ export class Screens {
     const focusedArg = g.nav.current?.dataset.arg;
     const showTracks = st.mode !== 'championship' && st.mode !== 'career';
     const stage = st.mode === 'career' && st.careerStage !== undefined ? CAREER[st.careerStage] : null;
-    const tracks = TRACKS.map((t) => {
+    const tracks = TRACKS.filter((t) => !(t.sprint && (st.mode === 'stunt' || st.mode === 'endless'))).map((t) => {
       const locked = lvl < t.unlockLevel;
       return `<div class="card ${t.id === st.trackId ? 'sel' : ''} ${locked ? 'locked' : ''}" data-nav data-act="track" data-arg="${t.id}">
         <span class="tag">${t.theme.toUpperCase()}</span>

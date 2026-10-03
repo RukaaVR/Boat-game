@@ -69,6 +69,10 @@ export class Track {
   /** AI target speed (m/s at full-boat top speed 33). */
   readonly speed: Float32Array;
   readonly length: number;
+  /** Raced distance per lap: the whole loop, or the start→finish stretch of a sprint. */
+  readonly lapLength: number;
+  /** Point-to-point sprint (start and finish at different places, the rest walled off). */
+  readonly sprint: boolean;
   readonly width: number;
   readonly gates: Gate[] = [];
   readonly ramps: Ramp[] = [];
@@ -102,6 +106,8 @@ export class Track {
     const n = Math.round(total / SPACING);
     this.n = n;
     this.length = total;
+    this.sprint = !!def.sprint;
+    this.lapLength = def.sprint ? total * def.sprint : total;
     this.px = new Float32Array(n);
     this.pz = new Float32Array(n);
     this.tx = new Float32Array(n);
@@ -147,6 +153,23 @@ export class Track {
   // ─────────────────────────────────────────────────────────────────────────
   // Queries
   // ─────────────────────────────────────────────────────────────────────────
+
+  /** Is arc length s on the raced part of the course (always true for loops)? */
+  inPlay(s: number, margin = 0) {
+    if (!this.sprint) return true;
+    const w = this.wrapS(s);
+    return w <= this.lapLength + margin || w >= this.length - 90 - margin;
+  }
+
+  /** Index into `gates` of the gate a racer with `checkpoints` passed is heading for. */
+  gateIndexFor(checkpoints: number) {
+    return this.sprint ? Math.min(checkpoints, this.gates.length - 1) : checkpoints % this.gates.length;
+  }
+
+  /** Number of checkpoint gates per lap (a sprint's finish gate is its last checkpoint). */
+  get checkpointCount() {
+    return this.sprint ? this.gates.length - 1 : this.gates.length;
+  }
 
   wrapS(s: number) {
     const L = this.length;
@@ -362,10 +385,10 @@ export class Track {
   }
 
   private placeGates() {
-    const G = Math.max(6, Math.round(this.length / 220));
+    const G = Math.max(6, Math.round(this.lapLength / 220));
     const p: TrackPoint = { x: 0, z: 0, tx: 0, tz: 1, heading: 0 };
-    for (let g = 0; g < G; g++) {
-      const s = (g / G) * this.length;
+    for (let g = 0; g < G + (this.sprint ? 1 : 0); g++) {
+      const s = (g / G) * this.lapLength;
       this.sample(s, p);
       this.gates.push({ index: g, s, x: p.x, z: p.z, heading: p.heading });
     }
@@ -380,10 +403,11 @@ export class Track {
     const cands: Cand[] = [];
     const a: TrackPoint = { x: 0, z: 0, tx: 0, tz: 0, heading: 0 };
     const b: TrackPoint = { x: 0, z: 0, tx: 0, tz: 0, heading: 0 };
-    for (let s1 = 120; s1 < L - 500; s1 += 12) {
+    const end = this.sprint ? this.lapLength : L;
+    for (let s1 = 120; s1 < end - 500; s1 += 12) {
       for (let span = 140; span <= 560; span += 20) {
         const s2 = s1 + span;
-        if (s2 > L - 120) break;
+        if (s2 > end - 120) break;
         this.sample(s1, a);
         this.sample(s2, b);
         const chord = Math.hypot(b.x - a.x, b.z - a.z);
@@ -462,7 +486,8 @@ export class Track {
 
     // Candidate arc lengths sorted by straightness.
     const cands: { s: number; k: number }[] = [];
-    for (let s = 80; s < L - 80; s += 15) cands.push({ s, k: this.straightness(s, 45) });
+    const end = this.sprint ? this.lapLength : L;
+    for (let s = 80; s < end - 80; s += 15) cands.push({ s, k: this.straightness(s, 45) });
     cands.sort((x, y) => x.k - y.k);
 
     // Ramps on the straightest sections, offset from the racing line so taking
@@ -494,7 +519,7 @@ export class Track {
     for (let i = 0; i < this.n; i++) {
       const k0 = Math.abs(this.curv[i]);
       const k1 = Math.abs(this.curv[(i + 12) % this.n]);
-      if (k0 > 0.012 && k1 < 0.006) exits.push(this.dist[(i + 16) % this.n]);
+      if (k0 > 0.012 && k1 < 0.006 && this.dist[(i + 16) % this.n] < end - 60) exits.push(this.dist[(i + 16) % this.n]);
     }
     placed = 0;
     const padS = [...exits, ...cands.map((c) => c.s)];
@@ -511,7 +536,7 @@ export class Track {
     // On-course hazards, placed on the side away from the racing line.
     placed = 0;
     for (let tries = 0; tries < 400 && placed < this.def.hazards; tries++) {
-      const s = rng.range(100, L - 100);
+      const s = rng.range(100, end - 100);
       if (this.crowded(s, used, 50)) continue;
       this.sample(s, p);
       const line = this.lineAt(s);

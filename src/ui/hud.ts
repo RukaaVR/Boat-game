@@ -384,14 +384,15 @@ export class Hud {
 
     // Next checkpoint direction.
     if (s.mode !== 'freeride' && s.mode !== 'stunt') {
-      const g = s.track.gates[p.checkpoints % s.track.gates.length];
+      const gi = s.track.gateIndexFor(p.checkpoints);
+      const g = s.track.gates[gi];
       const dx = g.x - b.position.x;
       const dz = g.z - b.position.z;
       const ang = Math.atan2(dx, dz) - b.heading;
       const deg = Math.round((-ang * 180) / Math.PI);
       this.set('cpang', deg, () => (this.cpArrow.style.transform = `rotate(${deg}deg)`));
       const dist = Math.round(Math.hypot(dx, dz));
-      const label = s.hasLaps && p.checkpoints % s.track.gates.length === 0 ? (p.checkpoints === 0 ? 'START' : 'FINISH') : 'CHECKPOINT';
+      const label = s.track.sprint ? (gi === 0 ? 'START' : gi === s.track.gates.length - 1 ? 'FINISH' : 'CHECKPOINT') : s.hasLaps && gi === 0 ? (p.checkpoints === 0 ? 'START' : 'FINISH') : 'CHECKPOINT';
       this.set('cpd', dist + label, () => (this.cpText.textContent = `${label} ${dist} m`));
     }
 

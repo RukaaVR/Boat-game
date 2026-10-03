@@ -218,6 +218,8 @@ export class RaceSession {
     const w = WEATHER[cfg.weather];
     this.baseSea = w.sea;
     setSeaState(w.sea, w.chop);
+    // A point-to-point sprint is always exactly one run.
+    if (this.track.sprint && this.totalLaps > 0) (this as { totalLaps: number }).totalLaps = 1;
     const zones: SwellZone[] = this.track.swells.map((z) => ({ ...z, gain: z.gain * (cfg.weather === 'storm' ? 1.0 : 0.85) }));
     setSwellZones(zones);
     if (cfg.mode === 'tutorial') {
@@ -299,7 +301,7 @@ export class RaceSession {
     return this.totalLaps > 0;
   }
   get gateCount() {
-    return this.track.gates.length;
+    return this.track.checkpointCount;
   }
 
   skipIntro() {
@@ -376,6 +378,13 @@ export class RaceSession {
         this.view.lap = r.lap;
         drive.update(b, r.controls, this.track, this.view, dt);
         if (r.finished && r.ai) r.controls.boost = false;
+        if (r.finished && this.track.sprint) {
+          // Past a sprint finish: coast to a stop before the barrier.
+          r.controls.throttle = 0;
+          r.controls.brake = 0.7;
+          r.controls.boost = false;
+          r.controls.drift = false;
+        }
         if (r.ai && this.items) this.items.aiDecide(r, this.racers, dt);
         if (r.ai && this.aiFrozen) {
           r.controls.throttle = 0;
@@ -467,7 +476,7 @@ export class RaceSession {
   private updateProgress(dt: number) {
     const L = this.track.length;
     const G = this.gateCount;
-    const gateLen = L / G;
+    const gateLen = this.track.lapLength / G;
     const counting = this.phase === 'racing' || this.phase === 'finished' || this.phase === 'results';
     for (const r of this.racers) {
       const b = r.boat;
@@ -727,7 +736,7 @@ export class RaceSession {
     if (!this.hasLaps || p.finished || p.lap < 1) return;
     k = Math.min(k, this.totalLaps - p.lap);
     if (k <= 0) return;
-    const L = this.track.length;
+    const L = this.track.lapLength;
     p.raceDist += L * k;
     p.maxRaceDist += L * k;
     p.checkpoints += this.gateCount * k;
@@ -738,7 +747,7 @@ export class RaceSession {
   /** Teleport the player to the next checkpoint gate. */
   adminNextCheckpoint() {
     const p = this.player;
-    const gateLen = this.track.length / this.gateCount;
+    const gateLen = this.track.lapLength / this.gateCount;
     const target = Math.max(p.raceDist + 5, p.checkpoints * gateLen + 6);
     const ds = target - p.raceDist;
     const s = this.track.wrapS(p.s + ds);
@@ -879,7 +888,7 @@ export class RaceSession {
   buildResults() {
     // Unfinished racers are ranked by distance and given an estimated time.
     const avgSpeed = (r: Racer) => Math.max(8, r.raceDist / Math.max(1, this.raceTime));
-    const totalDist = this.totalLaps * this.track.length;
+    const totalDist = this.totalLaps * this.track.lapLength;
     this.results = this.order.map((r) => ({
       id: r.id,
       name: r.name,

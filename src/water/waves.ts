@@ -128,6 +128,9 @@ export function setSeaState(energy: number, choppiness = 1) {
 export function getSeaState() {
   return seaState;
 }
+export function getChop() {
+  return chop;
+}
 
 export interface SwellZone {
   x: number;

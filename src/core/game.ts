@@ -40,6 +40,10 @@ import { AdminPanel } from '../admin/admin';
 import { getLang, setLang } from '../ui/i18n';
 import { TouchControls, isTouchDevice } from '../input/touch';
 import { Tutorial } from '../race/tutorial';
+import { ReplayPlayer, ReplayRecorder, type ReplayData } from '../race/replay';
+import { PhotoPanel, ReplayBar, type PhotoHost, type ReplayHost } from '../ui/overlays';
+import { CAM_LABEL, CAM_MODES } from '../camera/cameraRig';
+import { checkAchievements } from '../save/rewards';
 
 export interface EventRequest {
   mode: ModeId;
@@ -60,7 +64,7 @@ const _listener: Listener = { x: 0, z: 0, rx: 1, rz: 0 };
 const _right = new Vector3();
 const _nearest: Boat[] = [];
 
-export class Game {
+export class Game implements ReplayHost, PhotoHost {
   readonly renderer: Renderer;
   readonly input = new Input();
   readonly audio = new AudioEngine();
@@ -229,6 +233,7 @@ export class Game {
     this.input.sensitivity = s.sensitivity;
     this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');
+    if (this.world) this.world.shadows.mesh.visible = s.shadows;
   }
 
   /** HUD scale = user setting × automatic fit to the viewport (designed at 1440×810). */
@@ -247,6 +252,13 @@ export class Game {
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
     this.tutorial = null;
+    this.replay = null;
+    this.replayData = null;
+    this.recorder = null;
+    this.replayBar?.dispose();
+    this.replayBar = null;
+    this.photo?.dispose();
+    this.photo = null;
     this.hud?.destroy();
     this.hud = null;
     this.world?.dispose();
@@ -259,7 +271,7 @@ export class Game {
   private build(cfg: SessionConfig, weather: WeatherId) {
     this.teardown();
     this.session = new RaceSession(cfg, this.events);
-    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife });
+    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows });
     this.rig.ramps = this.session.track.ramps;
     this.rig.boats = this.session.racers.map((r) => r.boat);
     const scenery = this.world.scenery;
@@ -437,6 +449,8 @@ export class Game {
       const s = this.session!;
       this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings, this.touchEnabled);
       this.tutorial = req.mode === 'tutorial' ? new Tutorial(s) : null;
+      this.recorder = req.mode === 'tutorial' ? null : new ReplayRecorder(s);
+      this.replayData = null;
       this.hud.guide = this.tutorial;
       this.hud.showTutorial = !d.seenTutorial && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'freeride');
       if (this.hud.showTutorial) {
@@ -469,13 +483,125 @@ export class Game {
     this.startEvent({ mode: 'championship', trackId: cup.tracks[ch.round], weather: 'default', laps: 3, difficulty: this.save.data.settings.difficulty, boat: this.save.data.selectedBoat });
   }
 
-  // Filled in by the replay / photo / tutorial / split-screen systems.
-  replayAvailable = false;
+  // ── Replay / photo ──────────────────────────────────────────────────────
+  private recorder: ReplayRecorder | null = null;
+  private replayData: ReplayData | null = null;
+  replay: ReplayPlayer | null = null;
+  private replayBar: ReplayBar | null = null;
+  private replayTargetIdx = 0;
+  private photo: PhotoPanel | null = null;
+  private photoFrom: 'pause' | 'replay' = 'pause';
+  get replayAvailable() {
+    return !!this.replayData && this.replayData.samples > 10;
+  }
   startTutorial() {
     this.startEvent({ mode: 'tutorial', trackId: 'coral', weather: 'clear', laps: 0, difficulty: 'easy', boat: this.save.data.owned.includes(this.save.data.selectedBoat) ? this.save.data.selectedBoat : 'speedster' });
   }
-  photoMode() {}
-  watchReplay() {}
+  watchReplay() {
+    const s = this.session;
+    if (!s || !this.replayData || !this.world) return;
+    this.screens.clear();
+    this.replay = new ReplayPlayer(this.replayData, s);
+    this.replayTargetIdx = 0;
+    this.world.particles.clear();
+    this.rig.endScripted();
+    this.rig.mode = 'cinematic';
+    this.rig.cut();
+    this.replayBar = new ReplayBar(this.ui, this, s.racers[0].name);
+    this.music.setMood('garage');
+  }
+  replayToggle() {
+    if (!this.replay) return;
+    if (!this.replay.playing && this.replay.t >= this.replay.duration) this.replayRestart();
+    this.replay.playing = !this.replay.playing;
+  }
+  replaySpeed(v: number) {
+    if (this.replay) this.replay.speed = v;
+  }
+  replayRestart() {
+    if (!this.replay) return;
+    this.replay.restart();
+    this.replay.playing = true;
+    this.world?.particles.clear();
+    this.rig.cut();
+  }
+  replayCamera() {
+    const i = CAM_MODES.indexOf(this.rig.mode);
+    this.rig.mode = CAM_MODES[(i + 1) % CAM_MODES.length];
+    this.rig.cut();
+    return CAM_LABEL[this.rig.mode];
+  }
+  replayTarget(dir: number) {
+    const s = this.session;
+    if (!s) return '';
+    this.replayTargetIdx = (this.replayTargetIdx + dir + s.racers.length) % s.racers.length;
+    this.rig.cut();
+    return s.racers[this.replayTargetIdx].name;
+  }
+  replayExit() {
+    this.replay = null;
+    this.replayBar?.dispose();
+    this.replayBar = null;
+    this.rig.endScripted();
+    this.rig.startFinish();
+    this.music.setMood('results');
+    if (this.rewards) this.screens.results(this.rewards, true);
+  }
+
+  photoMode() {
+    if (this.state !== 'race' || !this.session || this.photo) return;
+    this.photoFrom = this.replay ? 'replay' : 'pause';
+    if (this.replay) {
+      this.replay.playing = false;
+      this.replayBar?.show(false);
+    } else if (!this.paused) this.pauseGame();
+    this.screens.clear();
+    if (this.hud) this.hud.root.style.display = 'none';
+    this.rig.startFree();
+    this.photo = new PhotoPanel(this.ui, this, this.canvas, this.rig.freeFov);
+  }
+  photoFov(v: number) {
+    this.rig.freeFov = v;
+  }
+  photoRoll(v: number) {
+    this.rig.freeRoll = v;
+  }
+  photoHideBoats(hide: boolean) {
+    if (this.world) this.world.hideBoats = hide;
+  }
+  photoSnap(filter: string) {
+    this.render(0);
+    const src = this.canvas;
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d')!;
+    if (filter) ctx.filter = filter;
+    ctx.drawImage(src, 0, 0);
+    const url = out.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `riptide-photo-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`;
+    a.click();
+    this.save.data.stats.photos++;
+    const ach = checkAchievements(this.save);
+    this.save.save();
+    this.audio.click('select');
+    this.screens.toast('Saved to your downloads', 'PHOTO');
+    ach.forEach((n, i) => setTimeout(() => this.screens.toast(n, 'ACHIEVEMENT'), 600 + i * 700));
+  }
+  photoExit() {
+    if (!this.photo) return;
+    this.photo.dispose();
+    this.photo = null;
+    if (this.world) this.world.hideBoats = false;
+    this.rig.endScripted();
+    this.rig.cut();
+    if (this.hud) this.hud.root.style.display = '';
+    if (this.photoFrom === 'replay' && this.replay) this.replayBar?.show(true);
+    else this.screens.pause();
+    this.input.flush();
+  }
 
   pauseGame() {
     if (this.state !== 'race' || !this.session || this.paused) return;
@@ -590,12 +716,36 @@ export class Game {
         this.input.read(s.player.controls, dt);
         if (this.controlOverride) Object.assign(s.player.controls, this.controlOverride);
       }
-    } else if (racing && this.paused) {
-      this.input.pressed('pause'); // consumed by the pause screen's ESC handler
+    } else if (racing && this.paused && !this.replay) {
+      if (this.input.pressed('pause') && this.photo) {
+        this.photoExit();
+        return;
+      }
     }
 
-    const simDt = racing && this.paused ? 0 : dt * this.timeScale;
-    if (simDt > 0) s.step(simDt);
+    const rp = this.replay;
+    const simDt = rp ? (rp.playing ? dt * rp.speed : 0) : racing && this.paused ? 0 : dt * this.timeScale;
+    if (rp) {
+      if (!this.photo) {
+        if (this.input.pressed('pause')) {
+          this.replayExit();
+          return;
+        }
+        if (this.input.pressed('drift')) this.replayToggle();
+        if (this.input.pressed('camera')) this.replayCamera();
+        if (this.input.pressed('restart')) this.replayRestart();
+        if (this.input.pressed('right')) this.replayBar?.setTarget(this.replayTarget(1));
+        if (this.input.pressed('left')) this.replayBar?.setTarget(this.replayTarget(-1));
+      }
+      rp.update(dt, this.events);
+      this.replayBar?.update(rp.t, rp.duration, rp.playing);
+    } else if (simDt > 0) {
+      s.step(simDt);
+      if (this.recorder && racing) this.recorder.record(simDt, this.events);
+    }
+    if (this.photo) {
+      if (this.input.pressed('confirm')) this.photo.snap();
+    }
     if (racing && this.tutorial && simDt > 0 && s.phase !== 'finished' && s.phase !== 'results') this.tutorial.update(simDt, this.events.list);
     // Touch overlay only while actually racing with no menu up.
     const showTouch = racing && !this.paused && !this.nav.root && this.touchEnabled && s.phase !== 'results' && this.rig.scripted !== 'free';
@@ -610,7 +760,7 @@ export class Game {
         if (this.rig.scripted !== 'intro') this.rig.startIntro();
       } else if (s.phase === 'countdown' || s.phase === 'racing') {
         if (this.rig.scripted === 'intro') this.rig.endScripted();
-      } else if ((s.phase === 'finished' || s.phase === 'results') && !this.finishCamStarted) {
+      } else if ((s.phase === 'finished' || s.phase === 'results') && !this.finishCamStarted && !rp) {
         this.finishCamStarted = true;
         this.rig.startFinish();
       }
@@ -618,14 +768,14 @@ export class Game {
       this.rig.endScripted();
       this.rig.mode = 'cinematic';
     }
-    const target = s.player.boat;
+    const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : s.player.boat;
     if (this.rig.scripted === 'free') this.driveFreeCam(dt);
-    if (simDt > 0 || this.garage || this.rig.scripted === 'free') this.rig.update(simDt || dt, target, s.track, s.time);
+    if (simDt > 0 || this.garage || this.rig.scripted === 'free' || rp) this.rig.update(simDt || dt, target, s.track, s.time);
 
     w.update(simDt, s.time, this.rig, this.events);
     if (this.hud) this.hud.camera = this.rig.camera;
-    if (!racing) {
-      // No screen-space race FX behind menus.
+    if (!racing || this.replay || this.photo) {
+      // No screen-space race FX behind menus, replays or photos.
       const fx = this.renderer.fx;
       fx.speed = fx.radial = fx.chroma = fx.flash = fx.drops = fx.damage = 0;
     }
@@ -671,6 +821,8 @@ export class Game {
     // Results.
     if (racing && s.phase === 'results' && !this.resultsShown) {
       this.resultsShown = true;
+      this.replayData = this.recorder?.finish() ?? null;
+      this.recorder = null;
       this.rewards = applyRewards(s, this.save, { challenge: this.lastReq?.challenge, careerStage: this.lastReq?.careerStage });
       this.hud?.destroy();
       this.hud = null;

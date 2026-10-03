@@ -1113,7 +1113,7 @@ export class Screens {
     );
   }
 
-  results(sum: RewardSummary) {
+  results(sum: RewardSummary, again = false) {
     const g = this.game;
     const s = g.session!;
     const p = s.player;
@@ -1185,6 +1185,12 @@ export class Screens {
         }, 900);
       } else fill.style.width = (sum.xpIntoAfter * 100).toFixed(1) + '%';
     };
+    if (again) {
+      fill.style.transition = 'none';
+      num.textContent = String(sum.levelAfter);
+      fill.style.width = (sum.xpIntoAfter * 100).toFixed(1) + '%';
+      return;
+    }
     setTimeout(step, 400);
     sum.unlocks.forEach((u, i) => setTimeout(() => this.toast(u.split(': ').pop()!, u.includes(':') ? u.split(':')[0] : 'UNLOCKED'), 1200 + i * 700));
     if (sum.levelAfter > sum.levelBefore) setTimeout(() => this.toast(`LEVEL ${sum.levelAfter}`, 'LEVEL UP'), 900);

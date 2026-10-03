@@ -23,6 +23,7 @@ import type { Quality, Renderer } from './renderer';
 import { boatSpec } from '../boat/specs';
 import { BattleVisuals } from './battle';
 import { Wildlife } from './wildlife';
+import { BoatShadows } from './shadows';
 import { blendWeather, WEATHER } from '../environment/weatherDefs';
 
 const _ghost = { x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 };
@@ -42,8 +43,11 @@ export class World {
   readonly ghost: BoatVisual | null;
   readonly battle: BattleVisuals | null;
   readonly wildlife: Wildlife;
+  readonly shadows: BoatShadows;
   weather: WeatherId;
   private blend: { from: WeatherId; to: WeatherId; t: number } | null = null;
+  /** Photo mode: hide every boat. */
+  hideBoats = false;
 
   constructor(
     readonly session: RaceSession,
@@ -51,7 +55,7 @@ export class World {
     events: EventQueue,
     quality: Quality,
     weather: WeatherId,
-    opts: { wildlife?: boolean } = {},
+    opts: { wildlife?: boolean; shadows?: boolean } = {},
   ) {
     this.weather = weather;
     const scene = this.scene;
@@ -85,6 +89,9 @@ export class World {
     this.battle = session.items ? new BattleVisuals(session, session.items) : null;
     if (this.battle) scene.add(this.battle.group);
     this.wildlife = new Wildlife(session, this.particles, opts.wildlife !== false);
+    this.shadows = new BoatShadows(session);
+    this.shadows.mesh.visible = opts.shadows !== false;
+    scene.add(this.shadows.mesh);
     scene.add(this.wildlife.group);
     this.applyWeather(weather);
   }
@@ -147,7 +154,7 @@ export class World {
       v.setLod(d2 > 260 * 260 ? 2 : d2 > 110 * 110 ? 1 : 0);
       v.setDamage(r.boat.damage, i * 17 + 3);
       // Ghosting after respawn: blink.
-      this.visuals[i].root.visible = r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0;
+      this.visuals[i].root.visible = !this.hideBoats && (r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0);
     }
     if (this.ghost && s.mode === 'timetrial') {
       const ok = s.phase === 'racing' && s.player.lap >= 1 && s.ghostPose(s.playerLapTime(), _ghost);
@@ -167,6 +174,7 @@ export class World {
     this.wake.update(time);
     this.battle?.update(time);
     this.wildlife.update(dt, time, cam.position);
+    if (this.shadows.mesh.visible) this.shadows.update(time, this.atmosphere.sunDir, this.weather === 'storm' ? 1 : this.weather === 'night' ? 0.7 : 0);
     this.fx.update(dt, time, rig, this.renderer, events, this.atmosphere.preset.rain * this.atmosphere.rainScale);
     this.particles.update(dt);
     this.particles.setScale(this.renderer.drawingHeight, cam.fov);
@@ -185,6 +193,7 @@ export class World {
     this.ghost?.dispose();
     this.battle?.dispose();
     this.wildlife.dispose();
+    this.shadows.dispose();
     this.scene.clear();
   }
 }

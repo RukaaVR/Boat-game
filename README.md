@@ -6,6 +6,8 @@ no image, model or audio files in the project.
 
 TypeScript · Vite · three.js (WebGL2) · Web Audio API · no backend.
 
+![Frames captured from the game by the screenshot harness](riptide_showcase.png)
+
 ```bash
 npm install
 npm run dev        # → http://localhost:5173

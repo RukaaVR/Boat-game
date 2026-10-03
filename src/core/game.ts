@@ -362,6 +362,7 @@ export class Game implements ReplayHost, PhotoHost {
 
   enterMenu() {
     this.state = 'menu';
+    this.champPendingFinal = false;
     this.paused = false;
     this.garage = false;
     this.audio.stopRace();
@@ -461,7 +462,8 @@ export class Game implements ReplayHost, PhotoHost {
       player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
       ghost: req.mode === 'timetrial' ? (d.ghosts[req.trackId] ?? null) : null,
       champPoints: champ?.points,
-      playerUpgrades: this.save.upgrades(req.boat),
+      // Split-screen is a fair fight: neither player brings garage upgrades.
+      playerUpgrades: req.p2Boat ? undefined : this.save.upgrades(req.boat),
       field: stage ? [stage.boss, ...stage.field] : undefined,
       boss: stage?.boss,
       bossPower: stage?.bossPower,
@@ -557,11 +559,15 @@ export class Game implements ReplayHost, PhotoHost {
     this.replayTargetIdx = 0;
     this.world.particles.clear();
     this.rig.endScripted();
+    this.camBeforeReplay = this.rig.mode;
     this.rig.mode = 'cinematic';
     this.rig.cut();
     this.replayBar = new ReplayBar(this.ui, this, s.racers[0].name);
     this.music.setMood('garage');
+    // Presses that chose WATCH REPLAY must not also pause/exit/cycle it.
+    this.input.flush();
   }
+  private camBeforeReplay: CamMode | null = null;
   replayToggle() {
     if (!this.replay) return;
     if (!this.replay.playing && this.replay.t >= this.replay.duration) this.replayRestart();
@@ -592,6 +598,8 @@ export class Game implements ReplayHost, PhotoHost {
   }
   replayExit() {
     this.replay = null;
+    if (this.camBeforeReplay) this.rig.mode = this.camBeforeReplay;
+    this.camBeforeReplay = null;
     this.replayBar?.dispose();
     this.replayBar = null;
     this.rig.endScripted();
@@ -609,8 +617,11 @@ export class Game implements ReplayHost, PhotoHost {
     } else if (!this.paused) this.pauseGame();
     this.screens.clear();
     if (this.hud) this.hud.root.style.display = 'none';
+    if (this.hud2) this.hud2.root.style.display = 'none';
     this.rig.startFree();
     this.photo = new PhotoPanel(this.ui, this, this.canvas, this.rig.freeFov);
+    // The key that opened photo mode must not also take the first snap.
+    this.input.flush();
   }
   photoFov(v: number) {
     this.rig.freeFov = v;
@@ -758,7 +769,7 @@ export class Game implements ReplayHost, PhotoHost {
         this.restartRace();
         return;
       }
-      if (this.input.pressed('respawn') && s.phase === 'racing') s.respawn(s.player);
+      if (!this.split && this.input.pressed('respawn') && s.phase === 'racing') s.respawn(s.player);
       if (s.phase === 'intro' && (this.input.pressed('confirm') || this.input.pressed('drift'))) s.skipIntro();
       if (this.rig.scripted === 'free') {
         const c = s.player.controls;
@@ -788,8 +799,28 @@ export class Game implements ReplayHost, PhotoHost {
         this.photoExit();
         return;
       }
+      // Pause-menu hotkeys shown next to the buttons.
+      if (!this.photo && this.nav.root && this.screens.current === 'pause') {
+        if (this.input.pressed('restart') && s.mode !== 'championship' && s.mode !== 'tutorial') {
+          this.restartRace();
+          return;
+        }
+        if (this.input.isDown('KeyF') && !this.split) {
+          this.photoMode();
+          return;
+        }
+        if (this.input.pressed('camera')) this.cycleCamera();
+      }
+    }
+    if (racing && !this.replay && s.phase === 'results' && this.screens.current === 'results' && s.mode !== 'championship' && this.input.pressed('restart')) {
+      this.restartRace();
+      return;
     }
 
+    if (this.replay && this.photo && this.input.pressed('pause')) {
+      this.photoExit();
+      return;
+    }
     const rp = this.replay;
     const simDt = rp ? (rp.playing ? dt * rp.speed : 0) : racing && this.paused ? 0 : dt * this.timeScale;
     if (rp) {

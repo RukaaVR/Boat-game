@@ -556,6 +556,8 @@ export class Screens {
     this.setup.laps = s.settings.laps;
     if (fixedTrack) this.setup.trackId = fixedTrack;
     else if (g.save.level < trackDef(this.setup.trackId).unlockLevel) this.setup.trackId = 'coral';
+    // Stunt and endless need a lapped course; sprints are hidden from their list.
+    if ((mode === 'stunt' || mode === 'endless') && trackDef(this.setup.trackId).sprint) this.setup.trackId = 'coral';
     this.mount(
       'setup',
       `<h1 class="h">${modeName(mode)}</h1><div class="sub">${modeBlurb(mode)}</div>
@@ -754,7 +756,7 @@ export class Screens {
       <div style="font-family:var(--font);font-size:28px;font-style:italic;margin:10px 0;color:${place === 1 ? 'var(--gold)' : place === 2 ? 'var(--silver)' : place === 3 ? 'var(--bronze)' : 'var(--dim)'}">${place <= 3 ? medalName(4 - place) + ' TROPHY' : 'NO TROPHY'}</div>
       <div class="reward"><div><span class="n">+${xp}</span><span class="l">XP</span></div><div><span class="n cr">+${credits}</span><span class="l">CREDITS</span></div></div>
       <button class="btn big primary" data-nav data-act="continue" data-default style="margin-top:20px"><span>CONTINUE</span></button></div>`,
-      () => this.game.enterMenu(),
+      () => this.game.afterResults(),
       'screen full',
     );
   }
@@ -1182,7 +1184,7 @@ export class Screens {
       <div class="menu">
         <button class="btn big primary" data-nav data-act="resume" data-default><span>${t('resume')}</span><span class="k">ESC</span></button>
         ${this.game.session?.mode === 'championship' || this.game.session?.mode === 'tutorial' ? '' : `<button class="btn" data-nav data-act="restart"><span>${t('restart')}</span><span class="k">R</span></button>`}
-        <button class="btn" data-nav data-act="photo"><span>${t('photo')}</span><span class="k">F</span></button>
+        ${this.game.split ? '' : `<button class="btn" data-nav data-act="photo"><span>${t('photo')}</span><span class="k">F</span></button>`}
         <button class="btn" data-nav data-act="camera"><span>${t('changeCamera')}</span><span class="k">C</span></button>
         <button class="btn" data-nav data-act="settings" data-arg="pause"><span>${t('settings')}</span></button>
         <button class="btn" data-nav data-act="quit"><span>${t('quit')}</span></button>
@@ -1286,6 +1288,7 @@ export class Screens {
     const close = () => {
       m.remove();
       if (prevRoot?.isConnected) this.game.nav.attach(prevRoot, prevBack);
+      else this.game.nav.detach();
     };
     this.game.nav.attach(m, close, m.querySelector('[data-x="no"]') as HTMLElement);
     m.addEventListener('click', (e) => {
@@ -1314,6 +1317,7 @@ export class Screens {
     const close = () => {
       m.remove();
       if (prevRoot?.isConnected) this.game.nav.attach(prevRoot, prevBack);
+      else this.game.nav.detach();
     };
     this.game.nav.attach(m, close, m.querySelector('[data-x="copy"]') as HTMLElement);
     m.addEventListener('click', (e) => {
@@ -1345,6 +1349,7 @@ export class Screens {
     const close = () => {
       m.remove();
       if (prevRoot?.isConnected) this.game.nav.attach(prevRoot, prevBack);
+      else this.game.nav.detach();
     };
     this.game.nav.attach(m, close, m.querySelector('[data-x="yes"]') as HTMLElement);
     m.addEventListener('click', (e) => {

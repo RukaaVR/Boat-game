@@ -298,7 +298,16 @@ export class Renderer {
     this.compMat.uniforms.uRes.value.set(W, H);
     celShared.uResolution.value.set(W, H);
     // Outlines are specified in CSS pixels; scale with DPR so they look the same everywhere.
-    celShared.uOutlineScale.value = this.pixelRatio;
+    celShared.uOutlineScale.value = this.outlinesEnabled ? this.pixelRatio : 0;
+  }
+  private outlinesOn = true;
+  /** Admin toggle; survives resizes and adaptive-resolution changes. */
+  get outlinesEnabled() {
+    return this.outlinesOn;
+  }
+  set outlinesEnabled(on: boolean) {
+    this.outlinesOn = on;
+    celShared.uOutlineScale.value = on ? this.pixelRatio : 0;
   }
 
   get drawingHeight() {

@@ -111,6 +111,8 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (this.captureNext) {
         e.preventDefault();
+        // Keep menus from also acting on the key being bound (e.g. Esc = back).
+        e.stopImmediatePropagation();
         const f = this.captureNext;
         this.captureNext = null;
         f(e.code);

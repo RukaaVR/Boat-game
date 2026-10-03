@@ -145,6 +145,8 @@ export class TouchControls {
     for (const k of Object.keys(this.held) as Btn[]) this.held[k] = false;
     this.steer = this.pitch = 0;
     this.stickId = -1;
+    this.btnFor.clear();
+    this.base.style.opacity = this.knob.style.opacity = '0';
     this.root.querySelectorAll('.t-btn.on').forEach((b) => b.classList.remove('on'));
   }
 

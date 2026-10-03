@@ -19,7 +19,6 @@ import { CUPS, TRACKS } from '../race/trackDefs';
 import { MAX_LEVEL, sanitizeSave, xpToNext } from '../save/save';
 import { WEATHER, WEATHER_IDS } from '../environment/weatherDefs';
 import { getSeaState, oceanHeight, setSeaState } from '../water/waves';
-import { celShared } from '../render/cel';
 import { maxUpgrades } from '../save/progress';
 
 /** cyrb53 — a small, fast 53-bit string hash. */
@@ -264,7 +263,7 @@ export class AdminPanel {
           ${this.tg('colliders', 'SHOW COLLISION SHAPES', !!this.colliders?.visible)}
           ${this.tg('hud', 'HIDE UI', g.ui.style.visibility === 'hidden')}
           ${this.tg('bloom', 'BLOOM', g.renderer.bloomEnabled)}
-          ${this.tg('outlines', 'OUTLINES', celShared.uOutlineScale.value > 0)}
+          ${this.tg('outlines', 'OUTLINES', this.game.renderer.outlinesEnabled)}
           ${this.tg('autopilot', 'PLAYER AUTOPILOT', !!s?.playerAutopilot)}
           <div class="adm-dim">${r.calls} draw calls · ${(r.triangles / 1000).toFixed(0)}k tris</div>`;
       }
@@ -481,7 +480,7 @@ export class AdminPanel {
         g.renderer.bloomEnabled = !g.renderer.bloomEnabled;
         break;
       case 'outlines':
-        celShared.uOutlineScale.value = celShared.uOutlineScale.value > 0 ? 0 : g.renderer.pixelRatio;
+        g.renderer.outlinesEnabled = !g.renderer.outlinesEnabled;
         break;
       case 'autopilot':
         if (s) s.playerAutopilot = !s.playerAutopilot;
@@ -497,6 +496,13 @@ export class AdminPanel {
     if (this.colliders && this.colliderWorld === w) {
       this.colliders.visible = !this.colliders.visible;
       return;
+    }
+    if (this.colliders) {
+      // Built for an earlier world: free it before building for this one.
+      this.colliders.removeFromParent();
+      this.colliders.geometry.dispose();
+      (this.colliders.material as LineBasicMaterial).dispose();
+      this.colliders = null;
     }
     const pos: number[] = [];
     const N = 24;

@@ -1,7 +1,8 @@
 /**
  * The rider: a jointed figure standing on the deck.
  *
- * Rigid parts per draw call: torso (pelvis + chest + vest), head (neck +
+ * Lofted, anatomically proportioned body (slim racing leathers, full-face
+ * helmet). Rigid parts per draw call: torso (pelvis + chest), head (neck +
  * helmet), and upper arm / forearm / thigh / shin per side. Arms reach the
  * handlebar and legs reach the fixed footholds with two-bone IK, so the whole
  * figure flexes naturally: knees soak up landings, hips shift into turns,
@@ -9,7 +10,7 @@
  * parts mesh because they never move relative to the hull.
  */
 
-import { Group, LatheGeometry, Matrix4, Mesh, type Material, SphereGeometry, Vector2, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, type Material, SphereGeometry, Vector3 } from 'three';
 import { clamp, damp } from '../core/mathx';
 import { addOutline, cel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
@@ -25,93 +26,105 @@ const STEEL = 0x8c96a6;
 
 /** Forward lean of the chest over the hips at rest. */
 const T = 0.25;
-const UPPER_ARM = 0.34;
-const FOREARM = 0.35;
+const UPPER_ARM = 0.3;
+const FOREARM = 0.3;
 const THIGH = 0.46;
 const SHIN = 0.45;
 /** Hip joints relative to the pelvis centre. */
-const HIP_X = 0.11;
+const HIP_X = 0.09;
 const HIP_Y = -0.05;
 
 const leanX = (x: number, y: number, z: number) => new Vector3(x, y * Math.cos(T) - z * Math.sin(T), y * Math.sin(T) + z * Math.cos(T));
 /** Shoulder joints and neck base in torso space (left = +x). */
-const SHOULDER = [leanX(0.25, 0.52, 0), leanX(-0.25, 0.52, 0)];
-const NECK = leanX(0, 0.64, 0.01);
-
-/** Smooth body-of-revolution from a (radius, height) profile, closed at both ends. */
-function lathe(profile: [number, number][], seg = 14) {
-  return new LatheGeometry(
-    profile.map(([r, y]) => new Vector2(r, y)),
-    seg,
-  );
-}
+const SHOULDER = [leanX(0.18, 0.48, -0.005), leanX(-0.18, 0.48, -0.005)];
+const NECK = leanX(0, 0.56, 0.0);
 
 /**
- * A limb segment along +Z from 0 to `len`: rounded caps, a mid-length bulge.
- * Local +Y is the joint's bend direction (elbow tip / kneecap side).
+ * Lofted body part: elliptical cross-sections stacked along an axis, closed
+ * at both ends, with smooth normals. Each section is [along, halfWidth,
+ * halfDepth, offsetDepth]; for the torso the axis is +Y (depth = Z), for
+ * limbs it is +Z (depth = Y, the bend side).
  */
-function limbGeo(len: number, r0: number, rMid: number, r1: number) {
-  const g = lathe([
-    [0, -r0],
-    [r0 * 0.72, -r0 * 0.7],
-    [r0, 0],
-    [rMid, len * 0.38],
-    [(rMid + r1) / 2, len * 0.72],
-    [r1, len],
-    [r1 * 0.72, len + r1 * 0.7],
-    [0, len + r1],
-  ]);
-  g.rotateX(Math.PI / 2);
+function loft(sections: [number, number, number, number][], axis: 'y' | 'z', seg = 16) {
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const n = sections.length;
+  for (const [a, w, d, o] of sections)
+    for (let k = 0; k < seg; k++) {
+      const th = (k / seg) * Math.PI * 2;
+      const u = Math.sin(th) * w;
+      const v = Math.cos(th) * d + o;
+      if (axis === 'y') pos.push(u, a, v);
+      else pos.push(u, v, a);
+    }
+  for (let i = 0; i < n - 1; i++)
+    for (let k = 0; k < seg; k++) {
+      const a = i * seg + k;
+      const b = i * seg + ((k + 1) % seg);
+      const c = a + seg;
+      const d = b + seg;
+      if (axis === 'y') idx.push(a, c, b, b, c, d);
+      else idx.push(a, b, c, b, d, c);
+    }
+  // End caps: a pole slightly beyond each end for a rounded close.
+  const capOf = (si: number, dir: number) => {
+    const [a, w, d, o] = sections[si];
+    const p = pos.length / 3;
+    const ext = Math.min(w, d) * 0.55 * dir;
+    if (axis === 'y') pos.push(0, a + ext, o);
+    else pos.push(0, o, a + ext);
+    for (let k = 0; k < seg; k++) {
+      const x = si * seg + k;
+      const y = si * seg + ((k + 1) % seg);
+      if ((dir > 0) === (axis === 'y')) idx.push(x, p, y);
+      else idx.push(x, y, p);
+    }
+  };
+  capOf(0, -1);
+  capOf(n - 1, 1);
+  // The rings above wind clockwise seen from outside; flip to face outward.
+  for (let t = 0; t < idx.length; t += 3) [idx[t + 1], idx[t + 2]] = [idx[t + 2], idx[t + 1]];
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
   return g;
+}
+
+/** Torso cross-sections from the crotch to the base of the neck. */
+const TORSO: [number, number, number, number][] = [
+  [-0.11, 0.1, 0.08, -0.01],
+  [-0.06, 0.155, 0.11, -0.015], // hips and seat
+  [0.02, 0.16, 0.11, -0.01],
+  [0.1, 0.145, 0.1, 0.0], // waist
+  [0.18, 0.138, 0.098, 0.006],
+  [0.27, 0.15, 0.108, 0.016], // lower ribs
+  [0.36, 0.165, 0.118, 0.022], // chest
+  [0.43, 0.172, 0.112, 0.018],
+  [0.48, 0.168, 0.096, 0.004], // shoulder line
+  [0.52, 0.12, 0.078, 0.0], // trapezius
+  [0.56, 0.058, 0.055, 0.008], // neck base
+];
+
+/** Same shape, inflated a hair, over a height band (suit panels). */
+function band(lo: number, hi: number, grow = 1.04) {
+  const out: [number, number, number, number][] = [];
+  for (const [a, w, d, o] of TORSO) if (a >= lo && a <= hi) out.push([a, w * grow, d * grow, o]);
+  return out;
 }
 
 function buildTorso(liv: Livery) {
   const gb = new GeoBuilder();
-  // Pelvis + belt.
-  gb.sphere(0.165, SUIT, { y: 0.0, sx: 1.25, sy: 0.85, sz: 0.95 }, 14, 8);
-  gb.cyl(0.178, 0.178, 0.07, STRAP, { y: 0.1, sx: 1.2, sz: 0.88 }, 14);
-  gb.box(0.09, 0.06, 0.03, STEEL, { y: 0.1, z: 0.16 });
-  // Suit torso: waist → ribcage → chest → shoulders → neck.
-  gb.add(
-    lathe([
-      [0, 0.04],
-      [0.155, 0.06],
-      [0.16, 0.16],
-      [0.18, 0.28],
-      [0.2, 0.4],
-      [0.2, 0.48],
-      [0.17, 0.56],
-      [0.1, 0.62],
-      [0, 0.64],
-    ]),
-    SUIT,
-    { sx: 1.2, sz: 0.8 },
-  );
-  // Side panels in the livery colour below the vest.
-  for (const s of [-1, 1]) gb.box(0.02, 0.16, 0.12, liv.hull, { x: s * 0.2, y: 0.18, z: 0, rz: s * 0.06 });
-  // Life vest: open shell over chest and back, straps and buckles.
-  gb.add(
-    lathe([
-      [0.19, 0.2],
-      [0.205, 0.3],
-      [0.222, 0.4],
-      [0.218, 0.48],
-      [0.186, 0.56],
-      [0.14, 0.6],
-    ]),
-    liv.accent,
-    { sx: 1.18, sz: 0.86 },
-  );
-  for (const y of [0.27, 0.38]) {
-    gb.cyl(0.226, 0.226, 0.035, STRAP, { y, sx: 1.17, sz: 0.85 }, 16);
-    gb.box(0.07, 0.045, 0.03, STEEL, { y, z: 0.195 });
-  }
-  gb.box(0.025, 0.36, 0.02, STRAP, { y: 0.42, z: 0.19 }); // zip
-  // Back protector with the livery colour, ridged.
-  for (let i = 0; i < 3; i++) gb.box(0.24 - i * 0.03, 0.09, 0.05, liv.hull, { y: 0.29 + i * 0.1, z: -0.185 - i * 0.004 });
-  // Shoulder pads and collar.
-  for (const s of [-1, 1]) gb.sphere(0.1, liv.hull, { x: s * 0.24, y: 0.52, z: 0, sx: 1.15, sy: 0.75 }, 12, 6);
-  gb.torus(0.105, 0.03, liv.accent, { y: 0.6, rx: Math.PI / 2, sy: 0.85 });
+  gb.add(loft(TORSO, 'y', 20), SUIT);
+  // Racing-leathers colour yoke across chest and shoulders, a waist band,
+  // and a spine hump on the back.
+  gb.add(loft(band(0.36, 0.52, 1.035), 'y', 20), liv.hull);
+  gb.add(loft(band(0.1, 0.18, 1.03), 'y', 20), liv.accent);
+  gb.capsule(0.05, 0.22, SUIT_LIGHT, { y: 0.36, z: -0.1, sx: 1.3, sz: 0.6, rx: 0.08 });
+  // Deltoids.
+  for (const s of [-1, 1]) gb.sphere(0.06, liv.hull, { x: s * 0.175, y: 0.47, z: -0.005, sx: 1.05, sy: 1.0 }, 12, 8);
+  // Collar.
+  gb.cyl(0.062, 0.07, 0.04, liv.accent, { y: 0.555, z: 0.008 }, 14);
   const g = gb.build();
   g.rotateX(T);
   return g;
@@ -119,80 +132,169 @@ function buildTorso(liv: Livery) {
 
 function buildHead(liv: Livery) {
   const gb = new GeoBuilder();
-  // Neck up from the pivot; helmet centred above it.
-  gb.cyl(0.062, 0.07, 0.14, SUIT, { y: 0.05 });
-  const hy = 0.2;
-  const hz = 0.05;
-  const shell = { y: hy, z: hz, sy: 1.04, sz: 1.1 };
-  gb.sphere(0.2, liv.hull, shell, 18, 12);
-  // Wrap-around visor with a sky highlight.
-  gb.add(new SphereGeometry(0.206, 18, 6, Math.PI / 2 - 1.05, 2.1, 1.22, 0.52), 0x0f1a2c, shell);
-  gb.add(new SphereGeometry(0.209, 12, 2, Math.PI / 2 - 0.85, 0.55, 1.28, 0.12), 0x7cc4ff, shell);
-  // Visor hinge pivots.
-  for (const s of [-1, 1]) {
-    gb.cyl(0.04, 0.04, 0.03, STRAP, { x: s * 0.198, y: hy + 0.0, z: hz + 0.04, rz: Math.PI / 2 });
-    gb.cyl(0.016, 0.016, 0.035, STEEL, { x: s * 0.205, y: hy + 0.0, z: hz + 0.04, rz: Math.PI / 2 });
-  }
-  // Chin guard, breath vent, crest stripe, top vents, and the lower rim.
-  gb.add(new SphereGeometry(0.212, 18, 4, Math.PI / 2 - 0.85, 1.7, 1.78, 0.4), liv.accent, shell);
-  gb.box(0.1, 0.025, 0.03, STRAP, { y: hy - 0.13, z: hz + 0.225, rx: 0.4 });
-  gb.torus(0.204, 0.028, liv.accent, { y: hy, z: hz, ry: Math.PI / 2, sx: 1.1, sy: 1.04 }, Math.PI);
-  for (const s of [-1, 1]) gb.box(0.03, 0.02, 0.09, STRAP, { x: s * 0.06, y: hy + 0.2, z: hz + 0.07, rx: 0.35 });
-  gb.torus(0.19, 0.022, STRAP, { y: hy - 0.12, z: hz - 0.01, rx: Math.PI / 2, sy: 1.1 });
+  // Neck up from the pivot; a full-face helmet centred above it.
+  gb.cyl(0.048, 0.054, 0.12, SUIT, { y: 0.04 }, 12);
+  const hy = 0.17;
+  const hz = 0.025;
+  const shell = { y: hy, z: hz, sy: 1.06, sz: 1.16 };
+  gb.sphere(0.145, liv.hull, shell, 22, 16);
+  // Visor: a tinted band across the face with a sky highlight.
+  gb.add(new SphereGeometry(0.149, 20, 6, Math.PI / 2 - 0.95, 1.9, 1.2, 0.48), 0x0f1a2c, shell);
+  gb.add(new SphereGeometry(0.151, 10, 2, Math.PI / 2 - 0.75, 0.45, 1.26, 0.1), 0x7cc4ff, shell);
+  // Chin bar, a single crest stripe and the lower rim.
+  gb.add(new SphereGeometry(0.152, 20, 4, Math.PI / 2 - 0.8, 1.6, 1.76, 0.38), liv.accent, shell);
+  gb.torus(0.148, 0.014, liv.accent, { y: hy, z: hz, ry: Math.PI / 2, sx: 1.16, sy: 1.06 }, Math.PI);
+  gb.torus(0.13, 0.016, STRAP, { y: hy - 0.1, z: hz - 0.01, rx: Math.PI / 2, sy: 1.15 });
   return gb.build();
 }
 
 function buildUpperArm(liv: Livery) {
   const gb = new GeoBuilder();
-  gb.add(limbGeo(UPPER_ARM, 0.082, 0.086, 0.066), SUIT);
-  // Elbow pad on the bend side, sleeve stripe.
-  gb.sphere(0.06, liv.hull, { y: 0.045, z: UPPER_ARM, sy: 0.6 }, 10, 6);
-  gb.cyl(0.08, 0.075, 0.03, SUIT_LIGHT, { z: UPPER_ARM * 0.35, rx: Math.PI / 2 }, 12);
+  // Shoulder ball → bicep → elbow. +Y = elbow tip side, so biceps sit in −Y.
+  gb.add(
+    loft(
+      [
+        [-0.02, 0.05, 0.05, 0],
+        [0.04, 0.052, 0.054, -0.002],
+        [0.13, 0.048, 0.054, -0.008],
+        [0.22, 0.042, 0.044, -0.002],
+        [UPPER_ARM, 0.04, 0.04, 0.004],
+      ],
+      'z',
+    ),
+    SUIT,
+  );
+  gb.sphere(0.042, SUIT, { z: UPPER_ARM }, 12, 8);
+  // Sleeve stripe down the outside.
+  gb.box(0.012, 0.03, UPPER_ARM * 0.8, liv.hull, { x: 0.048, z: UPPER_ARM * 0.48 });
   return gb.build();
 }
 
 function buildForearm(liv: Livery) {
   const gb = new GeoBuilder();
-  gb.add(limbGeo(FOREARM, 0.064, 0.07, 0.054), SUIT);
-  // Glove: flared cuff in the livery colour, a fist and thumb.
-  gb.cyl(0.072, 0.064, 0.08, liv.hull, { z: FOREARM - 0.03, rx: Math.PI / 2 }, 12);
-  gb.sphere(0.07, RUBBER, { z: FOREARM + 0.06, sx: 0.85, sy: 0.95, sz: 1.05 }, 12, 8);
-  gb.capsule(0.022, 0.05, RUBBER, { x: 0.0, y: -0.05, z: FOREARM + 0.07, rx: 0.9 });
-  for (let i = 0; i < 3; i++) gb.box(0.11, 0.012, 0.02, 0x2a2e38, { y: 0.06 - i * 0.02, z: FOREARM + 0.11 });
+  gb.add(
+    loft(
+      [
+        [0, 0.04, 0.04, 0],
+        [0.07, 0.046, 0.044, 0.004],
+        [0.17, 0.038, 0.034, 0],
+        [FOREARM - 0.04, 0.032, 0.026, 0],
+      ],
+      'z',
+    ),
+    SUIT,
+  );
+  // Gauntlet glove: cuff, back of hand, curled fingers and thumb.
+  gb.add(
+    loft(
+      [
+        [FOREARM - 0.07, 0.04, 0.036, 0],
+        [FOREARM - 0.02, 0.042, 0.036, 0],
+        [FOREARM + 0.0, 0.036, 0.026, 0],
+      ],
+      'z',
+      12,
+    ),
+    liv.hull,
+  );
+  gb.add(
+    loft(
+      [
+        [FOREARM, 0.03, 0.022, 0],
+        [FOREARM + 0.05, 0.042, 0.026, 0.004],
+        [FOREARM + 0.09, 0.04, 0.03, 0],
+      ],
+      'z',
+      12,
+    ),
+    RUBBER,
+  );
+  for (let f = 0; f < 4; f++) gb.capsule(0.012, 0.03, RUBBER, { x: -0.027 + f * 0.018, y: -0.02, z: FOREARM + 0.1, rx: 1.2 });
+  gb.capsule(0.013, 0.035, RUBBER, { x: 0.03, y: -0.028, z: FOREARM + 0.05, rx: 0.9, rz: -0.4 });
   return gb.build();
 }
 
 function buildThigh(liv: Livery) {
   const gb = new GeoBuilder();
-  gb.add(limbGeo(THIGH, 0.1, 0.112, 0.082), SUIT);
-  // Outer-thigh panel.
-  gb.capsule(0.05, THIGH * 0.5, liv.hull, { x: 0, y: -0.07, z: THIGH * 0.5, rx: Math.PI / 2, sx: 1.4, sy: 1, sz: 0.5 });
+  // Hip → quads (front, +Y) → knee.
+  gb.add(
+    loft(
+      [
+        [-0.03, 0.075, 0.075, 0],
+        [0.05, 0.082, 0.084, 0.004],
+        [0.16, 0.076, 0.08, 0.008],
+        [0.3, 0.064, 0.064, 0.004],
+        [THIGH, 0.05, 0.052, 0.002],
+      ],
+      'z',
+    ),
+    SUIT,
+  );
+  gb.sphere(0.052, SUIT, { z: THIGH }, 12, 8);
+  // Outer-thigh colour panel.
+  gb.add(
+    loft(
+      [
+        [0.06, 0.02, 0.05, 0],
+        [0.2, 0.024, 0.05, 0],
+        [0.36, 0.016, 0.036, 0],
+      ],
+      'z',
+      10,
+    ),
+    liv.hull,
+    { x: -0.07 },
+  );
   return gb.build();
 }
 
 function buildShin(liv: Livery) {
   const gb = new GeoBuilder();
-  gb.add(limbGeo(SHIN, 0.08, 0.086, 0.062), SUIT);
-  // Kneecap pad and a shin guard down the front (+Y = knee side).
-  gb.sphere(0.088, liv.hull, { y: 0.03, z: 0.0, sy: 0.8 }, 12, 8);
-  gb.box(0.11, 0.035, SHIN * 0.62, liv.hull, { y: 0.07, z: SHIN * 0.42 });
-  gb.box(0.07, 0.01, SHIN * 0.5, shade(liv.hull, -0.25), { y: 0.09, z: SHIN * 0.42 });
+  // Knee → calf (back, −Y) → ankle.
+  gb.add(
+    loft(
+      [
+        [0, 0.05, 0.05, 0],
+        [0.1, 0.05, 0.058, -0.012],
+        [0.2, 0.046, 0.052, -0.01],
+        [0.33, 0.036, 0.036, -0.002],
+        [SHIN, 0.034, 0.034, 0],
+      ],
+      'z',
+    ),
+    SUIT,
+  );
+  // Small knee slider in the livery colour.
+  gb.sphere(0.042, liv.hull, { y: 0.03, z: 0.01, sy: 0.6, sz: 1.2 }, 12, 8);
   return gb.build();
 }
 
 /** Boots: static, merged into the hull parts. */
 export function addBoots(gb: GeoBuilder, deck: number, zRider: number) {
   for (const s of [-1, 1]) {
-    const x = s * 0.21;
-    gb.cyl(0.085, 0.09, 0.2, RUBBER, { x, y: deck + 0.13, z: zRider + 0.12 }, 10);
-    gb.box(0.17, 0.11, 0.32, RUBBER, { x, y: deck + 0.08, z: zRider + 0.2 });
-    gb.sphere(0.085, RUBBER, { x, y: deck + 0.07, z: zRider + 0.35, sy: 0.65 }, 10, 6);
-    gb.box(0.18, 0.035, 0.42, 0xd8d8d0, { x, y: deck + 0.02, z: zRider + 0.21 });
-    gb.box(0.175, 0.025, 0.06, 0x8c96a6, { x, y: deck + 0.17, z: zRider + 0.2 }); // buckle strap
+    const x = s * 0.17;
+    // Shaft up the lower shin, then a slim foot with toe cap and sole.
+    gb.cyl(0.044, 0.05, 0.24, RUBBER, { x, y: deck + 0.15, z: zRider + 0.1 }, 14);
+    gb.add(
+      loft(
+        [
+          [-0.06, 0.05, 0.05, 0.02],
+          [0.02, 0.052, 0.055, 0.0],
+          [0.12, 0.048, 0.04, -0.012],
+          [0.2, 0.042, 0.032, -0.02],
+        ],
+        'z',
+        14,
+      ),
+      RUBBER,
+      { x, y: deck + 0.07, z: zRider + 0.1 },
+    );
+    gb.box(0.1, 0.022, 0.3, 0xd8d8d0, { x, y: deck + 0.013, z: zRider + 0.17 });
+    gb.box(0.104, 0.018, 0.05, STEEL, { x, y: deck + 0.18, z: zRider + 0.1 });
   }
 }
 export function foothold(side: number, deck: number, zRider: number) {
-  return new Vector3(side === 0 ? 0.21 : -0.21, deck + 0.17, zRider + 0.12);
+  return new Vector3(side === 0 ? 0.17 : -0.17, deck + 0.19, zRider + 0.1);
 }
 
 const _m = new Matrix4();
@@ -270,7 +372,6 @@ export class Rider {
     const headMesh = new Mesh(buildHead(liv), ghostMat ?? cel('riderHelmet', { vertexColors: true, gloss: 1 }));
     this.head.add(headMesh);
     this.head.position.copy(NECK);
-    this.head.scale.setScalar(0.93);
     this.torso.add(this.head);
     const ua = buildUpperArm(liv);
     const fa = buildForearm(liv);
@@ -279,7 +380,7 @@ export class Rider {
     this.arms = [0, 1].map(() => [new Mesh(ua, mat), new Mesh(fa, mat)] as [Mesh, Mesh]);
     this.legs = [0, 1].map(() => [new Mesh(th, mat), new Mesh(sh, mat)] as [Mesh, Mesh]);
     this.meshes.push(this.torso, headMesh, ...this.arms.flat(), ...this.legs.flat());
-    if (!ghostMat) for (const m of this.meshes) addOutline(m, 2.0);
+    if (!ghostMat) for (const m of this.meshes) addOutline(m, 1.6);
     this.root.add(this.pelvis, ...this.arms.flat(), ...this.legs.flat());
     this.pelvis.position.copy(at.hip);
   }
@@ -368,7 +469,7 @@ export class Rider {
       } else if (b.wipeout > 0) {
         grip.set(sg * 0.85, sh.y + 0.3 + Math.sin(time * 13 + side) * 0.35, sh.z - 0.15);
       } else grip.copy(side === 0 ? this.at.gripL : this.at.gripR);
-      solve(this.arms[side][0], this.arms[side][1], sh.clone(), grip.clone(), UPPER_ARM, FOREARM, _pole.set(sg, -0.75, -0.45));
+      solve(this.arms[side][0], this.arms[side][1], sh.clone(), grip.clone(), UPPER_ARM, FOREARM + 0.05, _pole.set(sg, -0.75, -0.45));
     }
     // Legs: hip → foothold, knees forward and slightly out.
     for (let side = 0; side < 2; side++) {

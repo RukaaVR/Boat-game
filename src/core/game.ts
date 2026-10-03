@@ -81,6 +81,8 @@ export class Game {
   scripted = false;
   private finishCamStarted = false;
   private champPendingFinal = false;
+  /** Smoothed CPU cost of simulation + scene update per frame (excludes GPU work). */
+  cpuMs = 0;
   /** Harness-scripted player controls (merged over live input). */
   controlOverride: Record<string, number | boolean> | null = null;
 
@@ -178,6 +180,8 @@ export class Game {
     this.session = new RaceSession(cfg, this.events);
     this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather);
     this.rig.ramps = this.session.track.ramps;
+    const scenery = this.world.scenery;
+    this.rig.ground = (x, z) => scenery.ground(x, z);
     this.rig.seaLift = Math.max(0, (getSeaState() - 1) * 2.2);
     this.renderTime = 0;
   }
@@ -282,10 +286,21 @@ export class Game {
     w.swapPlayerVisual(new BoatVisual(spec, liv));
     w.wake.setTrailColor(0, liv.trail);
     if (park) {
-      // Park the boat on open water near the start, broadside to the camera.
+      // Park the boat on clear open water near the start, away from statics.
       const g = s.track.gates[0];
-      const off = s.track.width * 0.5 + 30;
-      this.garagePos.set(g.x - Math.cos(g.heading) * off, 0, g.z + Math.sin(g.heading) * off);
+      let found = false;
+      for (let off = s.track.width * 0.5 + 28; off < 220 && !found; off += 12) {
+        for (const side of [1, -1]) {
+          const x = g.x - Math.cos(g.heading) * off * side;
+          const z = g.z + Math.sin(g.heading) * off * side;
+          if (!s.statics.blocked(x, z, 12) && s.track.distToCentre(x, z) > s.track.width * 0.5 + 14) {
+            this.garagePos.set(x, 0, z);
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) this.garagePos.set(g.x, 0, g.z);
       p.boat.place(this.garagePos.x, this.garagePos.z, g.heading);
       settleBoat(p.boat, s.time);
       p.boat.holdTime = 1e9;
@@ -293,7 +308,7 @@ export class Game {
       p.controls.throttle = 0;
       p.controls.steer = 0;
       p.controls.drift = false;
-      this.rig.startOrbit(p.boat.position, 7.5, 2.2);
+      this.rig.startOrbit(p.boat.position, 7.5, 2.2, true);
       this.rig.cut();
     }
   }
@@ -430,7 +445,9 @@ export class Game {
     this.last = now;
     if (!this.scripted) {
       const dt = clamp(realMs / 1000, 0, 1 / 20);
+      const t0 = performance.now();
       this.frame(dt);
+      this.cpuMs = this.cpuMs * 0.95 + (performance.now() - t0) * 0.05;
     }
     this.renderer.sample(realMs, now);
     this.render(clamp(realMs / 1000, 0, 0.05));
@@ -634,6 +651,7 @@ export class Game {
         return {
           fps: r.fps,
           frameMs: r.frameMs,
+          cpuMs: g.cpuMs,
           calls: r.calls,
           triangles: r.triangles,
           pixelRatio: g.renderer.pixelRatio,
@@ -728,6 +746,31 @@ export class Game {
       },
       render() {
         g.render(0);
+      },
+      /** Redraw HUD canvases inside a real animation frame so the compositor commits them. */
+      redrawHud() {
+        return new Promise<void>((res) =>
+          requestAnimationFrame(() => {
+            g.hud?.update(0);
+            g.render(0);
+            res();
+          }),
+        );
+      },
+      /** Orbit the camera around the first prop of a kind (visual verification). */
+      orbitProp(kind: string, radius = 60, height = 20) {
+        const ss = g.session;
+        const pr = ss?.layout.props.find((p) => p.kind === kind);
+        if (!ss || !pr) return false;
+        g.garage = true; // keeps the rig in scripted orbit
+        const off = kind === 'waterfall' ? pr.size * 0.75 : 0;
+        g.rig.startOrbit(new Vector3(pr.x + Math.cos(pr.rot) * off, kind === 'volcano' ? 120 : 6, pr.z + Math.sin(pr.rot) * off), radius, height);
+        g.rig.cut();
+        return true;
+      },
+      gpuMemory() {
+        const info = g.renderer.gl.info;
+        return { geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0 };
       },
       waveCheck() {
         return waveAgreement(g.renderer.gl);

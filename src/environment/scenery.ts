@@ -20,7 +20,6 @@ import {
   Mesh,
   MeshBasicMaterial,
   Object3D,
-  PlaneGeometry,
   Points,
   Quaternion,
   ShaderMaterial,
@@ -150,7 +149,7 @@ uniform float uTime;
 varying vec2 vUv;
 void main() {
   float s = sin(vUv.x * 40.0 + sin(vUv.x * 7.0) * 2.0) * 0.5 + 0.5;
-  float flow = fract(vUv.y * 3.0 + uTime * 1.4 + s * 0.3);
+  float flow = fract(vUv.y * 6.0 - uTime * 1.6 + s * 0.3);
   float streak = smoothstep(0.6, 1.0, flow) * (0.6 + 0.4 * s);
   vec3 col = mix(vec3(0.55, 0.85, 0.95), vec3(1.0), streak);
   float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
@@ -183,6 +182,21 @@ export class Scenery {
   private glow: Points | null = null;
   private glowMat: ShaderMaterial | null = null;
   private disposables: { dispose(): void }[] = [];
+  private islandH: { x: number; z: number; r: number; rot: number; h: (lx: number, lz: number) => number }[] = [];
+
+  /** Exact island ground height at a world point (0 over open water). */
+  ground(x: number, z: number) {
+    for (const is of this.islandH) {
+      const dx = x - is.x;
+      const dz = z - is.z;
+      if (dx * dx + dz * dz > is.r * is.r) continue;
+      // Undo the island's rotateY(rot).
+      const c = Math.cos(is.rot);
+      const s = Math.sin(is.rot);
+      return Math.max(0, is.h(dx * c - dz * s, dx * s + dz * c));
+    }
+    return 0;
+  }
 
   constructor(
     readonly layout: Layout,
@@ -199,11 +213,14 @@ export class Scenery {
 
     // ── Islands: one merged mesh ─────────────────────────────────────────────
     const isl = layout.props.filter((p) => p.kind === 'island');
+    this.islandH = [];
     if (isl.length) {
       const geos = isl.map((p, i) => {
-        const g = P.islandGeometry(p.size, style, theme, track.def.seed + i * 13, p.variant);
+        const m = P.islandGeometry(p.size, style, theme, track.def.seed + i * 13, p.variant);
+        const g = m.geo;
         g.rotateY(p.rot);
         g.translate(p.x, 0, p.z);
+        this.islandH.push({ x: p.x, z: p.z, r: p.size * 1.2, rot: p.rot, h: m.heightAt });
         return g;
       });
       const merged = mergeColored(geos);
@@ -227,8 +244,8 @@ export class Scenery {
       const v = Number(vs);
       if (kind === 'palm') {
         const { trunk, fronds } = P.palmGeometry(v);
-        this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, groundY(layout, p.x, p.z), p.z, p.rot, p.scale], 1.4);
-        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, side: DoubleSide }), list, (p) => [p.x, groundY(layout, p.x, p.z), p.z, p.rot, p.scale], 1.2);
+        this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.4);
+        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, side: DoubleSide }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.2);
         continue;
       }
       if (kind === 'mine') {
@@ -257,7 +274,7 @@ export class Scenery {
         continue;
       }
       const mat = cel(`prop_${kind}`, { vertexColors: true, gloss: kind === 'container' || kind === 'crane' ? 0.4 : 0 });
-      this.instance(geo, mat, list, (p) => [p.x, kind === 'rock' || kind === 'lavarock' ? -0.4 : 0, p.z, p.rot, scaleOf(p)], kind === 'rock' ? 1.8 : 1.6);
+      this.instance(geo, mat, list, (p) => [p.x, kind === 'rock' || kind === 'lavarock' ? -0.4 : kind === 'hut' || kind === 'pine' ? this.ground(p.x, p.z) - 0.3 : 0, p.z, p.rot, scaleOf(p)], kind === 'rock' ? 1.8 : 1.6);
 
       // Lamps and lights that belong to props.
       for (const p of list) {
@@ -479,31 +496,62 @@ export class Scenery {
   }
 
   private addBeam(x: number, y: number, z: number) {
-    const g = new ConeGeometry(9, 80, 16, 1, true);
+    const g = new ConeGeometry(6, 70, 16, 6, true);
     g.rotateZ(Math.PI / 2);
-    g.translate(40, 0, 0);
+    g.translate(35, 0, 0);
+    // Fade along the beam: bright at the lamp, gone at the tip.
+    const pos = g.getAttribute('position');
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const k = Math.pow(1 - Math.min(1, pos.getX(i) / 70), 1.6);
+      col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k;
+    }
+    g.setAttribute('color', new BufferAttribute(col, 3));
     const m = new Mesh(
       g,
-      new MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.12, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, fog: false }),
+      new MeshBasicMaterial({ color: 0xfff2c0, vertexColors: true, transparent: true, opacity: 0.12, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, fog: false }),
     );
     m.position.set(x, y, z);
     this.beams.push(m);
     this.add(m, g, m.material as MeshBasicMaterial);
   }
 
+  /** A cascading ribbon that follows the island's real slope from near the summit to the surf. */
   private buildWaterfall(p: Prop) {
     const r = p.size;
-    const h = r * 0.32 + 8;
-    const g = new PlaneGeometry(6, h, 1, 8);
+    const a = p.rot;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const N = 18;
+    const W = 3.5;
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const idx: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const d = r * (0.22 + 0.9 * t);
+      const cx = p.x + ca * d;
+      const cz = p.z + sa * d;
+      const y = Math.max(-0.4, this.ground(cx, cz)) + 0.6;
+      for (const side of [-1, 1]) {
+        const w = W * (0.6 + 0.6 * t) * side;
+        pos.push(cx - sa * w, y, cz + ca * w);
+        uv.push(side < 0 ? 0 : 1, t);
+      }
+      if (i < N) {
+        const k = i * 2;
+        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+      }
+    }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+    g.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
+    g.setIndex(idx);
     this.fallMat = new ShaderMaterial({ uniforms: { uTime: { value: 0 } }, vertexShader: fallVert, fragmentShader: fallFrag, transparent: true, depthWrite: false, side: DoubleSide });
     const m = new Mesh(g, this.fallMat);
-    const a = p.rot;
-    const d = r * 0.78;
-    m.position.set(p.x + Math.cos(a) * d, h * 0.5, p.z + Math.sin(a) * d);
-    m.rotation.y = -a + Math.PI / 2;
-    m.rotation.x = -0.25;
+    m.renderOrder = 4;
     this.add(m, g, this.fallMat);
-    this.emitters.push({ kind: 'mist', x: p.x + Math.cos(a) * (r * 0.95), y: 0.5, z: p.z + Math.sin(a) * (r * 0.95), rate: 8, radius: 3 });
+    this.emitters.push({ kind: 'mist', x: p.x + ca * r * 1.08, y: 0.5, z: p.z + sa * r * 1.08, rate: 10, radius: 4 });
   }
 
   /** Night factor drives window/lamp intensity. */
@@ -592,19 +640,6 @@ function buildProp(kind: PropKind, v: number, style: ThemeStyle): BufferGeometry
     default:
       return null;
   }
-}
-
-/** Approximate island ground height for placing palms/huts on the slope. */
-function groundY(layout: Layout, x: number, z: number) {
-  for (const is of layout.islands) {
-    const d = Math.hypot(x - is.x, z - is.z) / is.r;
-    if (d < 1) {
-      const peak = is.r * 0.32 + 8;
-      if (d > 0.78) return 0.25 + (1 - d) * 4;
-      return 2.2 + (peak * 0.55 - 2.2) * Math.min(1, (0.78 - d) / 0.23) * 0.85;
-    }
-  }
-  return 0;
 }
 
 function mergeColored(geos: BufferGeometry[]) {

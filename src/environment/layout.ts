@@ -117,7 +117,7 @@ export function buildLayout(track: Track): Layout {
       for (let k = 0; k < palms; k++) {
         const a = rng.range(0, 6.28);
         const d = rng.range(0.2, 0.72) * r;
-        props.push({ kind: 'palm', x: pt.x + Math.cos(a) * d, z: pt.z + Math.sin(a) * d, y: 0, rot: rng.range(0, 6.28), scale: rng.range(0.8, 1.3), size: 0, variant: rng.int(0, 2) });
+        props.push({ kind: 'palm', x: pt.x + Math.cos(a) * d, z: pt.z + Math.sin(a) * d, y: 0, rot: rng.range(0, 6.28), scale: rng.range(1.1, 1.7), size: 0, variant: rng.int(0, 2) });
       }
       if (big && rng.chance(0.7)) {
         const a = rng.range(0, 6.28);

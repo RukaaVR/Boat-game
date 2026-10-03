@@ -59,9 +59,47 @@ const SHOTS = {
   shipyard: { what: 'Shipyard Sprint in daylight', race: { trackId: 'shipyard' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(20, 1 / 30); }) },
   aerial: { what: 'Aerial camera', race: { trackId: 'coral' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(10, 1 / 30); r.camera('aerial'); r.simulate(0.5, 1 / 30); }) },
   bow: { what: 'Bow camera', race: { trackId: 'coral' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(10, 1 / 30); r.camera('bow'); r.simulate(0.5, 1 / 30); }) },
+  stunt: { what: 'Stunt run: ring over a ramp, score HUD', race: { trackId: 'coral', mode: 'stunt' }, run: async (p) => R(p, () => {
+    const r = window.__RIPTIDE__; r.skipIntro(); r.simulate(3.3, 1 / 30); r.placeAtRamp(0, 33); r.setControls({ throttle: 1, steer: 0 });
+    return r.simulateUntil('s.airborne && s.clearance > 3', 6, 1 / 60);
+  }) },
+  endless: { what: 'Endless wave after a minute: rising sea, mines', race: { trackId: 'thunder', mode: 'endless', weather: 'clear' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(45, 1 / 20); }) },
+  freeride: { what: 'Free ride at night', race: { trackId: 'atoll', mode: 'freeride', weather: 'night' }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(10, 1 / 30); }) },
+  ghost: { what: 'Time trial racing a saved ghost', race: { trackId: 'atoll', mode: 'timetrial', laps: 1 }, run: async (p) => {
+    await R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulateUntil("s.phase === 'results'", 140, 1 / 30); r.afterResults(); r.release(); });
+    await R(p, () => window.__RIPTIDE__.startRace({ trackId: 'atoll', mode: 'timetrial', laps: 1 }));
+    return R(p, () => { const r = window.__RIPTIDE__; r.skipIntro(); r.simulate(3.3, 1 / 30); r.setControls({ throttle: 1, steer: 0.06 }); r.simulate(9, 1 / 30); });
+  } },
   finish: { what: 'Finish moment (1-lap race)', race: { trackId: 'atoll', laps: 1 }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); return r.simulateUntil("s.phase === 'finished'", 120, 1 / 30); }) },
   results: { what: 'Results screen (1-lap race)', race: { trackId: 'atoll', laps: 1 }, run: async (p) => R(p, () => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulateUntil("s.phase === 'results'", 140, 1 / 30); r.simulate(0.5, 1 / 30); }) },
 };
+
+// Set pieces (writes prop_<track>_<kind>.png).
+SHOTS.props = { what: 'Orbit shots of set pieces on each theme', run: async (p) => {
+  const list = [['coral', 'waterfall', 45, 38], ['thunder', 'lighthouse', 70, 25], ['thunder', 'bridge', 90, 30], ['neon', 'crane', 80, 30], ['neon', 'bridge', 90, 25], ['cinder', 'volcano', 900, 250], ['thunder', 'wreck', 60, 18]];
+  for (const [track, kind, rad, h] of list) {
+    await R(p, () => window.__RIPTIDE__.release());
+    await R(p, (t) => window.__RIPTIDE__.startRace({ trackId: t }), track);
+    const ok = await R(p, ([k, r2, hh]) => { const r = window.__RIPTIDE__; r.autopilot(true); r.skipIntro(); r.simulate(4, 1 / 30); const ok = r.orbitProp(k, r2, hh); r.hideUi(true); r.simulate(1.5, 1 / 30); return ok; }, [kind, rad, h]);
+    if (!ok) console.log('  ⚠ no prop', kind, 'on', track);
+    await R(p, () => window.__RIPTIDE__.redrawHud());
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: `${out}/prop_${track}_${kind}.png` });
+    await R(p, () => window.__RIPTIDE__.hideUi(false));
+  }
+} };
+
+// Garage previews of every boat (writes boat_<id>.png).
+SHOTS.boats = { what: 'Garage preview of all six boats', run: async (p) => {
+  await R(p, () => { window.__RIPTIDE__.menu(); window.__RIPTIDE__.garage(); });
+  for (const id of ['speedster', 'drifter', 'bullet', 'aero', 'tank', 'breaker']) {
+    await p.click(`[data-act="gboat"][data-arg="${id}"]`);
+    await R(p, () => window.__RIPTIDE__.simulate(1.2, 1 / 30));
+    await R(p, () => window.__RIPTIDE__.redrawHud());
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: `${out}/boat_${id}.png` });
+  }
+} };
 
 if (args.list !== undefined) {
   for (const [k, v] of Object.entries(SHOTS)) console.log(k.padEnd(10), v.what);
@@ -85,7 +123,7 @@ for (const name of names) {
   }
   const res = await shot.run(page);
   if (res && res.ok === false) console.log(`  ⚠ STATE NEVER REACHED for ${name}`);
-  await R(page, () => window.__RIPTIDE__.render());
+  await R(page, () => window.__RIPTIDE__.redrawHud());
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${out}/${name}.png` });
   const st = await R(page, () => window.__RIPTIDE__.stats());

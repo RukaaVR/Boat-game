@@ -59,6 +59,8 @@ export class CameraRig {
   seaLift = 0;
   /** Solid ramps the camera must stay above. */
   ramps: readonly Ramp[] | null = null;
+  /** Terrain height (islands), so the lens never enters a hillside. */
+  ground: ((x: number, z: number) => number) | null = null;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(64, aspect, 0.3, 5000);
@@ -91,9 +93,10 @@ export class CameraRig {
     this.scripted = 'finish';
     this.orbitAngle = 0;
   }
-  startOrbit(target: Vector3, radius: number, height: number) {
+  /** Orbit a point; with `follow`, the rig tracks the live vector (a parked boat bobbing). */
+  startOrbit(target: Vector3, radius: number, height: number, follow = false) {
     this.scripted = 'orbit';
-    this.orbitTarget.copy(target);
+    this.orbitTarget = follow ? target : this.orbitTarget.copy(target);
     this.orbitRadius = radius;
     this.orbitHeight = height;
   }
@@ -266,6 +269,7 @@ export class CameraRig {
         if (along > -2 && along < r.length + 2 && Math.abs(across) < r.width * 0.5 + 2) h = Math.max(h, -0.4 + Math.max(0, Math.min(r.length, along)) * (r.height / r.length));
       }
     }
+    if (this.ground) h = Math.max(h, this.ground(this.pos.x, this.pos.z) + 0.6);
     if (this.pos.y < h + 0.9) this.pos.y = h + 0.9;
     cam.position.copy(this.pos);
     cam.lookAt(this.look);

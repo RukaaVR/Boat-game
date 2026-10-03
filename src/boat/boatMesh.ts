@@ -342,6 +342,8 @@ const _grip = new Vector3();
 
 export class BoatVisual {
   readonly root = new Group();
+  /** Hull-relative content, offset for keel depth. */
+  private body = new Group();
   readonly hull: Mesh;
   readonly parts: Mesh;
   readonly upper = new Group();
@@ -403,7 +405,12 @@ export class BoatVisual {
     );
     this.flame.position.copy(rig.nozzle);
     this.flame.visible = false;
-    this.root.add(this.hull, this.parts, this.upper, this.armL, this.armR, this.lights, this.flame);
+    // Physics floats every hull at one reference draft; lift deeper keels so
+    // each design shows the same waterline (just under the chine).
+    const lift = Math.max(0, shapes[0].depth - 0.36) * 0.9;
+    this.body.position.y = lift;
+    this.body.add(this.hull, this.parts, this.upper, this.armL, this.armR, this.lights, this.flame);
+    this.root.add(this.body);
     this.root.name = `boat_${spec.id}`;
   }
 

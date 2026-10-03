@@ -153,6 +153,10 @@ export class RaceSession {
     this.track = new Track(def);
     this.layout = buildLayout(this.track);
     for (const c of this.layout.colliders) this.statics.add(c);
+    // Gate pylons are solid.
+    const half = this.track.width * 0.5 + 2.5;
+    for (const g of this.track.gates)
+      for (const side of [-1, 1]) this.statics.add({ x: g.x - Math.cos(g.heading) * half * side, z: g.z + Math.sin(g.heading) * half * side, r: 1.8, kind: 'pile' });
     this.buoys = this.layout.buoys;
     this.rings = this.layout.rings;
     this.rng = new Rng(def.seed + 99);

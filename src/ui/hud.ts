@@ -113,7 +113,7 @@ export class Hud {
       `In the air: <b>${k('drift')}</b> + direction for flips & spins, <b>${k('roll')}</b> to barrel roll. Land level!`,
       `<b>${k('camera')}</b> camera · <b>${k('respawn')}</b> respawn · <b>${keyLabel(bindings.pause[0])}</b> pause`,
     ];
-    if (session.mode === 'freeride') this.cpdir.style.display = 'none';
+    if (session.mode === 'freeride' || session.mode === 'stunt') this.cpdir.style.display = 'none';
   }
 
   private set(key: string, v: string | number, fn: () => void) {
@@ -299,7 +299,7 @@ export class Hud {
     }
 
     // Next checkpoint direction.
-    if (s.mode !== 'freeride') {
+    if (s.mode !== 'freeride' && s.mode !== 'stunt') {
       const g = s.track.gates[p.checkpoints % s.track.gates.length];
       const dx = g.x - b.position.x;
       const dz = g.z - b.position.z;

@@ -12,7 +12,13 @@ const _c = new Color();
 const _c2 = new Color();
 
 /** A lumpy island: underwater skirt → beach → slope → crown, coloured by height. */
-export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed: number, variant: number): BufferGeometry {
+export interface IslandMesh {
+  geo: BufferGeometry;
+  /** Exact (jitter-free) ground height at a local, un-rotated offset from the centre. */
+  heightAt(lx: number, lz: number): number;
+}
+
+export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed: number, variant: number): IslandMesh {
   const rng = new Rng(seed);
   const seg = Math.max(28, Math.round(r * 0.9));
   const tall = theme === 'storm' ? 1.9 : theme === 'volcanic' ? 1.3 : theme === 'neon' ? 0.35 : 1;
@@ -34,8 +40,10 @@ export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed
           [1.0, 0.25],
           [0.9, 0.9],
           [0.78, 2.2],
-          [0.55, peak * 0.55],
-          [0.3, peak * 0.9],
+          [0.62, peak * 0.42],
+          [0.45, peak * 0.7],
+          [0.28, peak * 0.9],
+          [0.12, peak * 0.985],
           [0, peak],
         ];
   const rings = prof.length;
@@ -43,13 +51,14 @@ export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed
   const col: number[] = [];
   const phase = rng.range(0, 6.28);
   const wob = [rng.range(0.05, 0.12), rng.range(0.03, 0.08), rng.range(0.02, 0.05)];
+  const shape = (th: number) => 1 + wob[0] * Math.sin(th * 2 + phase) + wob[1] * Math.sin(th * 5 + phase * 2) + wob[2] * Math.sin(th * 11 + phase * 3);
   for (let i = 0; i < rings; i++) {
     for (let a = 0; a <= seg; a++) {
       const th = (a / seg) * Math.PI * 2;
-      const n = 1 + wob[0] * Math.sin(th * 2 + phase) + wob[1] * Math.sin(th * 5 + phase * 2) + wob[2] * Math.sin(th * 11 + phase * 3);
+      const n = shape(th);
       const [f, hgt] = prof[i];
       const rr = r * f * n;
-      const jitter = i > 1 && i < rings - 1 ? rng.range(-0.06, 0.06) * peak : 0;
+      const jitter = i > 1 && i < rings - 1 ? rng.range(-0.025, 0.025) * peak : 0;
       const y = hgt + jitter;
       pos.push(Math.cos(th) * rr, y, Math.sin(th) * rr);
       // Colour by height band.
@@ -85,7 +94,17 @@ export function islandGeometry(r: number, style: ThemeStyle, theme: string, seed
   const ng = g.toNonIndexed();
   ng.computeVertexNormals();
   g.dispose();
-  return ng;
+  const heightAt = (lx: number, lz: number) => {
+    const th = Math.atan2(lz, lx);
+    const d = Math.hypot(lx, lz) / (r * shape(th < 0 ? th + Math.PI * 2 : th));
+    for (let i = 0; i < prof.length - 1; i++) {
+      const [f0, h0] = prof[i];
+      const [f1, h1] = prof[i + 1];
+      if (d <= f0 && d >= f1) return h1 + ((h0 - h1) * (d - f1)) / Math.max(1e-6, f0 - f1);
+    }
+    return d > prof[0][0] ? -3 : prof[prof.length - 1][1];
+  };
+  return { geo: ng, heightAt };
 }
 
 export function rockGeometry(variant: number, style: ThemeStyle): BufferGeometry {

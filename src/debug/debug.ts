@@ -73,7 +73,7 @@ export class DebugOverlay {
     const b = p?.boat;
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
     const lines = [
-      `FPS ${r.fps.toFixed(0).padStart(3)}  frame ${r.frameMs.toFixed(2)} ms  median ${r.medianMs.toFixed(2)} ms`,
+      `FPS ${r.fps.toFixed(0).padStart(3)}  frame ${r.frameMs.toFixed(2)} ms  median ${r.medianMs.toFixed(2)} ms  sim+update ${g.cpuMs.toFixed(2)} ms`,
       `draw calls ${r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  dpr ${g.renderer.pixelRatio.toFixed(2)}${g.renderer.adaptive ? ' (auto)' : ''}  q=${g.renderer.quality}`,
       `heap ${mem ? (mem.usedJSHeapSize / 1048576).toFixed(1) + ' MB' : 'n/a'}  geoms ${g.renderer.gl.info.memory.geometries} tex ${g.renderer.gl.info.memory.textures}`,
       `particles ${g.world?.particles.active ?? 0}  sea ${getSeaState().toFixed(2)}  state ${g.state}/${s?.phase ?? '-'}`,

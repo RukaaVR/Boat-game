@@ -84,12 +84,14 @@ void main() {
   float streak = texture2D(uFoamMap, vec2(vInfo.y * 0.35 + 0.5, age * 3.0)).b;
   float bub = texture2D(uFoamMap, vXZ * 0.35).r;
   float arms = smoothstep(0.7, 0.92, e) * (1.0 - smoothstep(0.92, 1.0, e));
-  float centre = (1.0 - smoothstep(0.0, 0.5, e)) * (1.0 - smoothstep(0.0, 0.3, age));
-  float body = (1.0 - smoothstep(0.3, 0.95, e)) * (1.0 - smoothstep(0.1, 0.6, age)) * 0.35;
-  float breakup = smoothstep(0.25, 0.75, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.3);
-  float a = (arms * 0.8 + centre * 0.8 + body * streak) * breakup;
-  a += centre * bub * 0.25;
-  a *= str * pow(1.0 - age, 1.6) * 0.75;
+  float centre = (1.0 - smoothstep(0.0, 0.32, e)) * (1.0 - smoothstep(0.0, 0.3, age));
+  float body = (1.0 - smoothstep(0.3, 0.95, e)) * (1.0 - smoothstep(0.1, 0.6, age)) * 0.3;
+  float breakup = smoothstep(0.3, 0.78, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.2);
+  // Churned centre is broken into streaks so it never reads as a solid band.
+  float churn = centre * smoothstep(0.35, 0.7, streak * 0.7 + n2 * 0.5);
+  float a = (arms * 0.75 + body * streak) * breakup + churn * 0.6;
+  a += centre * bub * 0.12;
+  a *= str * pow(1.0 - age, 1.6) * 0.7;
   if (a < 0.02) discard;
   vec3 col = mix(uFoam, vColor, 0.18 * (1.0 - age));
   float d = length(cameraPosition.xz - vXZ) * uFogDensity;

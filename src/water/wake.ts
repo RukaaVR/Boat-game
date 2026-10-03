@@ -88,9 +88,8 @@ void main() {
   float body = (1.0 - smoothstep(0.3, 0.95, e)) * (1.0 - smoothstep(0.1, 0.6, age)) * 0.3;
   float breakup = smoothstep(0.3, 0.78, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.2);
   // Churned centre is broken into streaks so it never reads as a solid band.
-  float churn = centre * smoothstep(0.35, 0.7, streak * 0.7 + n2 * 0.5);
-  float a = (arms * 0.75 + body * streak) * breakup + churn * 0.6;
-  a += centre * bub * 0.12;
+  float churn = centre * smoothstep(0.35, 0.7, streak * 0.7 + n2 * 0.5) * (0.45 + 0.55 * bub);
+  float a = (arms * 0.75 + body * streak) * breakup + churn * 0.55;
   a *= str * pow(1.0 - age, 1.6) * 0.7;
   if (a < 0.02) discard;
   vec3 col = mix(uFoam, vColor, 0.18 * (1.0 - age));

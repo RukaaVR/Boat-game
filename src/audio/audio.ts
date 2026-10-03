@@ -103,6 +103,28 @@ export class AudioEngine {
     this.setVolumes(this.volumes.master, this.volumes.music, this.volumes.sfx);
   }
 
+  private analyser: AnalyserNode | null = null;
+  private meterBuf: Float32Array<ArrayBuffer> | null = null;
+
+  /** Output meter (tests/debug): RMS and absolute peak of the master bus right now. */
+  meter() {
+    if (!this.ctx) return { rms: 0, peak: 0, state: 'none' };
+    if (!this.analyser) {
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.comp.connect(this.analyser);
+      this.meterBuf = new Float32Array(this.analyser.fftSize);
+    }
+    this.analyser.getFloatTimeDomainData(this.meterBuf!);
+    let s = 0;
+    let p = 0;
+    for (const v of this.meterBuf!) {
+      s += v * v;
+      p = Math.max(p, Math.abs(v));
+    }
+    return { rms: Math.sqrt(s / this.meterBuf!.length), peak: p, state: this.ctx.state };
+  }
+
   get ready() {
     return !!this.ctx && this.ctx.state === 'running';
   }

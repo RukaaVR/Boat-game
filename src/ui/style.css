@@ -73,7 +73,7 @@ h1.h {
 .sub { color: var(--dim); font-size: 14px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 18px; }
 
 /* ── Buttons ─────────────────────────────────────────────────────────── */
-.menu { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; width: min(430px, 90vw); }
+.menu { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; width: min(430px, 52vw); }
 .btn {
   position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   font-family: var(--font); font-style: italic; font-size: 20px; letter-spacing: 1.5px; color: var(--text);
@@ -102,7 +102,7 @@ h1.h {
 
 /* ── Profile card ────────────────────────────────────────────────────── */
 .profile {
-  position: absolute; right: clamp(16px, 3vw, 44px); top: clamp(16px, 3vw, 44px); width: min(330px, 40vw);
+  position: absolute; right: clamp(16px, 3vw, 44px); top: clamp(16px, 3vw, 44px); width: min(330px, 34vw);
   background: var(--panel); padding: 14px 18px; transform: skewX(-8deg); border-right: 4px solid var(--cyan);
 }
 .profile > * { transform: skewX(8deg); }
@@ -190,8 +190,8 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .hud { position: absolute; inset: 0; font-family: var(--font); font-style: italic; }
 .hud .tl { position: absolute; left: calc(18px * var(--hud)); top: calc(14px * var(--hud)); transform-origin: top left; transform: scale(var(--hud)); }
 .hud .tc { position: absolute; left: 50%; top: 12px; transform: translateX(-50%) scale(var(--hud)); transform-origin: top center; text-align: center; }
-.hud .tr { position: absolute; right: 18px; top: 14px; transform-origin: top right; transform: scale(var(--hud)); }
-.hud .br { position: absolute; right: 22px; bottom: 18px; transform-origin: bottom right; transform: scale(var(--hud)); text-align: right; }
+.hud .tr { position: absolute; right: calc(18px * var(--hud)); top: calc(14px * var(--hud)); transform-origin: top right; transform: scale(var(--hud)); }
+.hud .br { position: absolute; right: calc(22px * var(--hud)); bottom: calc(18px * var(--hud)); transform-origin: bottom right; transform: scale(var(--hud)); text-align: right; }
 .hud .bl { position: absolute; left: 22px; bottom: 18px; transform-origin: bottom left; transform: scale(var(--hud)); }
 .pos { font-size: 64px; line-height: .85; text-shadow: 4px 4px 0 rgba(0,0,0,.45); }
 .pos sup { font-size: 24px; vertical-align: top; margin-left: 2px; }
@@ -241,7 +241,7 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .trick-score { font-size: 22px; color: var(--yellow); }
 .modebox { margin-top: 10px; background: rgba(5,10,30,.5); padding: 6px 12px; font-size: 18px; transform: skewX(-10deg); }
 .modebox b { color: var(--yellow); }
-.tutorial { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); font-family: var(--font2); font-style: normal; font-weight: 700; background: rgba(5,10,30,.65); padding: 10px 16px; font-size: 14px; letter-spacing: .5px; text-align: center; transition: opacity .5s; max-width: 90vw; }
+.tutorial { position: absolute; left: 50%; bottom: calc(150px * var(--hud)); transform: translateX(-50%); max-width: min(560px, 62vw); font-family: var(--font2); font-style: normal; font-weight: 700; background: rgba(5,10,30,.65); padding: 10px 16px; font-size: 14px; letter-spacing: .5px; text-align: center; transition: opacity .5s; max-width: 90vw; }
 .tutorial b { color: var(--ink); background: var(--cyan); padding: 1px 6px; margin: 0 2px; }
 .camlabel { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); font-size: 16px; letter-spacing: 3px; background: rgba(5,10,30,.55); padding: 6px 14px; transition: opacity .4s; }
 
@@ -253,12 +253,9 @@ table.res td.t { font-variant-numeric: tabular-nums; text-align: right; font-fam
 .modal .panel { max-width: 480px; text-align: center; }
 
 @media (max-width: 760px) {
-  .minimap { width: 140px; height: 140px; }
-  .pos { font-size: 46px; }
-  .speed { font-size: 50px; }
-  .gauge { width: 160px; }
   .standings { display: none; }
   .profile { position: static; width: auto; margin-bottom: 10px; }
+  .menu { width: min(430px, 92vw); }
 }
 @media (max-height: 640px) {
   .btn { padding: 9px 18px; font-size: 17px; }

@@ -154,11 +154,18 @@ export class Game {
     this.rig.shakeScale = s.shake;
     this.input.bindings = structuredClone(s.bindings);
     this.input.sensitivity = s.sensitivity;
-    document.documentElement.style.setProperty('--hud', String(s.hudScale));
+    this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');
   }
 
+  /** HUD scale = user setting × automatic fit to the viewport (designed at 1440×810). */
+  private applyHudScale() {
+    const fit = clamp(Math.min(window.innerWidth / 1440, window.innerHeight / 810), 0.72, 1.15);
+    document.documentElement.style.setProperty('--hud', (this.save.data.settings.hudScale * fit).toFixed(3));
+  }
+
   private onResize() {
+    this.applyHudScale();
     this.renderer.resize();
     this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight));
     this.hud?.resize();
@@ -767,6 +774,12 @@ export class Game {
         g.rig.startOrbit(new Vector3(pr.x + Math.cos(pr.rot) * off, kind === 'volcano' ? 120 : 6, pr.z + Math.sin(pr.rot) * off), radius, height);
         g.rig.cut();
         return true;
+      },
+      audioMeter() {
+        return g.audio.meter();
+      },
+      musicMood() {
+        return g.music.mood;
       },
       gpuMemory() {
         const info = g.renderer.gl.info;

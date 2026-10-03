@@ -311,7 +311,7 @@ await test('settings persist and apply', async () => {
   await P.click(`[data-act="sset"][data-arg='units:"mph"']`);
   await P.click('[data-act="stab"][data-arg="video"]');
   await P.click(`[data-act="sset"][data-arg='quality:"medium"']`);
-  await P.waitForTimeout(500);
+  await P.waitForFunction(() => JSON.parse(localStorage.getItem('riptide.save.v1')).settings.quality === 'medium', null, { timeout: 20000 });
   const st = await P.evaluate(() => JSON.parse(localStorage.getItem('riptide.save.v1')).settings);
   assert(st.units === 'mph' && st.quality === 'medium', JSON.stringify(st));
 });

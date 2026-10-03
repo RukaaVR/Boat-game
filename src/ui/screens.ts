@@ -727,8 +727,9 @@ export class Screens {
         const key = arg.slice(0, i) as keyof Settings;
         (s as unknown as Record<string, unknown>)[key] = JSON.parse(arg.slice(i + 1));
         g.audio.click('move');
+        // Persist first: applying (e.g. a quality change) may rebuild the scene.
+        g.save.save(true);
         g.applySettings();
-        g.save.save();
         this.refreshSettings();
         const again = this.root?.querySelector(`[data-act="sset"][data-arg='${arg}']`) as HTMLElement | null;
         if (again) g.nav.focus(again, false);

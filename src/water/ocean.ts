@@ -8,12 +8,16 @@
  *
  * Displacement: `WAVE_GLSL` from waves.ts — the same field the boats float on.
  *
- * Shading (stylized, not photoreal): deep→mid colour by height and facing,
- * subsurface glow through crests toward the sun, shallows and surf around
- * islands from a generated distance map, Jacobian whitecaps broken up by a
- * cellular foam texture, sky reflection by Fresnel, hard-edged sun glints,
- * up to eight coloured light reflections (neon / lighthouses / lava) and fog
- * that resolves to the sky's horizon colour so the seam disappears.
+ * Shading (toon / cel, "Wind Waker" style): one flat sea colour with a crisp
+ * shadow tone on wave backs and a crisp lit tone on crests; a drifting web of
+ * thin wobbly white cell lines (animated Voronoi edges, anti-aliased with
+ * fwidth and faded out before they alias); flat white whitecaps and distant
+ * crest squiggles with hard edges; banded lagoon shallows and stepped surf
+ * lines around islands from a generated distance map; a single lighter sky
+ * band at grazing angles instead of a mirror reflection; star-like sun
+ * sparkles; up to eight coloured light reflections (neon / lighthouses /
+ * lava) and fog that resolves to the sky's horizon colour so the seam
+ * disappears.
  */
 
 import {
@@ -118,6 +122,7 @@ uniform float uFogDensity;
 uniform float uAmp;
 uniform float uFlash;
 uniform float uFoamAmount;
+uniform float uCells;
 uniform sampler2D uNormalMap;
 uniform sampler2D uFoamMap;
 uniform sampler2D uShore;
@@ -130,83 +135,127 @@ varying vec3 vNrm;
 varying float vJac;
 varying float vDist;
 
+vec2 cellHash(vec2 p) {
+  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+  return fract(sin(p) * 43758.5453);
+}
+
+// Distance to the nearest Voronoi cell border (two-pass, 3x3 each). The
+// feature points orbit slowly, so the web of lines drifts and re-forms.
+float cellEdge(vec2 x, float t) {
+  vec2 n = floor(x);
+  vec2 f = fract(x);
+  vec2 mg = vec2(0.0);
+  vec2 mr = vec2(0.0);
+  float md = 8.0;
+  for (int j = -1; j <= 1; j++)
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 o = 0.5 + 0.42 * sin(t + 6.2831 * cellHash(n + g));
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < md) { md = d; mr = r; mg = g; }
+    }
+  md = 8.0;
+  for (int j = -1; j <= 1; j++)
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = mg + vec2(float(i), float(j));
+      vec2 o = 0.5 + 0.42 * sin(t + 6.2831 * cellHash(n + g));
+      vec2 r = g + o - f;
+      vec2 dr = r - mr;
+      if (dot(dr, dr) > 1e-5) md = min(md, dot(0.5 * (mr + r), normalize(dr)));
+    }
+  return md;
+}
+
 void main() {
   vec3 N = normalize(vNrm);
   float near = 1.0 - smoothstep(40.0, 420.0, vDist);
   vec2 uv1 = vWorld.xz * 0.043 + uTime * vec2(0.021, 0.012);
-  vec2 uv2 = vWorld.xz * 0.117 + uTime * vec2(-0.016, 0.024);
   vec3 m1 = texture2D(uNormalMap, uv1).xyz * 2.0 - 1.0;
-  vec3 m2 = texture2D(uNormalMap, uv2).xyz * 2.0 - 1.0;
-  vec2 micro = (m1.xy * 0.6 + m2.xy * 0.4) * uMicro * (0.25 + 0.75 * near);
-  N = normalize(N + vec3(micro.x, 0.0, micro.y));
+  // Micro ripples only perturb the glint normal; the body stays flat-coloured.
+  vec3 Ng = normalize(N + vec3(m1.x, 0.0, m1.y) * uMicro * 0.6 * (0.25 + 0.75 * near));
 
   vec3 toCam = cameraPosition - vWorld;
   vec3 V = normalize(toCam);
   float ndv = max(dot(N, V), 0.0);
 
-  // ── Body colour ───────────────────────────────────────────────────────────
+  // Low-frequency breakup shared by several layers.
+  vec4 fm2 = texture2D(uFoamMap, vWorld.xz * 0.021 - vec2(0.0, uTime * 0.006));
+  vec4 fm = texture2D(uFoamMap, vWorld.xz * 0.09 + vec2(uTime * 0.01, 0.0));
+
+  // ── Toon body: one flat colour, a crisp shadow tone, a crisp lit tone ─────
   float h = clamp(vWorld.y / max(uAmp, 0.2), -1.0, 1.0);
-  float facing = clamp(N.y, 0.0, 1.0);
-  vec3 body = mix(uDeep, uMid, smoothstep(-0.6, 0.9, h) * 0.8 + (1.0 - facing) * 0.6);
-
-  // Stylised banded light (cel water): three soft steps.
   float ndl = dot(N, uSunDir);
-  float band = 0.82 + 0.1 * smoothstep(0.1, 0.25, ndl) + 0.08 * smoothstep(0.55, 0.7, ndl);
-  body *= band;
+  // Wave backs turned from the sun drop to the shadow tone (hard edge).
+  float shade = smoothstep(0.02, 0.07, ndl + h * 0.18 + 0.1);
+  vec3 body = mix(uDeep, uMid, 0.35 + 0.65 * shade);
+  // Lit wave tops step up to the bright crest tone.
+  float lift = smoothstep(0.5, 0.56, h + (fm2.g - 0.5) * 0.35) * shade;
+  body = mix(body, uCrest, lift * 0.6);
 
-  // Subsurface glow: light through thin crests, strongest looking toward the sun.
-  float sss = pow(clamp(dot(V, -uSunDir) * 0.5 + 0.5, 0.0, 1.0), 3.0);
-  float thin = smoothstep(0.0, 0.9, h) * (1.0 - facing * 0.6);
-  body += uCrest * thin * (0.35 + 0.9 * sss);
-
-  // ── Shallows and surf around islands ──────────────────────────────────────
+  // ── Shallows around islands ───────────────────────────────────────────────
   vec2 suv = (vWorld.xz - uShoreRect.xy) * uShoreRect.zw;
   vec4 shore = texture2D(uShore, suv);
   float shallow = shore.r;
   float sd = shore.g * 80.0; // metres from the island edge
-  body = mix(body, uShallow, shallow * 0.85);
+  // Banded rather than graded: a lagoon ring, then the open-sea colour.
+  float shelf = smoothstep(0.32, 0.38, shallow) * 0.55 + smoothstep(0.68, 0.74, shallow) * 0.4;
+  body = mix(body, uShallow, shelf);
 
-  // ── Reflection ───────────────────────────────────────────────────────────
-  vec3 R = reflect(-V, N);
-  R.y = abs(R.y);
-  vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.55, R.y));
-  float fres = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
-  fres = smoothstep(0.0, 0.9, fres) * 0.85;
-  vec3 col = mix(body, sky, fres);
+  // ── Sky: one flat, lighter band toward grazing angles (no mirror) ────────
+  float fres = pow(1.0 - ndv, 4.0);
+  vec3 skyTint = mix(uSkyHorizon, uSkyTop, 0.25);
+  vec3 col = mix(body, mix(body, skyTint, 0.5), smoothstep(0.55, 0.62, fres) * 0.6);
 
-  // ── Sun glints: hard-edged, stylised ────────────────────────────────────────
+  // ── Cell lines: wobbly white web drifting over the surface ───────────────
+  vec2 cp = vWorld.xz * 0.12;
+  cp += 0.28 * vec2(sin(cp.y * 1.7 + uTime * 0.6), sin(cp.x * 1.9 - uTime * 0.5));
+  cp += vec2(uTime * 0.035, uTime * 0.02);
+  float edge = cellEdge(cp, uTime * 0.35);
+  float px = length(fwidth(cp));
+  float lw = 0.03 + px * 0.3;
+  float line = 1.0 - smoothstep(lw - px * 0.6, lw + px * 0.6, edge);
+  // Patchy, and gone before the web gets finer than a few pixels (no moire).
+  float patchy = smoothstep(0.15, 0.4, fm2.r * 0.6 + fm2.g * 0.6);
+  float cellFade = 1.0 - smoothstep(0.07, 0.2, px);
+  col = mix(col, uFoam, line * patchy * cellFade * uCells * 0.9);
+
+  // ── Sun glints: little star sparkles ─────────────────────────────────────
+  vec3 R = reflect(-V, Ng);
   float sp = max(dot(R, uSunDir), 0.0);
-  float glint = smoothstep(0.985, 0.992, sp) * 1.4 + pow(sp, 300.0) * 2.0;
-  col += uSunColor * glint * uSunGlint * (0.4 + 0.6 * near);
+  float glint = step(0.993, sp) * step(0.55, fm.r);
+  col = mix(col, uSunColor * 1.3 + 0.2, clamp(glint * uSunGlint * (0.4 + 0.6 * near), 0.0, 1.0));
 
   // ── Coloured light reflections (neon, lighthouses, lava) ──────────────────
+  vec3 Rl = reflect(-V, N);
   for (int i = 0; i < ${MAX_WATER_LIGHTS}; i++) {
     vec4 L = uLightPos[i];
     if (L.w <= 0.0) continue;
     vec3 Ld = L.xyz - vWorld;
     float d = length(Ld);
-    float rs = max(dot(R, Ld / d), 0.0);
-    // Stretch vertically by weighting the horizontal mismatch more: reads as a streak.
-    float streak = pow(rs, 90.0) * 2.4 + pow(rs, 12.0) * 0.12;
+    float rs = max(dot(Rl, Ld / d), 0.0);
+    float streak = smoothstep(0.994, 0.996, rs) * 1.2 + pow(rs, 12.0) * 0.1;
     col += uLightCol[i] * streak * L.w * (220.0 / (d + 220.0));
   }
 
-  // ── Foam ────────────────────────────────────────────────────────────────
-  vec4 fm = texture2D(uFoamMap, vWorld.xz * 0.17 + vec2(uTime * 0.01, 0.0));
-  vec4 fm2 = texture2D(uFoamMap, vWorld.xz * 0.031 - vec2(0.0, uTime * 0.008));
-  float cap = smoothstep(0.9, 0.5, vJac) * uFoamAmount;
-  // Soft noise sets where foam survives; the fine bubble web only adds texture inside it.
-  float capMask = cap * smoothstep(0.42, 0.7, fm2.g + cap * 0.35) * (0.55 + 0.45 * fm.r);
+  // ── Foam: flat white caps with crisp edges ───────────────────────────────
+  float cap = smoothstep(0.92, 0.55, vJac) * uFoamAmount;
+  float capMask = smoothstep(0.9, 0.94, cap * 0.7 + fm2.g * 0.4 + fm.r * 0.2);
+  // Distant crests: curly white squiggles riding the swell tops.
+  float far = smoothstep(70.0, 200.0, vDist);
+  float curl = sin(vWorld.x * 0.11 + vWorld.z * 0.05 + fm2.g * 6.0) * 0.5 + 0.5;
+  float squig = smoothstep(0.8, 0.83, h * 0.7 + curl * 0.3 + fm2.r * 0.25) * far;
   // Surf lines rolling toward each shore.
   float surf = 0.0;
   if (sd < 28.0) {
     float wave = fract(sd / 9.0 + uTime * 0.18);
-    surf = smoothstep(0.82, 0.92, wave) * (1.0 - sd / 28.0);
-    surf += (1.0 - smoothstep(0.0, 3.5, sd)) * 0.9;
-    surf *= smoothstep(0.2, 0.55, fm2.g + 0.25);
+    surf = step(0.9, wave) * step(sd, 14.0) * step(0.5, fm.g);
+    surf += 1.0 - smoothstep(1.6, 2.0, sd + fm.r * 1.5);
+    surf *= step(0.42, fm2.g + 0.25);
   }
-  float foam = clamp(capMask + surf, 0.0, 1.0);
-  col = mix(col, uFoam * (0.85 + 0.15 * band), foam * 0.92);
+  float foam = clamp(capMask + squig + surf, 0.0, 1.0);
+  col = mix(col, uFoam, foam * 0.95);
 
   // Lightning.
   col += vec3(0.45, 0.52, 0.7) * uFlash * (0.15 + 0.5 * fres);
@@ -215,7 +264,7 @@ void main() {
   float fd = uFogDensity * vDist;
   float fog = 1.0 - exp(-fd * fd);
   float sunward = pow(max(dot(normalize(-toCam), uSunDir), 0.0), 6.0);
-  vec3 fogCol = uFogColor + uSunColor * sunward * 0.25;
+  vec3 fogCol = uFogColor + uSunColor * sunward * 0.15;
   col = mix(col, fogCol, fog);
 
   gl_FragColor = vec4(col, 1.0);
@@ -259,6 +308,7 @@ export class Ocean {
         uFlash: { value: 0 },
         uFoamAmount: { value: 1 },
         uMicro: { value: 0.35 },
+        uCells: { value: 1 },
         uNormalMap: { value: waterNormalMap() },
         uFoamMap: { value: foamTexture() },
         uShore: { value: blank },

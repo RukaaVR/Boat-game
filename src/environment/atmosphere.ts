@@ -182,14 +182,20 @@ export class Atmosphere {
       const ou = ocean.material.uniforms;
       ou.uDeep.value.setHex(w.waterDeep);
       ou.uMid.value.setHex(w.waterMid);
-      ou.uShallow.value.setHex(theme === 'volcanic' ? 0x2a4a4a : theme === 'arctic' ? 0x6cc2d6 : theme === 'jungle' ? 0x4a8a52 : theme === 'canal' ? 0x3f7d72 : w.waterShallow);
-      // River and canal water is greener and murkier than the open sea.
+      ou.uCrest.value.setHex(w.waterCrest);
+      ou.uShallow.value.setHex(theme === 'volcanic' ? 0x3a6a72 : theme === 'arctic' ? 0x8ae0f0 : theme === 'jungle' ? 0x4cc8a4 : theme === 'canal' ? 0x52b8b4 : w.waterShallow);
+      // River and canal water is a greener teal than the open sea.
       if (theme === 'jungle' || theme === 'canal') {
-        ou.uDeep.value.setHex(w.waterDeep).lerp(_c.setHex(theme === 'jungle' ? 0x1a3a22 : 0x173a3a), 0.6);
-        ou.uMid.value.setHex(w.waterMid).lerp(_c.setHex(theme === 'jungle' ? 0x2e6a3a : 0x2a5a58), 0.6);
+        ou.uDeep.value.setHex(w.waterDeep).lerp(_c.setHex(theme === 'jungle' ? 0x167a6a : 0x1a6478), 0.6);
+        ou.uMid.value.setHex(w.waterMid).lerp(_c.setHex(theme === 'jungle' ? 0x20a090 : 0x2a92a2), 0.6);
+        ou.uCrest.value.setHex(w.waterCrest).lerp(_c.setHex(theme === 'jungle' ? 0x5cd0b8 : 0x5cc8cc), 0.6);
+      } else if (theme === 'volcanic') {
+        // Ash-dark sea so the lava glow and white foam carry the scene.
+        ou.uDeep.value.setHex(w.waterDeep).lerp(_c.setHex(0x1c1f3e), 0.55);
+        ou.uMid.value.setHex(w.waterMid).lerp(_c.setHex(0x30355e), 0.55);
+        ou.uCrest.value.setHex(w.waterCrest).lerp(_c.setHex(0x8a5a78), 0.4);
       }
       ou.uFoam.value.setHex(w.waterFoam);
-      ou.uCrest.value.setHex(w.waterCrest);
       ou.uSkyTop.value.setHex(w.skyTop);
       ou.uSkyHorizon.value.setHex(w.skyHorizon);
       ou.uSunDir.value.copy(_sunDir);
@@ -200,6 +206,8 @@ export class Atmosphere {
       ou.uAmp.value = maxWaveHeight() * 0.45;
       ou.uFoamAmount.value = weather === 'storm' ? 1.6 : 1;
       ou.uMicro.value = weather === 'storm' ? 0.5 : 0.32;
+      // Toon cell-line web: full in fair weather, quieter in storms and at night.
+      ou.uCells.value = weather === 'storm' ? 0.55 : weather === 'night' ? 0.35 : 1;
       const lp = ou.uLightPos.value as import('three').Vector4[];
       const lc = ou.uLightCol.value as Color[];
       for (let i = 0; i < MAX_WATER_LIGHTS; i++) {
@@ -222,7 +230,8 @@ export class Atmosphere {
     celShared.uRimColor.value.setHex(w.sunColor).lerp(_c.setHex(w.skyHorizon), 0.4);
     celShared.uRim.value = weather === 'night' ? 0.7 : 0.45;
     celShared.uSpecColor.value.setHex(w.sunColor);
-    celShared.uOutlineColor.value.setHex(weather === 'night' ? 0x05070f : weather === 'storm' ? 0x0c1016 : 0x141826);
+    // Soft ink: a dark tint of the scene's own blue rather than black.
+    celShared.uOutlineColor.value.setHex(weather === 'night' ? 0x0a1230 : weather === 'storm' ? 0x1e2a38 : weather === 'sunset' ? 0x3a2648 : 0x23406a);
     celShared.uWind.value = w.wind;
 
     this.post.bloom = w.bloom;

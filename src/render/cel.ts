@@ -12,28 +12,48 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DataTexture,
   type ColorRepresentation,
   InstancedMesh,
   Mesh,
   MeshToonMaterial,
+  NearestFilter,
+  RedFormat,
   ShaderMaterial,
   type Side,
   Texture,
+  UnsignedByteType,
   UniformsLib,
   UniformsUtils,
   Vector2,
   Vector3,
 } from 'three';
-import { toonRamp } from './textures';
+
+/**
+ * Anime / toon ramp: a bright lit band, a soft half-tone just past the
+ * terminator and a light shadow band. The shadow never goes near black — the
+ * hemisphere light fills it with the sky's colour, so shadows read as tinted.
+ */
+let ramp: DataTexture | null = null;
+function toonRamp(): Texture {
+  if (ramp) return ramp;
+  ramp = new DataTexture(new Uint8Array([150, 150, 205, 255, 255, 255]), 6, 1, RedFormat, UnsignedByteType);
+  ramp.minFilter = ramp.magFilter = NearestFilter;
+  ramp.generateMipmaps = false;
+  ramp.needsUpdate = true;
+  return ramp;
+}
+/** Outlines are thinner than the old ink: the style wants soft, tinted lines. */
+const OUTLINE_THIN = 0.6;
 
 /** Uniforms shared by every cel material — updated once per frame by the renderer. */
 export const celShared = {
   uRimColor: { value: new Color(0xffffff) },
-  uRim: { value: 0.45 },
+  uRim: { value: 0.35 },
   uSunView: { value: new Vector3(0, 1, 0) },
   uSpecColor: { value: new Color(0xffffff) },
   uResolution: { value: new Vector2(1920, 1080) },
-  uOutlineColor: { value: new Color(0x10141f) },
+  uOutlineColor: { value: new Color(0x23406a) },
   uOutlineScale: { value: 1 },
   uTime: { value: 0 },
   uWind: { value: 1 },
@@ -167,7 +187,7 @@ void main() {
   float l = length(dir);
   dir = l > 1e-5 ? dir / l : vec2(0.0);
   // Constant pixels near the camera, thinning with distance so far props don't blob.
-  float px = uWidth * uOutlineScale * clamp(45.0 / max(clip.w, 1.0), 0.3, 1.0);
+  float px = uWidth * uOutlineScale * ${OUTLINE_THIN.toFixed(2)} * clamp(45.0 / max(clip.w, 1.0), 0.3, 1.0);
   clip.xy += dir * px * 2.0 / uResolution * clip.w;
   gl_Position = clip;
   #include <fog_vertex>

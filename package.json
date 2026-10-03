@@ -1,0 +1,25 @@
+{
+  "name": "riptide",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "RIPTIDE — an arcade wave-racing game built entirely from code.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "node harness/gameplay-test.mjs",
+    "shots": "node harness/capture.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "playwright": "1.56.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.11"
+  }
+}

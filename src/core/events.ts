@@ -1,0 +1,67 @@
+/**
+ * Simulation → presentation event queue.
+ *
+ * The simulation never calls audio, particles, the camera or the HUD directly.
+ * It pushes events here; each presentation system drains the queue once per
+ * frame. That keeps the sim free of rendering dependencies and makes the
+ * harness able to run it headless.
+ */
+
+export type GameEventType =
+  | 'splash' // hull slap / heavy water contact; strength 0..1
+  | 'land' // touchdown after air; strength 0..1, flag = clean
+  | 'wipeout'
+  | 'collide' // boat/boat or boat/static; strength 0..1
+  | 'buoyHit'
+  | 'driftTier' // value = tier reached
+  | 'boostStart' // value = tier / strength
+  | 'nitro' // nitro activated
+  | 'trick' // value = trick id, text = name
+  | 'launch' // left ramp / crest
+  | 'checkpoint'
+  | 'lap' // value = lap reached
+  | 'finalLap'
+  | 'finish' // racer finished
+  | 'wrongWay'
+  | 'countdown' // value = 3,2,1,0(GO)
+  | 'falseStart'
+  | 'perfectStart'
+  | 'overtake' // player gained a position
+  | 'lightning'
+  | 'ring' // stunt ring collected
+  | 'boostPad'
+  | 'reset'; // racer respawned on track
+
+export interface GameEvent {
+  type: GameEventType;
+  racer: number; // racer id, -1 for global
+  x: number;
+  y: number;
+  z: number;
+  value: number;
+  text: string;
+}
+
+export class EventQueue {
+  readonly list: GameEvent[] = [];
+  private pool: GameEvent[] = [];
+
+  push(type: GameEventType, racer = -1, x = 0, y = 0, z = 0, value = 0, text = '') {
+    const e = this.pool.pop() ?? { type, racer, x, y, z, value, text };
+    e.type = type;
+    e.racer = racer;
+    e.x = x;
+    e.y = y;
+    e.z = z;
+    e.value = value;
+    e.text = text;
+    this.list.push(e);
+    return e;
+  }
+
+  /** Called once per frame after every consumer has read `list`. */
+  clear() {
+    for (let i = 0; i < this.list.length; i++) this.pool.push(this.list[i]);
+    this.list.length = 0;
+  }
+}

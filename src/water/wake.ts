@@ -84,7 +84,7 @@ void main() {
   float n2 = texture2D(uFoamMap, vXZ * 0.21 + vec2(uTime * 0.03, 0.0)).g;
   float streak = texture2D(uFoamMap, vec2(vInfo.y * 0.35 + 0.5, age * 3.0)).b;
   float bub = texture2D(uFoamMap, vXZ * 0.35).r;
-  float arms = smoothstep(0.7, 0.92, e) * (1.0 - smoothstep(0.92, 1.0, e));
+  float arms = smoothstep(0.62, 0.9, e) * (1.0 - smoothstep(0.9, 1.0, e)) * 0.75;
   float centre = (1.0 - smoothstep(0.0, 0.32, e)) * (1.0 - smoothstep(0.0, 0.3, age));
   float body = (1.0 - smoothstep(0.3, 0.95, e)) * (1.0 - smoothstep(0.1, 0.6, age)) * 0.3;
   float breakup = smoothstep(0.3, 0.78, n * 0.6 + n2 * 0.4 + (1.0 - age) * 0.2);
@@ -128,20 +128,22 @@ varying vec2 vXZ;
 void main() {
   float speed = vParams.x;
   float wet = vParams.y;
-  // Elliptical ring hugging the hull outline (hull occupies |r| < 0.62).
   vec2 q = vLocal;
-  float r = length(vec2(q.x, q.y * 0.92));
-  float ring = smoothstep(0.5, 0.64, r) * (1.0 - smoothstep(0.68, 1.0, r));
-  // Bow wave: pushed forward and outward, grows with speed.
-  float bow = smoothstep(0.1, 0.95, q.y) * (1.0 - smoothstep(0.55, 1.0, abs(q.x) + (1.0 - q.y) * 0.3));
-  // Stern churn.
-  float stern = smoothstep(-0.2, -0.95, q.y) * (1.0 - smoothstep(0.0, 0.7, abs(q.x)));
-  vec4 f = texture2D(uFoamMap, vXZ * 0.16 + vec2(uTime * 0.25, uTime * 0.1));
-  float a = ring * (0.55 + 0.45 * speed) + bow * speed * 0.9 + stern * (0.4 + speed) + vParams.w * ring * 0.6;
-  a *= smoothstep(0.1, 0.55, f.r + 0.25) * wet;
-  a *= 1.0 - smoothstep(0.85, 1.0, r);
+  // Normalised so the hull outline sits at e = 1 (hull half-beam 0.4, half-length 0.53 of the quad).
+  float e = length(vec2(q.x / 0.4, q.y / 0.53));
+  // Thin contact line where hull meets water.
+  float ring = smoothstep(0.88, 1.0, e) * (1.0 - smoothstep(1.0, 1.35, e));
+  // Bow wave: a V of foam peeling off the stem, growing with speed.
+  float bow = smoothstep(0.25, 0.5, q.y) * (1.0 - smoothstep(0.0, 0.18, abs(abs(q.x) - (0.55 - q.y) * 0.9))) * step(e, 1.6);
+  // Stern churn behind the transom.
+  float stern = smoothstep(-0.48, -0.8, q.y) * (1.0 - smoothstep(0.05, 0.45, abs(q.x)));
+  float n = texture2D(uFoamMap, vXZ * 0.09 + vec2(uTime * 0.05, 0.0)).g;
+  float bub = texture2D(uFoamMap, vXZ * 0.6 + vec2(0.0, uTime * 0.3)).r;
+  float a = ring * (0.45 + 0.35 * speed) + bow * speed * 0.85 + stern * (0.2 + 0.7 * speed) + vParams.w * ring * 0.4;
+  a *= smoothstep(0.2, 0.62, n * 0.75 + bub * 0.45) * wet;
+  a *= 1.0 - smoothstep(0.8, 1.0, max(abs(q.x), abs(q.y)));
   if (a < 0.02) discard;
-  gl_FragColor = vec4(uFoam, clamp(a, 0.0, 0.95));
+  gl_FragColor = vec4(uFoam, clamp(a, 0.0, 0.85));
   #include <colorspace_fragment>
 }
 `;
@@ -228,9 +230,11 @@ export class WakeSystem {
     this.wakeMesh.name = 'wakes';
 
     const plane = new PlaneGeometry(2, 2, 10, 14);
+    // Lay flat facing up (+Y). rotateX(-90°) maps the plane's +Y to −Z; rotate
+    // a further 180° about Y so +Z (the bow) gets the plane's top edge. Using a
+    // rotation instead of a mirror keeps the triangle winding front-facing.
     plane.rotateX(-Math.PI / 2);
-    // PlaneGeometry after rotateX(-90°) maps v→ -z; flip so +z is the bow.
-    plane.scale(1, 1, -1);
+    plane.rotateY(Math.PI);
     this.params = new Float32Array(nb * 4);
     plane.setAttribute('aParams', new InstancedBufferAttribute(this.params, 4).setUsage(DynamicDrawUsage));
     this.collarMat = new ShaderMaterial({

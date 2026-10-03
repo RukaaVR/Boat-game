@@ -245,7 +245,8 @@ export class Scenery {
       if (kind === 'palm') {
         const { trunk, fronds } = P.palmGeometry(v);
         this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.4);
-        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, side: DoubleSide }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.2);
+        // Thin double-sided leaves get no inverted-hull outline (it would blob them).
+        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, side: DoubleSide, rim: 0.6 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 0);
         continue;
       }
       if (kind === 'mine') {

@@ -5,6 +5,7 @@
 
 import { BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, DodecahedronGeometry, SphereGeometry } from 'three';
 import { Rng } from '../core/rng';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GeoBuilder, lumpify } from '../render/geo';
 import type { ThemeStyle } from './weatherDefs';
 
@@ -152,38 +153,134 @@ function colorize(g: BufferGeometry, hex: number, jitter: number, seed: number) 
   return g;
 }
 
-/** Curved palm: trunk segments bending toward +X, frond crown at the top. */
+/**
+ * Palm: one continuous curved, tapering trunk tube with growth rings, a crown
+ * of arched, V-folded fronds with serrated leaflet edges, and coconuts.
+ * The trunk bends toward +X; fronds radiate from its tip.
+ */
 export function palmGeometry(variant: number): { trunk: BufferGeometry; fronds: BufferGeometry } {
-  const tb = new GeoBuilder();
-  const segs = 6;
-  const H = 8 + variant * 1.5;
-  let x = 0;
-  let y = 0;
-  const bend = 0.12 + variant * 0.05;
-  for (let i = 0; i < segs; i++) {
-    const h = H / segs;
-    const ang = bend * (i + 1) * 0.6;
-    const r = 0.28 - i * 0.025;
-    tb.cyl(r * 0.92, r, h * 1.05, i % 2 ? 0x8a6a46 : 0x9c7a52, { x: x + Math.sin(ang) * h * 0.5, y: y + Math.cos(ang) * h * 0.5, rz: -ang }, 7);
-    x += Math.sin(ang) * h;
-    y += Math.cos(ang) * h;
+  const rng = new Rng(variant * 97 + 11);
+  const H = 8.5 + variant * 1.4;
+  const lean = 0.22 + variant * 0.07; // total bend (radians) from base to tip
+  const RINGS = 14;
+  const SIDES = 8;
+  const tPos: number[] = [];
+  const tCol: number[] = [];
+  const tIdx: number[] = [];
+  // Spine: integrate a smoothly increasing lean.
+  const spine: [number, number, number, number][] = []; // x, y, tx, ty
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i <= RINGS; i++) {
+    const t = i / RINGS;
+    const ang = lean * t * t * 1.6;
+    const tx = Math.sin(ang);
+    const ty = Math.cos(ang);
+    spine.push([sx, sy, tx, ty]);
+    sx += tx * (H / RINGS);
+    sy += ty * (H / RINGS);
   }
-  const fb = new GeoBuilder();
-  const leaves = 8;
-  for (let i = 0; i < leaves; i++) {
-    const a = (i / leaves) * Math.PI * 2 + variant;
-    const droop = 0.6 + (i % 2) * 0.25;
-    fb.add(new ConeGeometry(0.55, 4.2, 4), i % 2 ? 0x2f9e44 : 0x3cb853, {
-      x: x + Math.cos(a) * 1.6,
-      y: y - 0.5,
-      z: Math.sin(a) * 1.6,
-      ry: -a,
-      rz: Math.PI / 2 + droop,
-      sz: 0.18,
-    });
+  const bark = [new Color(0x8a6a46), new Color(0x6f5236)];
+  for (let i = 0; i <= RINGS; i++) {
+    const [cx, cy, tx, ty] = spine[i];
+    const t = i / RINGS;
+    // Taper with a flared base and a slight swelling under the crown.
+    const r = 0.44 - 0.2 * t + 0.2 * Math.exp(-t * 14) + 0.04 * Math.exp(-((t - 0.97) ** 2) / 0.002);
+    const c = bark[i % 2];
+    for (let k = 0; k < SIDES; k++) {
+      const th = (k / SIDES) * Math.PI * 2;
+      const ux = -ty * Math.cos(th);
+      const uy = tx * Math.cos(th);
+      const uz = Math.sin(th);
+      // Ring ridges: every other ring slightly fatter.
+      const rr = r * (i % 2 ? 0.94 : 1.04);
+      tPos.push(cx + ux * rr, cy + uy * rr, uz * rr);
+      tCol.push(c.r, c.g, c.b);
+    }
   }
-  fb.sphere(0.45, 0x5a3d22, { x, y: y - 0.15, z: 0 }, 6, 5);
-  return { trunk: tb.build(), fronds: fb.build() };
+  for (let i = 0; i < RINGS; i++)
+    for (let k = 0; k < SIDES; k++) {
+      const a = i * SIDES + k;
+      const b = i * SIDES + ((k + 1) % SIDES);
+      const c2 = a + SIDES;
+      const d = b + SIDES;
+      tIdx.push(a, b, c2, b, d, c2);
+    }
+  const trunk = new BufferGeometry();
+  trunk.setAttribute('position', new BufferAttribute(new Float32Array(tPos), 3));
+  trunk.setAttribute('color', new BufferAttribute(new Float32Array(tCol), 3));
+  trunk.setIndex(tIdx);
+  trunk.computeVertexNormals();
+
+  // ── Crown ────────────────────────────────────────────────────────────────
+  const [topX, topY] = spine[RINGS];
+  const fPos: number[] = [];
+  const fCol: number[] = [];
+  const fIdx: number[] = [];
+  const dark = new Color(0x1f7a35);
+  const mid = new Color(0x34a84a);
+  const tip = new Color(0x8fd45a);
+  const dry = new Color(0x9a8a3e);
+  const tmp = new Color();
+  const LEAVES = 9;
+  const SEG = 14;
+  for (let f = 0; f < LEAVES; f++) {
+    const a = (f / LEAVES) * Math.PI * 2 + rng.range(-0.15, 0.15);
+    const low = f % 3 === 0; // older, lower, droopier fronds
+    const L = rng.range(4.4, 5.4) * (low ? 1.05 : 1);
+    const rise = low ? 0.6 : rng.range(1.2, 1.8);
+    const droop = low ? 4.2 : rng.range(2.6, 3.4);
+    const W = rng.range(0.75, 0.95);
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const lx = -dz;
+    const lz = dx;
+    const base = fPos.length / 3;
+    for (let k = 0; k <= SEG; k++) {
+      const t = k / SEG;
+      const px = topX + dx * L * t;
+      const py = topY + 0.1 + rise * t - droop * t * t;
+      const pz = dz * L * t;
+      const w = W * Math.pow(Math.sin(Math.PI * Math.min(1, 0.08 + t * 0.95)), 0.65);
+      const serr = k % 2 ? 1 : 0.62; // leaflet tips vs notches
+      const fold = 0.22 * w; // spine raised: V-shaped cross-section
+      tmp.copy(dark).lerp(mid, Math.min(1, t * 1.6));
+      if (low) tmp.lerp(dry, 0.35);
+      const edge = tmp.clone().lerp(tip, 0.25 + 0.5 * t);
+      // left edge, spine, right edge
+      fPos.push(px + lx * w * serr, py - fold * 0.4, pz + lz * w * serr);
+      fCol.push(edge.r, edge.g, edge.b);
+      fPos.push(px, py + fold, pz);
+      fCol.push(tmp.r * 0.85, tmp.g * 0.85, tmp.b * 0.85);
+      fPos.push(px - lx * w * serr, py - fold * 0.4, pz - lz * w * serr);
+      fCol.push(edge.r, edge.g, edge.b);
+    }
+    for (let k = 0; k < SEG; k++) {
+      const a0 = base + k * 3;
+      const b0 = a0 + 3;
+      fIdx.push(a0, b0, a0 + 1, a0 + 1, b0, b0 + 1);
+      fIdx.push(a0 + 1, b0 + 1, a0 + 2, a0 + 2, b0 + 1, b0 + 2);
+    }
+  }
+  const leaves = new BufferGeometry();
+  leaves.setAttribute('position', new BufferAttribute(new Float32Array(fPos), 3));
+  leaves.setAttribute('color', new BufferAttribute(new Float32Array(fCol), 3));
+  leaves.setIndex(fIdx);
+  leaves.computeVertexNormals();
+
+  // Coconuts and the crown knob, merged into the frond geometry.
+  const nb = new GeoBuilder();
+  nb.sphere(0.32, 0x5f7a2a, { x: topX, y: topY - 0.05, z: 0 }, 8, 6);
+  for (let i = 0; i < 3 + (variant % 2); i++) {
+    const a = (i / 3) * Math.PI * 2 + variant;
+    nb.sphere(0.24, i % 2 ? 0x6b4a24 : 0x7d8a2e, { x: topX + Math.cos(a) * 0.32, y: topY - 0.35, z: Math.sin(a) * 0.32 }, 7, 5);
+  }
+  const nuts = nb.build();
+  const fronds = mergeGeometries([leaves.toNonIndexed(), nuts], false)!;
+  fronds.computeVertexNormals();
+  leaves.dispose();
+  nuts.dispose();
+  return { trunk, fronds };
 }
 
 export function pineGeometry(): BufferGeometry {

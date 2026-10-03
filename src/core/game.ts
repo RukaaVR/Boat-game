@@ -781,11 +781,14 @@ export class Game {
       /** Orbit the camera around the first prop of a kind (visual verification). */
       orbitProp(kind: string, radius = 60, height = 20) {
         const ss = g.session;
-        const pr = ss?.layout.props.find((p) => p.kind === kind);
+        const pr = ss?.layout.props.filter((p) => p.kind === kind).sort((a, b) => (g.world?.scenery.ground(a.x, a.z) ?? 0) - (g.world?.scenery.ground(b.x, b.z) ?? 0))[0];
         if (!ss || !pr) return false;
         g.garage = true; // keeps the rig in scripted orbit
         const off = kind === 'waterfall' ? pr.size * 0.75 : 0;
-        g.rig.startOrbit(new Vector3(pr.x + Math.cos(pr.rot) * off, kind === 'volcano' ? 120 : 6, pr.z + Math.sin(pr.rot) * off), radius, height);
+        const tx = pr.x + Math.cos(pr.rot) * off;
+        const tz = pr.z + Math.sin(pr.rot) * off;
+        const ty = kind === 'volcano' ? 120 : (g.world?.scenery.ground(tx, tz) ?? 0) + 6;
+        g.rig.startOrbit(new Vector3(tx, ty, tz), radius, height);
         g.rig.cut();
         return true;
       },

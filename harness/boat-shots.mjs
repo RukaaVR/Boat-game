@@ -17,6 +17,7 @@ const angles = [
   ['q', 0.75, 6.2, 2.4],
   ['side', Math.PI / 2, 5.2, 1.4],
   ['rear', Math.PI + 0.35, 5.4, 2.6],
+  ['close', 0.55, 2.6, 1.9],
 ];
 for (const id of boats) {
   for (const [name, ang, dist, h] of angles) {
@@ -30,7 +31,7 @@ for (const id of boats) {
       const rig = g.rig;
       rig.startFree();
       rig.freePos.set(bt.position.x + Math.sin(a) * dist, bt.position.y + h, bt.position.z + Math.cos(a) * dist);
-      const dx = bt.position.x - rig.freePos.x, dz = bt.position.z - rig.freePos.z, dy = bt.position.y + 0.8 - rig.freePos.y;
+      const dx = bt.position.x - rig.freePos.x, dz = bt.position.z - rig.freePos.z, dy = bt.position.y + (dist < 3 ? 1.5 : 0.8) - rig.freePos.y;
       rig.freeYaw = Math.atan2(dx, dz);
       rig.freePitch = Math.atan2(dy, Math.hypot(dx, dz));
       rig.freeFov = 50;

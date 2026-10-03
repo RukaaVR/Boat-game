@@ -2,15 +2,13 @@
  * Procedural watercraft visuals: lofted hulls, per-style superstructure, a
  * livery texture, an articulated rider, nav lights and a boost flame.
  *
- * Draw calls per boat: hull, parts, rider upper body, two arms (each + outline),
- * lights and flame. Everything that does not move relative to the hull (legs,
+ * Draw calls per boat: hull, parts, the jointed rider (see rider.ts), lights
+ * and flame. Everything that does not move relative to the hull (boots,
  * console, fins, engine) is merged into `parts` with vertex colours.
  */
 
 import {
   type ColorRepresentation,
-  CylinderGeometry,
-  SphereGeometry,
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
@@ -25,11 +23,12 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { clamp, damp, smoothstep } from '../core/mathx';
+import { smoothstep } from '../core/mathx';
 import { addOutline, cel, makeCel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
 import { paintDamage, paintLivery, shade } from '../render/textures';
 import type { Boat } from './boat';
+import { addBoots, foothold, Rider, type RiderAnchors } from './rider';
 import type { Livery } from './livery';
 import type { BoatSpec, HullStyle } from './specs';
 
@@ -184,13 +183,8 @@ function mergeHulls(geos: BufferGeometry[]) {
 
 const DARK = 0x23262e;
 const STEEL = 0x8c96a6;
-const SUIT = 0x1d2030;
-const SUIT_HEX = '#1d2030';
 
-interface RiderRig {
-  hipLocal: Vector3;
-  gripL: Vector3;
-  gripR: Vector3;
+interface RiderRig extends RiderAnchors {
   deckY: number;
   nozzle: Vector3;
 }
@@ -324,30 +318,16 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
       for (const s of [-1, 1]) gb.box(0.04, 0.12, 0.6, accent, { x: s * main.B * 0.47, y: sheerAt(main, 0.3) - 0.08, z: -0.2 * L });
   }
 
-  // Rider legs (static relative to the hull): feet → knees → hips.
-  const hip = new Vector3(0, deck + 0.82, zRider - 0.02);
-  const pad = liv.hull;
-  for (const s of [-1, 1]) {
-    const ankle = new Vector3(s * 0.21, deck + 0.14, zRider + 0.12);
-    const knee = new Vector3(s * 0.2, deck + 0.48, zRider + 0.36);
-    limb(gb, ankle, knee, 0.08, SUIT);
-    limb(gb, knee, new Vector3(s * 0.13, hip.y, hip.z), 0.105, SUIT);
-    // Thigh panel stripe, knee pad, shin guard.
-    limb(gb, new Vector3(s * 0.205, knee.y + 0.08, knee.z - 0.02), new Vector3(s * 0.16, hip.y - 0.06, hip.z + 0.02), 0.06, shade(SUIT_HEX, 0.25), { x: s * 0.045 });
-    gb.sphere(0.085, pad, { x: s * 0.2, y: knee.y, z: knee.z + 0.03, sz: 0.8 }, 10, 6);
-    gb.box(0.11, 0.24, 0.05, pad, { x: s * 0.205, y: deck + 0.32, z: zRider + 0.29, rx: -0.6 });
-    // Boot: upper, toe cap and a light sole.
-    gb.box(0.16, 0.14, 0.3, 0x15171d, { x: s * 0.21, y: deck + 0.09, z: zRider + 0.18 });
-    gb.sphere(0.08, 0x15171d, { x: s * 0.21, y: deck + 0.07, z: zRider + 0.32, sy: 0.7 }, 8, 6);
-    gb.box(0.17, 0.035, 0.36, 0xd8d8d0, { x: s * 0.21, y: deck + 0.02, z: zRider + 0.2 });
-  }
-  gb.sphere(0.17, SUIT, { y: hip.y, z: hip.z, sx: 1.25, sy: 0.8 });
-  gb.box(0.4, 0.07, 0.3, 0x111318, { y: hip.y + 0.06, z: hip.z + 0.02 });
+  // Rider anchors: hips above the footholds, boots fixed to the deck.
+  const hip = new Vector3(0, deck + 0.86, zRider - 0.04);
+  addBoots(gb, deck, zRider);
 
   const rig: RiderRig = {
-    hipLocal: hip,
-    gripL: new Vector3(0.36, barY, barZ),
-    gripR: new Vector3(-0.36, barY, barZ),
+    hip,
+    gripL: new Vector3(0.34, barY, barZ),
+    gripR: new Vector3(-0.34, barY, barZ),
+    footL: foothold(0, deck, zRider),
+    footR: foothold(1, deck, zRider),
     deckY: deck,
     nozzle,
   };
@@ -366,64 +346,9 @@ function limb(gb: GeoBuilder, a: Vector3, b: Vector3, r: number, col: ColorRepre
   gb.capsule(r, Math.max(0.01, len - r), col, { x: (a.x + b.x) / 2 + (off.x ?? 0), y: (a.y + b.y) / 2, z: (a.z + b.z) / 2, rx: e.x, ry: e.y, rz: e.z });
 }
 
-/** Shoulder joints in upper-body space (left = +x). */
-const SHOULDER = [new Vector3(0.25, 0.53, 0.13), new Vector3(-0.25, 0.53, 0.13)];
-
-function buildUpperBody(liv: Livery) {
-  const gb = new GeoBuilder();
-  const T = 0.25; // forward lean of the torso from the hip pivot (origin)
-  // Suit torso, then a bulky life vest over the chest and back.
-  gb.capsule(0.19, 0.42, SUIT, { y: 0.3, z: 0.05, sx: 1.15, sz: 0.85, rx: T });
-  gb.capsule(0.215, 0.2, liv.accent, { y: 0.33, z: 0.07, sx: 1.12, sz: 0.92, rx: T });
-  gb.box(0.05, 0.3, 0.03, 0x111318, { x: 0.09, y: 0.33, z: 0.27, rx: T });
-  gb.box(0.05, 0.3, 0.03, 0x111318, { x: -0.09, y: 0.33, z: 0.27, rx: T });
-  gb.box(0.4, 0.035, 0.42, 0x111318, { y: 0.22, z: 0.05, rx: T });
-  gb.box(0.07, 0.05, 0.03, STEEL, { y: 0.22, z: 0.27, rx: T });
-  // Back plate with the race number colour.
-  gb.box(0.28, 0.26, 0.04, liv.hull, { y: 0.38, z: -0.15, rx: T });
-  // Shoulder pads and collar.
-  for (const sh of SHOULDER) gb.sphere(0.1, liv.hull, { x: sh.x, y: sh.y, z: sh.z, sx: 1.1, sy: 0.8 }, 10, 6);
-  gb.cyl(0.13, 0.15, 0.06, liv.accent, { y: 0.62, z: 0.17, rx: T });
-  gb.cyl(0.065, 0.07, 0.12, SUIT, { y: 0.68, z: 0.2, rx: T });
-  // Helmet: shell, wrap-around visor, chin bar, crest stripe, vents.
-  const hy = 0.85;
-  const hz = 0.24;
-  gb.sphere(0.2, liv.hull, { y: hy, z: hz, sy: 1.04, sz: 1.08 }, 16, 12);
-  gb.add(new SphereGeometry(0.206, 16, 6, Math.PI / 2 - 1.05, 2.1, 1.25, 0.5), 0x0f1a2c, { y: hy, z: hz, sy: 1.04, sz: 1.08 });
-  gb.add(new SphereGeometry(0.208, 16, 2, Math.PI / 2 - 0.9, 0.5, 1.3, 0.12), 0x6fb8ff, { y: hy, z: hz, sy: 1.04, sz: 1.08 });
-  gb.add(new SphereGeometry(0.21, 16, 4, Math.PI / 2 - 0.85, 1.7, 1.78, 0.42), liv.accent, { y: hy, z: hz, sy: 1.04, sz: 1.1 });
-  gb.box(0.1, 0.025, 0.03, 0x111318, { y: hy - 0.13, z: hz + 0.215, rx: 0.4 });
-  gb.torus(0.203, 0.028, liv.accent, { y: hy, z: hz, ry: Math.PI / 2, sx: 1.08, sy: 1.04 }, Math.PI);
-  return gb.build();
-}
-
-const UPPER_ARM = 0.36;
-const FOREARM = 0.36;
-
-/** One arm segment pointing down +Z, length `len`, with an optional glove. */
-function armSegment(len: number, r0: number, r1: number, glove: string | null) {
-  const gb = new GeoBuilder();
-  const g = new CylinderGeometry(r1, r0, len, 10, 1);
-  g.rotateX(Math.PI / 2);
-  gb.add(g, SUIT, { z: len / 2 });
-  gb.sphere(r0, SUIT, {}, 10, 6);
-  if (glove) {
-    gb.cyl(r1 + 0.015, r1 + 0.02, 0.07, glove, { z: len - 0.02, rx: Math.PI / 2 });
-    gb.sphere(0.068, 0x15171d, { z: len + 0.04, sx: 0.9, sy: 0.75 }, 10, 6);
-  } else {
-    gb.sphere(r1 + 0.015, SUIT, { z: len }, 10, 6);
-    gb.sphere(0.055, '#2b2f38', { z: len, y: 0.04 }, 8, 4);
-  }
-  return gb.build();
-}
-
 const _q = new Quaternion();
 const _qt = new Quaternion();
 const _e = new Euler(0, 0, 0, 'YXZ');
-const _sh = new Vector3();
-const _grip = new Vector3();
-const _pole = new Vector3();
-const _elbow = new Vector3();
 
 export class BoatVisual {
   readonly root = new Group();
@@ -431,16 +356,11 @@ export class BoatVisual {
   private body = new Group();
   readonly hull: Mesh;
   readonly parts: Mesh;
-  readonly upper = new Group();
-  /** Two-bone arms: [upper arm, forearm] per side (0 = left). */
-  readonly arms: [Mesh, Mesh][];
+  readonly rider: Rider;
   readonly flame: Mesh;
   readonly lights: Mesh;
   readonly rig: RiderRig;
   private livTex: CanvasTexture;
-  private lean = 0;
-  private crouch = 0.4;
-  private bob = 0;
   celebrate = false;
   ghost = false;
 
@@ -462,16 +382,8 @@ export class BoatVisual {
     this.rig = rig;
     const partsMat = this.ghost ? hullMat : cel('boatParts', { vertexColors: true, gloss: 0.6 });
     this.parts = new Mesh(geo, partsMat);
-    const upperMesh = new Mesh(buildUpperBody(livery), this.ghost ? hullMat : cel('riderBody', { vertexColors: true, gloss: 0.5 }));
-    this.upper.add(upperMesh);
-    this.upper.position.copy(rig.hipLocal);
-    const armMat = this.ghost ? hullMat : cel('riderLimb', { vertexColors: true, gloss: 0.5 });
-    const upperGeo = armSegment(UPPER_ARM, 0.085, 0.07, null);
-    const foreGeo = armSegment(FOREARM, 0.07, 0.06, livery.hull);
-    this.arms = [0, 1].map(() => [new Mesh(upperGeo, armMat), new Mesh(foreGeo, armMat)] as [Mesh, Mesh]);
-    if (!this.ghost) {
-      for (const m of [this.hull, this.parts, upperMesh, ...this.arms.flat()]) addOutline(m, m === this.hull ? 2.6 : 2.0);
-    }
+    this.rider = new Rider(livery, rig, this.ghost ? hullMat : null);
+    if (!this.ghost) for (const m of [this.hull, this.parts]) addOutline(m, m === this.hull ? 2.6 : 2.0);
     // Nav lights: port red, starboard green, stern white, plus an accent strip.
     const lb = new GeoBuilder();
     const main = shapes[0];
@@ -495,7 +407,7 @@ export class BoatVisual {
     // each design shows the same waterline (just under the chine).
     const lift = Math.max(0, shapes[0].depth - 0.36) * 0.9;
     this.body.position.y = lift;
-    this.body.add(this.hull, this.parts, this.upper, ...this.arms.flat(), this.lights, this.flame);
+    this.body.add(this.hull, this.parts, this.rider.root, this.lights, this.flame);
     this.root.add(this.body);
     this.root.name = `boat_${spec.id}`;
   }
@@ -508,12 +420,9 @@ export class BoatVisual {
   setLod(level: number) {
     if (level === this.lod) return;
     this.lod = level;
-    const showLimbs = level < 2;
-    for (const m of this.arms.flat()) m.visible = showLimbs;
+    this.rider.setLod(level);
     this.lights.visible = level < 1;
-    for (const m of [this.parts, ...this.arms.flat(), this.upper.children[0]]) {
-      for (const c of m.children) if (c.userData.isOutline) c.visible = level < 1;
-    }
+    for (const c of this.parts.children) if (c.userData.isOutline) c.visible = level < 1;
   }
 
   private damageLevel = 0;
@@ -546,60 +455,7 @@ export class BoatVisual {
     }
     r.quaternion.copy(_q);
 
-    // ── Rider pose ──────────────────────────────────────────────────────────
-    const landK = b.sinceLand < 0.5 ? (1 - b.sinceLand / 0.5) * b.landStrength : 0;
-    let leanT = clamp(-b.yawRate * 0.32 + steer * 0.12, -0.55, 0.55) + (b.drifting ? b.driftDir * 0.15 : 0);
-    let crouchT = 0.42 + 0.18 * b.boostLevel + 0.1 * b.engine + landK * 0.5;
-    let twist = 0;
-    if (b.airborne) {
-      crouchT = b.trick !== 'none' ? 0.85 : 0.25;
-      leanT *= 0.5;
-    }
-    if (b.wipeout > 0) {
-      leanT = Math.sin(time * 11) * 0.6;
-      crouchT = 0.9 + Math.sin(time * 7) * 0.3;
-      twist = Math.sin(time * 5) * 0.5;
-    }
-    if (this.celebrate) {
-      crouchT = -0.05;
-      leanT = Math.sin(time * 3) * 0.15;
-    }
-    this.lean = damp(this.lean, leanT, 8, dt);
-    this.crouch = damp(this.crouch, crouchT, 7, dt);
-    this.bob = damp(this.bob, -landK * 0.22 - (b.airborne ? 0 : Math.abs(b.pitchRate) * 0.02), 10, dt);
-    this.upper.position.set(this.rig.hipLocal.x, this.rig.hipLocal.y + this.bob, this.rig.hipLocal.z);
-    this.upper.rotation.set(this.crouch, twist, this.lean, 'YXZ');
-    this.upper.updateMatrix();
-
-    // Arms: two-bone IK from the shoulder (upper-body space) to the grip
-    // (hull space), elbows flared out and down. One arm waves at the finish.
-    for (let side = 0; side < 2; side++) {
-      const sg = side === 0 ? 1 : -1;
-      _sh.copy(SHOULDER[side]).applyMatrix4(this.upper.matrix);
-      if (this.celebrate && side === 1) {
-        _grip.set(-0.5, _sh.y + 0.75 + Math.sin(time * 9) * 0.08, _sh.z + 0.15 + Math.sin(time * 9) * 0.12);
-      } else if (b.wipeout > 0) {
-        _grip.set(sg * 0.85, _sh.y + 0.35 + Math.sin(time * 13 + side) * 0.35, _sh.z - 0.15);
-      } else {
-        _grip.copy(side === 0 ? this.rig.gripL : this.rig.gripR);
-      }
-      _dir.subVectors(_grip, _sh);
-      const d = clamp(_dir.length(), 0.08, UPPER_ARM + FOREARM - 1e-3);
-      _dir.normalize();
-      // Law of cosines: distance along the reach line to the elbow, and its offset.
-      const a = (UPPER_ARM * UPPER_ARM - FOREARM * FOREARM + d * d) / (2 * d);
-      const h = Math.sqrt(Math.max(0, UPPER_ARM * UPPER_ARM - a * a));
-      _pole.set(sg * 1, -0.7, -0.35);
-      _pole.addScaledVector(_dir, -_pole.dot(_dir)).normalize();
-      _elbow.copy(_sh).addScaledVector(_dir, a).addScaledVector(_pole, h);
-      const [ua, fa] = this.arms[side];
-      ua.position.copy(_sh);
-      ua.quaternion.setFromUnitVectors(_zAxis, _dir.subVectors(_elbow, _sh).normalize());
-      fa.position.copy(_elbow);
-      _dir.subVectors(_grip, _elbow);
-      if (_dir.lengthSq() < 1e-8) _dir.set(0, 0, 1);
-      fa.quaternion.setFromUnitVectors(_zAxis, _dir.normalize());
-    }
+    this.rider.update(b, steer, dt, time, this.celebrate);
 
     // Boost flame.
     const bl = b.boostLevel;
@@ -621,5 +477,4 @@ export class BoatVisual {
   }
 }
 
-const _zAxis = new Vector3(0, 0, 1);
 export type { HullStyle };

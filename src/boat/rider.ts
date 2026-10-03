@@ -11,7 +11,7 @@
  * ball to fill the bend. Shoes stay in the boat's merged parts mesh.
  */
 
-import { BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, type Material, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, ConeGeometry, Euler, Group, Matrix4, Mesh, type Material, Quaternion, Vector3 } from 'three';
 import { clamp, damp } from '../core/mathx';
 import { addOutline, cel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
@@ -25,6 +25,7 @@ type PartName = keyof typeof MODEL.parts;
 const SKINS = ['#ffdcc0', '#f6c79e', '#e0a878', '#b97a4e', '#8a5634', '#ffe6d2'];
 const TROUSERS = ['#2f3d63', '#3b3b46', '#5a4632', '#2f5a4a', '#f0e6cc'];
 const SHOES = ['#f6f3ea', '#2a2a32', '#c0392b', '#f2c94c'];
+const HAIRS = ['#2a1d14', '#f2c94c', '#d2532e', '#1e1e2a', '#7b4b2a', '#eef0f4', '#6a4fb5', '#2f9a74', '#3a7bd5', '#e86aa6'];
 const WATCH = '#20242e';
 const EYE = '#1d2236';
 export const SUIT = 0x1d2030;
@@ -138,7 +139,107 @@ function buildHead(liv: Livery) {
     gb.sphere(0.034, EYE, { x: s * 0.08, y: 0.53 - NECK_M.y, z: zMax - NECK_M.z - 0.008, sx: 0.8, sy: 1.3, sz: 0.4 }, 12, 8);
     gb.sphere(0.011, '#ffffff', { x: s * 0.08 + 0.01, y: 0.55 - NECK_M.y, z: zMax - NECK_M.z + 0.004, sz: 0.5 }, 6, 4);
   }
+  addHair(gb, liv);
   return gb.build();
+}
+
+// ── Hair ──────────────────────────────────────────────────────────────────
+/** Head centre and half-extents in model space (from the mesh bounds). */
+const HEAD_C = new Vector3(0, 0.55, -0.035);
+const HEAD_E = new Vector3(0.255, 0.235, 0.215);
+const _q = new Quaternion();
+const _e = new Euler();
+
+/** Point on the head ellipsoid (head space) for elevation `el` and azimuth `az` (0 = front). */
+function onHead(el: number, az: number, k = 1) {
+  const c = HEAD_C.clone().sub(NECK_M);
+  return new Vector3(Math.sin(az) * Math.cos(el) * HEAD_E.x * k + c.x, Math.sin(el) * HEAD_E.y * k + c.y, Math.cos(az) * Math.cos(el) * HEAD_E.z * k + c.z);
+}
+
+/** One faceted spike from `base` along `dir`. */
+function spike(gb: GeoBuilder, col: string, base: Vector3, dir: Vector3, len: number, r: number, flat = 0.7) {
+  dir.normalize();
+  _q.setFromUnitVectors(UP, dir);
+  _e.setFromQuaternion(_q, 'YXZ');
+  const mid = base.clone().addScaledVector(dir, len / 2);
+  gb.add(new ConeGeometry(r, len, 5, 1), col, { x: mid.x, y: mid.y, z: mid.z, rx: _e.x, ry: _e.y, rz: _e.z, sx: 1, sz: flat });
+}
+
+function addHair(gb: GeoBuilder, liv: Livery) {
+  const col = pick(liv, HAIRS, 2);
+  const style = pick(liv, [0, 1, 2], 5);
+  // Cap: the head's own top surface, puffed out so it hugs the shape.
+  // Hairline sits high on the forehead and low at the nape.
+  const ctr = HEAD_C.clone().sub(NECK_M);
+  const cap = cut(
+    part('head'),
+    (c) => {
+      const u = c.clone().sub(HEAD_C).divide(HEAD_E);
+      const front = u.z / Math.max(1e-3, Math.hypot(u.x, u.z));
+      return u.y > (front > 0 ? 0.32 * front + 0.02 : 0.5 * front + 0.02) && Math.abs(u.x) < 1.05;
+    },
+    NECK_M,
+    FWD,
+    UP,
+  );
+  const pos = cap.getAttribute('position');
+  const v = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const d = v.clone().sub(ctr).normalize();
+    v.addScaledVector(d, 0.028);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  cap.computeVertexNormals();
+  gb.add(cap, col);
+
+  const sweep = new Vector3(0, 0.55, -1); // back and up
+  const rnd = (i: number) => ((Math.sin(i * 12.9898 + liv.number * 3.1) * 43758.5453) % 1 + 1) % 1;
+  // Crown and back: big spikes sweeping back.
+  const rows: [number, number, number, number][] = [
+    // [elevation, azimuth span, count, length]
+    [1.0, 1.4, 3, 0.22],
+    [0.6, 2.4, 4, 0.24],
+    [0.2, 2.9, 5, 0.2],
+    [-0.2, 2.0, 4, 0.15],
+  ];
+  let n = 0;
+  for (const [el, span, count, len] of rows)
+    for (let i = 0; i < count; i++) {
+      const az = Math.PI + (count === 1 ? 0 : (i / (count - 1) - 0.5) * span);
+      const base = onHead(el, az, 0.92);
+      const out = base.clone().sub(ctr).normalize();
+      // Mostly swept back, fanning slightly outward with the azimuth.
+      const dir = out.multiplyScalar(0.55).addScaledVector(sweep, 1.3 + style * 0.15);
+      dir.x += Math.sin(az) * 0.25;
+      spike(gb, col, base, dir, len * (0.9 + rnd(n++) * 0.25) * (style === 2 ? 1.12 : 1), 0.09, 0.6);
+    }
+  // Top: a couple of tall spikes standing up and back.
+  for (const [az, lean] of [
+    [0.5, 0.35],
+    [-0.4, 0.4],
+    [0.0, 0.2],
+  ] as const) {
+    const base = onHead(1.15, az, 0.9);
+    spike(gb, col, base, new Vector3(Math.sin(az) * 0.4, 1, -lean - 0.25), 0.2 + style * 0.04, 0.075);
+  }
+  // Sides: spikes flicking out and back above the ears.
+  for (const s of [-1, 1])
+    for (const [el, len] of [
+      [0.55, 0.16],
+      [0.2, 0.15],
+    ] as const) {
+      const base = onHead(el, s * 1.45, 0.92);
+      spike(gb, col, base, new Vector3(s * 1, -0.15, -0.7), len, 0.06);
+    }
+  // Fringe: short spikes falling over the forehead.
+  const fringe = style === 1 ? 4 : 5;
+  for (let i = 0; i < fringe; i++) {
+    const az = (i / (fringe - 1) - 0.5) * 1.6;
+    const base = onHead(0.62, az, 0.95);
+    const out = base.clone().sub(ctr).normalize();
+    spike(gb, col, base, out.multiplyScalar(0.6).add(new Vector3(Math.sin(az) * 0.5, -1, 0.35)), 0.12 + rnd(n++) * 0.04, 0.055, 0.55);
+  }
 }
 
 /** Upper arm (shoulder → elbow) for side 0 = left (+X), 1 = right. */

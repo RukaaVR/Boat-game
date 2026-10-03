@@ -320,7 +320,7 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
 
   // Rider anchors: hips above the footholds, boots fixed to the deck.
   const hip = new Vector3(0, deck + 0.7, zRider - 0.06);
-  addBoots(gb, deck, zRider);
+  addBoots(gb, deck, zRider, liv);
 
   const rig: RiderRig = {
     hip,

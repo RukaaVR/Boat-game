@@ -29,7 +29,7 @@ export interface TrackDef {
   swells: number;
   hazards: number;
   shortcuts: number;
-  /** Medal targets for time trial (total time for one lap), seconds: gold, silver, bronze. */
+  /** Time-trial best-lap medal targets (s): gold, silver, bronze. Derived from measured autopilot laps: bronze ≈ steady clean pace, gold ≈ 10% faster. */
   medals: [number, number, number];
 }
 
@@ -57,7 +57,7 @@ export const TRACKS: TrackDef[] = [
     swells: 1,
     hazards: 2,
     shortcuts: 1,
-    medals: [52, 57, 64],
+    medals: [60.0, 63.4, 68.0],
   },
   {
     id: 'atoll',
@@ -82,7 +82,7 @@ export const TRACKS: TrackDef[] = [
     swells: 1,
     hazards: 3,
     shortcuts: 1,
-    medals: [50, 55, 62],
+    medals: [52.8, 55.8, 59.9],
   },
   {
     id: 'thunder',
@@ -107,7 +107,7 @@ export const TRACKS: TrackDef[] = [
     swells: 3,
     hazards: 3,
     shortcuts: 1,
-    medals: [60, 66, 74],
+    medals: [67.7, 71.4, 76.7],
   },
   {
     id: 'neon',
@@ -132,7 +132,7 @@ export const TRACKS: TrackDef[] = [
     swells: 1,
     hazards: 2,
     shortcuts: 1,
-    medals: [54, 60, 67],
+    medals: [64.9, 68.5, 73.5],
   },
   {
     id: 'cinder',
@@ -157,7 +157,7 @@ export const TRACKS: TrackDef[] = [
     swells: 2,
     hazards: 6,
     shortcuts: 1,
-    medals: [57, 63, 71],
+    medals: [59.9, 63.2, 67.8],
   },
   {
     id: 'shipyard',
@@ -182,7 +182,7 @@ export const TRACKS: TrackDef[] = [
     swells: 0,
     hazards: 2,
     shortcuts: 1,
-    medals: [44, 49, 55],
+    medals: [58.3, 61.6, 66.1],
   },
 ];
 

@@ -431,7 +431,8 @@ export class RaceSession {
           if (k > 0) {
             this.events.push('checkpoint', r.id, b.position.x, b.position.y, b.position.z, k % G);
             if (r.isPlayer && this.mode === 'endless' && this.phase === 'racing') {
-              this.endlessTimeLeft += Math.max(5, 11 - this.endlessLevel * 0.8);
+              // Early gates pay a little more than they cost; later ones less, so the run always ends.
+              this.endlessTimeLeft += Math.max(3, 8.4 - this.endlessLevel * 0.75);
             }
           }
         }

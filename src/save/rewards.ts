@@ -33,8 +33,9 @@ export function medalName(m: number) {
 /** Stunt medal thresholds scale with track length. */
 export function stuntTargets(trackId: string): [number, number, number] {
   const i = TRACKS.findIndex((t) => t.id === trackId);
-  const base = 6000 + i * 600;
-  return [base, base * 0.65, base * 0.35];
+  // A no-trick clean run scores ~4–7k; gold needs a run full of tricks and rings.
+  const base = 12000 + i * 800;
+  return [base, Math.round(base * 0.65), Math.round(base * 0.4)];
 }
 export function endlessTargets(): [number, number, number] {
   return [6000, 3500, 1800];

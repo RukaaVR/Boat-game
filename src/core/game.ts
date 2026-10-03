@@ -44,6 +44,7 @@ import { ReplayPlayer, ReplayRecorder, type ReplayData } from '../race/replay';
 import { PhotoPanel, ReplayBar, type PhotoHost, type ReplayHost } from '../ui/overlays';
 import { CAM_LABEL, CAM_MODES } from '../camera/cameraRig';
 import { checkAchievements } from '../save/rewards';
+import { decodeGhost, encodeGhost } from '../save/ghostCode';
 
 export interface EventRequest {
   mode: ModeId;
@@ -1007,6 +1008,7 @@ export class Game implements ReplayHost, PhotoHost {
       get game() {
         return g;
       },
+      ghostCode: { encode: encodeGhost, decode: decodeGhost },
       tutorialJump(i: number) {
         if (g.tutorial) g.tutorial.index = i;
       },

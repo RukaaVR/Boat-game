@@ -189,16 +189,28 @@ export class AdminPanel {
       const lock = this.lockRemaining();
       el.innerHTML = `<div class="adm-head"><b>ADMIN</b><button data-a="close">✕</button></div>
         <div class="adm-body"><div class="adm-lock">🔒 Password required</div>
-        ${lock > 0 ? `<div class="adm-msg">Too many attempts. Try again in ${Math.ceil(lock / 1000)} s.</div>` : `<input type="password" data-pw placeholder="Password" autocomplete="off"><button data-a="pw">UNLOCK</button>`}
+        ${lock > 0 ? `<div class="adm-msg" data-lockmsg>Too many attempts. Try again in ${Math.ceil(lock / 1000)} s.</div>` : `<input type="password" data-pw placeholder="Password" autocomplete="off"><button data-a="pw">UNLOCK</button>`}
         ${msg ? `<div class="adm-msg">${msg}</div>` : ''}</div>`;
       const inp = el.querySelector('input[data-pw]') as HTMLInputElement | null;
       inp?.focus();
-      if (lock > 0) setTimeout(() => this.el && !this.unlocked && this.render(), 1000);
+      if (lock > 0) this.tickLock();
       return;
     }
     const tabs: Tab[] = ['save', 'race', 'physics', 'world', 'debug'];
     el.innerHTML = `<div class="adm-head"><b>ADMIN</b><span class="adm-tabs">${tabs.map((t) => `<button class="${t === this.tab ? 'on' : ''}" data-a="tab" data-v="${t}">${t.toUpperCase()}</button>`).join('')}</span><button data-a="close">✕</button></div>
       <div class="adm-body">${this.body()}</div>${msg ? `<div class="adm-msg">${msg}</div>` : ''}`;
+  }
+
+  /** Count the lockout down in place (re-rendering would move the buttons under the cursor). */
+  private tickLock() {
+    setTimeout(() => {
+      if (!this.el || this.unlocked) return;
+      const left = this.lockRemaining();
+      if (left <= 0) return this.render();
+      const m = this.el.querySelector('[data-lockmsg]');
+      if (m) m.textContent = `Too many attempts. Try again in ${Math.ceil(left / 1000)} s.`;
+      this.tickLock();
+    }, 1000);
   }
 
   private sl(id: string, label: string, min: number, max: number, step: number, v: number) {

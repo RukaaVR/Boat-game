@@ -116,17 +116,17 @@ await test('replay plays the race back and returns to results', async () => {
 
 await test('ghost codes round-trip and reject garbage', async () => {
   const r = await E(async () => {
-    const m = await import('/src/save/ghostCode.ts').catch(() => null);
-    if (!m) return { skipped: true };
+    const m = window.__RIPTIDE__.ghostCode;
+    m.encodeGhost = m.encode;
+    m.decodeGhost = m.decode;
     const samples = [];
     for (let i = 0; i < 400; i++) samples.push(Math.cos(i * 0.02) * 260, 0.4, Math.sin(i * 0.02) * 220, (i * 0.02) % 3, 0.03, -0.01);
     const code = await m.encodeGhost({ trackId: 'atoll', boatId: 'aero', time: 55.5, samples }, 'pal');
     const g = await m.decodeGhost(code);
     let err = 0;
     for (let i = 0; i < samples.length; i++) err = Math.max(err, Math.abs(samples[i] - g.samples[i]));
-    return { code: code.slice(0, 20), err, name: g.name, track: g.trackId, bad: await m.decodeGhost('RPT1.atoll.aero.5000.X.zzzz'), junk: await m.decodeGhost('hello') };
+    return { code, err, name: g.name, track: g.trackId, bad: await m.decodeGhost('RPT1.atoll.aero.5000.X.zzzz'), junk: await m.decodeGhost('hello') };
   });
-  if (r.skipped) return; // production build: module paths are bundled
   assert(r.code.startsWith('RPT1.atoll.aero.55500.PAL.'), 'bad header ' + r.code);
   assert(r.err < 0.06, 'lossy beyond quantisation: ' + r.err);
   assert(r.bad === null && r.junk === null, 'garbage accepted');
@@ -163,9 +163,11 @@ await test('guided tutorial completes step by step', async () => {
     await run({ throttle: 0, drift: true, steer: 1 }, 1.2);
     await run({ throttle: 1, drift: false, steer: 0 }, 2);
   }
-  for (let k = 0; k < 5 && (await step()) === 'land'; k++) {
-    await E(() => { const R = window.__RIPTIDE__; R.setControls({ throttle: 1, steer: 0, drift: false }); return R.simulateUntil('s.airborne', 6, 1 / 60); });
+  await run({ throttle: 0, drift: false, steer: 0 }, 3); // settle after the trick jump
+  for (let k = 0; k < 10 && (await step()) === 'land'; k++) {
+    const air = await E(() => { const R = window.__RIPTIDE__; R.setControls({ throttle: 1, steer: 0, drift: false }); return R.simulateUntil('s.airborne', 6, 1 / 60).ok; });
     await run({ throttle: 0, drift: false, steer: 0 }, 2.5);
+    if (process.env.DEBUG_TUT) console.log('  land try', air, JSON.stringify(await E(() => ({ t: window.__RIPTIDE__.tutorialStep(), st: window.__RIPTIDE__.stats() }))).slice(0, 300));
   }
   for (let k = 0; k < 3 && (await step()) === 'start'; k++) {
     await run({ throttle: 0 }, 2.6);

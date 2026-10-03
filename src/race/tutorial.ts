@@ -91,6 +91,7 @@ export class Tutorial {
     }
     s.player.hint = -1;
     this.staged = true;
+    this.t = 0;
   }
 
   update(dt: number, events: readonly GameEvent[]) {
@@ -147,6 +148,10 @@ export class Tutorial {
         break;
       case 'trick':
         if (!this.staged) this.stageRamp(true);
+        if (this.t > 8) {
+          this.say('Hit the ramp at full speed, then hold DRIFT + a direction');
+          this.staged = false;
+        }
         if (mine('trick')) this.next();
         else if (mine('wipeout')) {
           this.say('Bailed! Finish the trick before you touch down');
@@ -158,6 +163,11 @@ export class Tutorial {
         break;
       case 'land': {
         if (!this.staged) this.stageRamp(true);
+        if (this.t > 8) {
+          // A hop too short to count as a landing: line up again.
+          this.say('Hit the ramp at full speed for a proper jump');
+          this.staged = false;
+        }
         const e = ev('land');
         if (e && e.text === 'clean') this.next();
         else if (e || mine('wipeout')) {

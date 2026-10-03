@@ -80,6 +80,12 @@ export class Music {
     this.ensure();
   }
 
+  /** 0..1 race pressure (close battle for a position / leading): faster, busier, lead line. */
+  pressure = 0;
+  setPressure(v: number) {
+    this.pressure = Math.max(0, Math.min(1, v));
+  }
+
   /** 0..1 boost intensity opens the music filter. */
   setIntensity(v: number) {
     this.intensity = v;
@@ -117,7 +123,9 @@ export class Music {
       return;
     }
     const st = this.style;
-    const stepDur = 60 / st.bpm / 4;
+    const racing = this.mood === 'race';
+    const pr = racing ? this.pressure : 0;
+    const stepDur = 60 / (st.bpm + pr * 10) / 4;
     while (this.nextTime < ctx.currentTime + 0.12) {
       const s = this.step % 16;
       const bar = Math.floor(this.step / 16);
@@ -126,6 +134,8 @@ export class Music {
       if (st.kick.includes(s)) this.kick(t);
       if (st.snare.includes(s)) this.snare(t);
       if (st.hat.includes(s)) this.hat(t, s % 4 === 2 ? 0.05 : 0.03);
+      else if (pr > 0.45 && s % 2 === 1) this.hat(t, 0.018 + pr * 0.012);
+      if (pr > 0.7 && (s === 14 || s === 15) && bar % 2 === 1) this.snare(t);
       if (st.bass && (s % 2 === 0 || this.mood === 'final')) {
         const oct = s % 8 === 6 ? 12 : 0;
         this.bass(t, this.note(chordDeg, -12) + oct, stepDur * 1.6);
@@ -136,7 +146,7 @@ export class Music {
         const deg = chordDeg + pattern[(s / 2) % 8];
         this.pluck(t, this.note(deg, 12), stepDur * 1.8, this.mood === 'results' ? 0.05 : 0.035);
       }
-      if (st.lead && s % 2 === 0) {
+      if ((st.lead || pr > 0.8) && s % 2 === 0) {
         const m = this.melody[(bar * 8 + s / 2) % this.melody.length];
         if (m >= 0) this.lead(t, this.note(chordDeg + m, 12), stepDur * 2);
       }

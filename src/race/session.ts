@@ -23,6 +23,7 @@ import { Track, type Projection, type TrackPoint } from './track';
 import { trackDef } from './trackDefs';
 import { Racer } from './racer';
 import { BattleItems } from './items';
+import { Traffic } from './traffic';
 import type { Boat } from '../boat/boat';
 
 export type Phase = 'intro' | 'countdown' | 'racing' | 'finished' | 'results';
@@ -62,6 +63,8 @@ export interface SessionConfig {
   bottlesFound?: number;
   /** Weather may change mid-race. */
   dynamicWeather?: boolean;
+  /** Fishing-boat traffic crossing the course. */
+  traffic?: boolean;
 }
 
 /** Per-event player counters (achievements, challenges). */
@@ -160,6 +163,9 @@ export class RaceSession {
   results: ResultRow[] = [];
   /** Battle mode items (null in other modes). */
   readonly items: BattleItems | null;
+  readonly traffic: Traffic | null;
+  /** Obstacles the AI steers around (rebuilt each step, no allocation). */
+  private obstacles: { x: number; z: number; r: number }[] = [];
   /** Planned mid-race weather change. */
   weatherPlan: { at: number; to: WeatherId; done: boolean } | null = null;
   private seaBlend: { from: number; fromChop: number; to: number; toChop: number; t: number } | null = null;
@@ -237,6 +243,7 @@ export class RaceSession {
     this.player.points = cfg.champPoints?.[0] ?? 0;
     this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
     this.items = cfg.mode === 'battle' ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
+    this.traffic = cfg.traffic ? new Traffic(this.track, this.statics, events, def.seed + 3, 2) : null;
     if (cfg.dynamicWeather) {
       const next: Record<WeatherId, WeatherId[]> = { clear: ['storm', 'sunset'], sunset: ['night', 'storm'], storm: ['clear', 'sunset'], night: ['storm', 'clear'] };
       const opts = next[cfg.weather];
@@ -249,7 +256,7 @@ export class RaceSession {
 
     this.physEnv = { time: 0, ramps: this.track.ramps, pads: this.track.pads, events };
     this.collHost = { events, boats: this.boats, statics: this.statics, buoys: this.buoys, ids: this.ids };
-    this.view = { playerDistance: 0, myDistance: 0, lap: 0, totalLaps: this.totalLaps, racing: false, others: this.boats };
+    this.view = { playerDistance: 0, myDistance: 0, lap: 0, totalLaps: this.totalLaps, racing: false, others: this.boats, obstacles: this.obstacles };
 
     // Grid. Player starts at the back in a race (more overtaking), front otherwise.
     const slots = this.racers.map((_, i) => i);
@@ -320,6 +327,22 @@ export class RaceSession {
       }
     }
 
+    // ── AI obstacle list ────────────────────────────────────────────────────
+    let no = 0;
+    const ob = this.obstacles;
+    const put = (x: number, z: number, r: number) => {
+      if (no < ob.length) {
+        ob[no].x = x;
+        ob[no].z = z;
+        ob[no].r = r;
+      } else ob.push({ x, z, r });
+      no++;
+    };
+    if (this.traffic) for (const t of this.traffic.boats) put(t.x, t.z, t.r + 1.5);
+    for (const m of this.mines) if (m.active) put(m.x, m.z, 2.4);
+    if (this.items) for (const sl of this.items.slicks) if (sl.alive) put(sl.x, sl.z, sl.r);
+    ob.length = no;
+
     // ── Controls ────────────────────────────────────────────────────────────
     const moving = this.phase === 'racing' || this.phase === 'finished' || this.phase === 'results';
     this.view.racing = moving;
@@ -363,6 +386,7 @@ export class RaceSession {
     }
 
     if (this.items) this.items.update(dt, this.racers, this.phase === 'racing');
+    if (this.traffic) this.traffic.update(dt, this.racers);
     for (const r of this.racers) r.boat.powerScale = r.boat.basePower * (1 - 0.12 * r.boat.damage);
     this.stats.itemHits = this.player.itemHits;
     this.updateWeather(dt);

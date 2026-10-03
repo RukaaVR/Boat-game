@@ -191,6 +191,25 @@ export const WEATHER: Record<WeatherId, WeatherPreset> = {
 
 export const WEATHER_IDS: WeatherId[] = ['clear', 'sunset', 'storm', 'night'];
 
+const COLOR_KEYS = new Set(['skyTop', 'skyHorizon', 'skyBottom', 'sunColor', 'hemiSky', 'hemiGround', 'fogColor', 'waterDeep', 'waterMid', 'waterShallow', 'waterFoam', 'waterCrest', 'cloudColor', 'cloudShade']);
+function lerpHex(a: number, b: number, k: number) {
+  const ch = (s: number) => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+/** A preset part-way from `a` to `b` (mid-race weather changes). */
+export function blendWeather(a: WeatherPreset, b: WeatherPreset, k: number): WeatherPreset {
+  const out = { ...(k < 0.5 ? a : b) } as unknown as Record<string, unknown>;
+  for (const key of Object.keys(a) as (keyof WeatherPreset)[]) {
+    const va = a[key];
+    const vb = b[key];
+    if (typeof va !== 'number' || typeof vb !== 'number') continue;
+    out[key] = COLOR_KEYS.has(key) ? lerpHex(va, vb, k) : va + (vb - va) * k;
+  }
+  // Rain should arrive late and leave early, so it never pours from a clear sky.
+  out.rain = Math.min(a.rain, b.rain) + Math.abs(b.rain - a.rain) * (b.rain > a.rain ? Math.max(0, k * 2 - 1) : Math.max(0, 1 - k * 2));
+  return out as unknown as WeatherPreset;
+}
+
 /** Per-theme accents layered over the weather. */
 export interface ThemeStyle {
   /** Emissive accent used for lights, lava, neon. */

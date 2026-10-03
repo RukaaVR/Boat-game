@@ -12,6 +12,7 @@ import { CAM_LABEL, type CamMode } from '../camera/cameraRig';
 import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
 import type { Tutorial, TutorialStep } from '../race/tutorial';
+import { ITEM_LABEL, type ItemId } from '../race/items';
 
 interface Msg {
   el: HTMLElement;
@@ -46,6 +47,9 @@ export class Hud {
   private center: HTMLElement;
   private count: HTMLElement;
   private modebox: HTMLElement;
+  private itemSlot: HTMLElement;
+  private dmg: HTMLElement;
+  private lastHits = 0;
   private proxL: HTMLElement;
   private proxR: HTMLElement;
   private tutorial: HTMLElement;
@@ -73,7 +77,7 @@ export class Hud {
     private session: RaceSession,
     parent: HTMLElement,
     private units: 'kmh' | 'mph',
-    bindings: Bindings,
+    private bindings: Bindings,
     touch = false,
   ) {
     const root = (this.root = el('div', 'hud', parent));
@@ -82,6 +86,9 @@ export class Hud {
     this.lap = el('div', 'lap', tl);
     this.standings = el('div', 'standings', tl);
     this.modebox = el('div', 'modebox', tl);
+    this.itemSlot = el('div', 'itemslot', tl);
+    this.itemSlot.style.display = session.items ? '' : 'none';
+    this.dmg = el('div', 'dmgbar', tl, '<span>HULL</span><div><i></i></div>');
     const tc = el('div', 'tc', root);
     this.timer = el('div', 'timer', tc);
     this.laptimes = el('div', 'laptimes', tc);
@@ -246,6 +253,23 @@ export class Hud {
       case 'reset':
         this.message('RESPAWN', 'small', 1);
         break;
+      case 'itemPickup':
+        this.message(`GOT ${ITEM_LABEL[e.text as ItemId] ?? e.text}!`, 'gold small', 1);
+        break;
+      case 'itemHit':
+        this.message(e.text === 'oil' ? 'SLIPPED ON OIL!' : e.text === 'wave' ? 'SWAMPED!' : 'HIT!', 'warn', 1.2);
+        break;
+      case 'shieldHit':
+        this.message('SHIELD BLOCKED IT', 'cyan small', 1.2);
+        break;
+      case 'collectible': {
+        const found = s.bottles.filter((b) => b.found).length;
+        this.message(`MESSAGE BOTTLE ${found}/${s.bottles.length}`, 'lime', 2.2);
+        break;
+      }
+      case 'weatherShift':
+        this.message(e.text === 'storm' ? 'A STORM IS ROLLING IN' : e.text === 'night' ? 'NIGHT IS FALLING' : e.text === 'sunset' ? 'THE SUN IS SETTING' : 'THE SKIES ARE CLEARING', 'cyan', 3);
+        break;
       case 'finish':
         this.message(s.isRace ? `FINISH — ${ordinal(s.player.place)}` : 'FINISH', 'gold', 3);
         break;
@@ -304,6 +328,25 @@ export class Hud {
         this.standings.innerHTML = h;
       });
     }
+
+    // Battle item slot and hits landed.
+    if (s.items) {
+      const it = p.item as ItemId | null;
+      const key = (it ?? '-') + (b.shield > 0 ? 'S' : '');
+      this.set('item', key, () => {
+        this.itemSlot.innerHTML = `<b class="ic ic-${it ?? 'none'}"></b><span>${it ? ITEM_LABEL[it] : 'NO ITEM'}</span>${it ? `<em>${keyLabel(this.bindings.item[0])}</em>` : ''}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}`;
+      });
+      if (p.itemHits > this.lastHits) {
+        this.lastHits = p.itemHits;
+        this.message('DIRECT HIT!', 'gold', 1.2);
+      }
+    }
+    const dmg = Math.round(b.damage * 20);
+    this.set('dmg', dmg, () => {
+      this.dmg.style.display = b.damage > 0.04 ? '' : 'none';
+      (this.dmg.querySelector('i') as HTMLElement).style.transform = `scaleX(${(1 - b.damage).toFixed(2)})`;
+      this.dmg.classList.toggle('bad', b.damage > 0.5);
+    });
 
     // Mode boxes.
     let mode = '';

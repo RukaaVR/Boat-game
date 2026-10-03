@@ -145,8 +145,8 @@ export class Atmosphere {
     scene.add(this.bolt);
   }
 
-  apply(weather: WeatherId, theme: ThemeId, ocean: Ocean | null, wake: WakeSystem | null, lights: WaterLight[]) {
-    const w = (this.preset = WEATHER[weather]);
+  apply(weather: WeatherId, theme: ThemeId, ocean: Ocean | null, wake: WakeSystem | null, lights: WaterLight[], override?: WeatherPreset) {
+    const w = (this.preset = override ?? WEATHER[weather]);
     this.theme = theme;
     const ts = THEME_STYLE[theme];
     this.night = weather === 'night' ? 1 : weather === 'storm' ? 0.35 : weather === 'sunset' ? 0.3 : 0;

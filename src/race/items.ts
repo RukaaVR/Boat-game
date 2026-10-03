@@ -73,9 +73,9 @@ export class BattleItems {
     for (let k = 0; k < 4; k++) {
       const s = L * ((k + 0.3) / 4);
       track.sample(s, _tp);
-      const w = track.width * 0.62;
-      for (let j = 0; j < 4; j++) {
-        const lat = -w / 2 + (w * j) / 3 + track.lineAt(s) * 0.3;
+      const w = track.width * 0.7;
+      for (let j = 0; j < 6; j++) {
+        const lat = -w / 2 + (w * j) / 5 + track.lineAt(s) * 0.3;
         const x = _tp.x - _tp.tz * lat;
         const z = _tp.z + _tp.tx * lat;
         if (!statics.blocked(x, z, 2)) this.boxes.push({ x, z, respawn: 0 });
@@ -115,7 +115,7 @@ export class BattleItems {
       for (const r of racers) {
         const b = r.boat;
         if (r.item || b.airborne && b.clearance > 2) continue;
-        if ((b.position.x - box.x) ** 2 + (b.position.z - box.z) ** 2 < 2.6 * 2.6) {
+        if ((b.position.x - box.x) ** 2 + (b.position.z - box.z) ** 2 < 3.3 * 3.3) {
           box.respawn = 3;
           r.item = this.roll(r.place, racers.length);
           this.aiHold.set(r.id, this.rng.range(0.6, 2.5));

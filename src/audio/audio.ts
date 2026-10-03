@@ -498,6 +498,34 @@ export class AudioEngine {
       case 'reset':
         if (isPlayer) this.tone(600, 0.25, 'sine', 0.06, 0, 0, 1200);
         break;
+      case 'itemPickup':
+        if (isPlayer) [660, 880, 1320, 1760].forEach((f, i) => this.tone(f, 0.08, 'square', 0.04, i * 0.04));
+        break;
+      case 'itemUse':
+        if (e.text === 'torpedo') {
+          this.burst(0.7, 'bandpass', 2400, 0.18 * att, pan, 0, 500, 1.5);
+          this.tone(240, 0.4, 'sawtooth', 0.05 * att, 0, pan, 90);
+        } else if (e.text === 'oil') this.burst(0.5, 'lowpass', 500, 0.15 * att, pan, 0, 150);
+        else if (e.text === 'shield') [523, 784, 1046].forEach((f, i) => this.tone(f, 0.5, 'sine', 0.05 * att, i * 0.03, pan));
+        else if (e.text === 'wave') {
+          this.tone(55, 1.0, 'sine', 0.35 * att, 0, pan, 30);
+          this.burst(1.5, 'lowpass', 1400, 0.4 * att, pan, 0, 200);
+        }
+        break;
+      case 'itemHit':
+        this.burst(1.2, 'lowpass', 1800, 0.45 * att, pan, 0, 80, 0.4);
+        this.tone(70, 0.6, 'sine', 0.3 * att, 0, pan, 30);
+        if (isPlayer) this.tone(300, 0.4, 'sawtooth', 0.06, 0.05, 0, 90);
+        break;
+      case 'shieldHit':
+        [1568, 1175, 784].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.07 * att, i * 0.05, pan));
+        break;
+      case 'collectible':
+        [1046, 1318, 1568, 2093, 2637].forEach((f, i) => this.tone(f, 0.35, 'sine', 0.07, i * 0.07));
+        break;
+      case 'weatherShift':
+        this.tone(80, 2.5, 'sine', 0.12, 0, 0, 55);
+        break;
     }
   }
 }

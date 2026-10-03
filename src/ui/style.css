@@ -373,3 +373,19 @@ body.touchmode .hud .tutorial { bottom: auto; top: 46%; }
 .tut-panel.cheer .tp-text { border-left-color: var(--lime); }
 .touch .t-item { right: 236px; bottom: 30px; width: 70px; height: 70px; background: rgba(255,210,30,.35); }
 @media (max-height: 480px) { .touch .t-item { right: 196px; bottom: 16px; width: 58px; height: 58px; } }
+
+/* ── Battle / damage HUD ─────────────────────────────────────────────── */
+.itemslot { margin-top: 10px; display: flex; align-items: center; gap: 10px; background: rgba(5,10,30,.55); padding: 6px 12px 6px 6px; transform: skewX(-10deg); font-size: 15px; }
+.itemslot > * { transform: skewX(10deg); }
+.itemslot .ic { width: 40px; height: 40px; display: inline-block; border: 2px solid rgba(255,255,255,.4); background: rgba(255,255,255,.06) center/70% no-repeat; }
+.itemslot .ic-torpedo { background-color: #ff3b5c; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 12h13l5-3v6l-5-3' stroke='%23fff' stroke-width='2.5' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.itemslot .ic-oil { background-color: #2a2e38; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3c4 6 6 9 6 12a6 6 0 0 1-12 0c0-3 2-6 6-12z' fill='%23c9a6ff'/%3E%3C/svg%3E"); }
+.itemslot .ic-shield { background-color: #1a8fff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z' fill='%23fff'/%3E%3C/svg%3E"); }
+.itemslot .ic-wave { background-color: #0aa; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 15c3-4 5-4 8 0s5 4 8 0 3-3 4-2' stroke='%23fff' stroke-width='2.5' fill='none'/%3E%3Cpath d='M2 9c3-4 5-4 8 0s5 4 8 0' stroke='%23fff' stroke-width='2' fill='none' opacity='.6'/%3E%3C/svg%3E"); }
+.itemslot .ic-turbo { background-color: #ffb21e; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 2L4 14h7l-1 8 9-12h-7z' fill='%23fff'/%3E%3C/svg%3E"); }
+.itemslot em { font-style: normal; font-family: var(--font2); font-size: 11px; background: rgba(255,255,255,.15); padding: 1px 6px; }
+.itemslot .sh { color: var(--cyan); font-size: 12px; animation: pulse .8s infinite; }
+.dmgbar { margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; font-style: normal; font-family: var(--font2); font-weight: 800; letter-spacing: 2px; color: var(--dim); }
+.dmgbar div { width: 120px; height: 7px; background: rgba(255,255,255,.12); transform: skewX(-20deg); overflow: hidden; }
+.dmgbar i { display: block; height: 100%; background: var(--lime); transform-origin: left; }
+.dmgbar.bad i { background: var(--pink); }

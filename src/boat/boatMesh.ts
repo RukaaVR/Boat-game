@@ -26,7 +26,7 @@ import {
 import { clamp, damp, smoothstep } from '../core/mathx';
 import { addOutline, cel, makeCel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
-import { paintLivery, shade } from '../render/textures';
+import { paintDamage, paintLivery, shade } from '../render/textures';
 import type { Boat } from './boat';
 import type { Livery } from './livery';
 import type { BoatSpec, HullStyle } from './specs';
@@ -430,9 +430,20 @@ export class BoatVisual {
     }
   }
 
+  private damageLevel = 0;
+  /** Scuff the hull to match damage 0..1 (repaints only when the level steps). */
+  setDamage(d: number, seed: number) {
+    const level = Math.min(4, Math.floor(d * 5));
+    if (level === this.damageLevel || this.ghost) return;
+    this.damageLevel = level;
+    paintLivery(this.livery, this.livTex);
+    if (level > 0) paintDamage(this.livTex, level, seed);
+  }
+
   /** Repaint after a garage change (same hull style). */
   repaint(l: Livery) {
     this.livery = l;
+    this.damageLevel = 0;
     paintLivery(l, this.livTex);
     (this.flame.material as MeshBasicMaterial).color.set(l.boost);
   }

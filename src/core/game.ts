@@ -92,6 +92,22 @@ export class Game {
   private champPendingFinal = false;
   /** Smoothed CPU cost of simulation + scene update per frame (excludes GPU work). */
   cpuMs = 0;
+  /** Smoothed music pressure. */
+  private pressure = 0;
+  /** How tight the fight around the player is: 0 calm … 1 wheel-to-wheel or leading. */
+  private racePressure(s: RaceSession) {
+    if (!s.isRace || s.phase !== 'racing') return 0;
+    const p = s.player;
+    const i = s.order.indexOf(p);
+    const pace = Math.max(12, p.boat.speed);
+    const ahead = i > 0 ? (s.order[i - 1].raceDist - p.raceDist) / pace : Infinity;
+    const behind = i < s.order.length - 1 ? (p.raceDist - s.order[i + 1].raceDist) / pace : Infinity;
+    const close = Math.max(clamp01(1 - ahead / 2.5), clamp01(1 - behind / 1.8));
+    const lead = p.place === 1 ? 0.55 : 0;
+    const finale = s.hasLaps && p.lap >= s.totalLaps ? 0.25 : 0;
+    return clamp01(Math.max(close, lead) + finale);
+  }
+
   /** Global sim speed (admin slow-motion). */
   timeScale = 1;
   readonly admin: AdminPanel;
@@ -243,7 +259,7 @@ export class Game {
   private build(cfg: SessionConfig, weather: WeatherId) {
     this.teardown();
     this.session = new RaceSession(cfg, this.events);
-    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather);
+    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife });
     this.rig.ramps = this.session.track.ramps;
     this.rig.boats = this.session.racers.map((r) => r.boat);
     const scenery = this.world.scenery;
@@ -411,6 +427,7 @@ export class Game {
       bossPower: stage?.bossPower,
       bottlesFound: d.bottles[req.trackId] ?? 0,
       dynamicWeather: d.settings.dynamicWeather && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'battle' || req.mode === 'freeride'),
+      traffic: d.settings.wildlife && req.mode !== 'timetrial' && req.mode !== 'tutorial' && req.mode !== 'stunt',
     };
     this.screens.loading();
     this.state = 'race';
@@ -427,6 +444,7 @@ export class Game {
         this.save.save();
       }
       this.world!.course.setRacingLine(d.settings.racingLine);
+      this.touch.setItemButton(!!s.items);
       this.screens.clear();
       this.paused = false;
       this.rewards = null;
@@ -645,6 +663,7 @@ export class Game {
       if (s.phase === 'results' || s.phase === 'finished') this.music.setMood('results');
       else this.music.setMood(final || (s.mode === 'endless' && s.endlessLevel >= 3) || (s.mode === 'stunt' && s.stuntTimeLeft < 20) ? 'final' : 'race');
       this.music.setIntensity(clamp01(s.player.boat.boostLevel));
+      this.music.setPressure((this.pressure = this.pressure + (this.racePressure(s) - this.pressure) * Math.min(1, dt * 0.8)));
       const r = w.fx.rumble;
       if (r.ms > 0 && this.input.lastDevice === 'gamepad') this.input.rumble(r.strong, r.weak, r.ms);
     }

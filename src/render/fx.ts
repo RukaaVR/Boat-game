@@ -146,6 +146,11 @@ export class FxDirector {
         const n = P.count(60 * lod, dt);
         for (let k = 0; k < n; k++) P.emit('splash', b.position.x, b.surfaceY + 0.2, b.position.z, (Math.random() - 0.5) * 8, 3 + Math.random() * 4, (Math.random() - 0.5) * 8, WHITE, 1, 1, floor);
       }
+      // Damaged hulls trail smoke from the engine.
+      if (b.damage > 0.35) {
+        const n = P.count((b.damage - 0.3) * 14 * lod, dt);
+        for (let k = 0; k < n; k++) P.emit('smoke', b.position.x - fx * L * 0.45, b.position.y + 0.6, b.position.z - fz * L * 0.45, b.velocity.x * 0.3 + (Math.random() - 0.5), 1.5 + Math.random(), b.velocity.z * 0.3 + (Math.random() - 0.5), SMOKE, 0.6, 0.5 + b.damage * 0.5);
+      }
       // Celebrate / ghost visuals.
       if (this.visuals[i]) this.visuals[i].celebrate = racers[i].finished && this.session.phase !== 'racing';
     }
@@ -315,6 +320,47 @@ export class FxDirector {
           break;
         case 'reset':
           if (mine) this.flash = Math.max(this.flash, 0.2);
+          break;
+        case 'itemPickup':
+          if (near || mine) for (let k = 0; k < 24; k++) P.emit('spark', e.x, e.y + 1.2, e.z, (Math.random() - 0.5) * 7, Math.random() * 6, (Math.random() - 0.5) * 7, CONFETTI[k % CONFETTI.length], 1, 1.3);
+          if (mine) this.addRumble(0.1, 0.4, 80);
+          break;
+        case 'itemUse':
+          if (mine && e.text === 'wave') {
+            rig.addTrauma(0.35);
+            this.radialPulse = 1;
+          }
+          if ((near || mine) && e.text === 'wave') for (let k = 0; k < 90; k++) {
+            const a = (k / 90) * Math.PI * 2;
+            P.emit('splash', e.x + Math.cos(a) * 3, e.y, e.z + Math.sin(a) * 3, Math.cos(a) * 16, 4 + Math.random() * 5, Math.sin(a) * 16, WHITE, 1, 1.4, e.y - 1);
+          }
+          break;
+        case 'itemHit': {
+          if (!near && !mine) break;
+          const big = e.text === 'torpedo' || e.text === 'splash';
+          for (let k = 0; k < (big ? 60 : 24); k++) P.emit('splash', e.x, e.y + 0.3, e.z, (Math.random() - 0.5) * 10, 3 + Math.random() * (big ? 10 : 4), (Math.random() - 0.5) * 10, WHITE, 1, 1.3, e.y - 1);
+          if (big) for (let k = 0; k < 24; k++) P.emit('ember', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 12, Math.random() * 10, (Math.random() - 0.5) * 12, EMBER, 0.5, 2);
+          if (mine) {
+            rig.addTrauma(0.6);
+            this.damage = Math.max(this.damage, 0.7);
+            this.addRumble(0.9, 0.8, 300);
+          }
+          break;
+        }
+        case 'shieldHit':
+          if (near || mine) for (let k = 0; k < 40; k++) P.emit('spark', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 12, Math.random() * 8, (Math.random() - 0.5) * 12, TIER[1], 1, 1.5);
+          if (mine) {
+            this.flash = Math.max(this.flash, 0.25);
+            renderer.fx.flashColor.setRGB(0.4, 0.9, 1);
+          }
+          break;
+        case 'collectible':
+          for (let k = 0; k < 60; k++) P.emit('spark', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 8, 2 + Math.random() * 8, (Math.random() - 0.5) * 8, CONFETTI[3], 1, 1.6);
+          if (mine) {
+            this.flash = Math.max(this.flash, 0.2);
+            renderer.fx.flashColor.setRGB(0.5, 1, 0.7);
+            this.addRumble(0.2, 0.6, 150);
+          }
           break;
       }
     }

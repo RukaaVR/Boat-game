@@ -69,6 +69,8 @@ export interface AIRaceView {
   racing: boolean;
   /** Other boats for avoidance. */
   others: readonly Boat[];
+  /** Moving obstacles to steer around (fishing boats, mines, oil). */
+  obstacles?: readonly { x: number; z: number; r: number }[];
 }
 
 const _tp: TrackPoint = { x: 0, z: 0, tx: 0, tz: 1, heading: 0 };
@@ -230,7 +232,17 @@ export class AIDriver {
         if (ahead > 0 && ahead < 10 && Math.abs(side) < 2.8 && p.aggression < 0.6) speedCap = Math.min(speedCap, o.forwardSpeed + 2);
       }
     }
-    lateral += clamp(avoid, -9, 9);
+    if (view.obstacles) {
+      for (const o of view.obstacles) {
+        const dx = o.x - pos.x;
+        const dz = o.z - pos.z;
+        const ahead = dx * fx + dz * fz;
+        const side = dx * -fz + dz * fx;
+        const w = o.r + 3;
+        if (ahead > -2 && ahead < 40 && Math.abs(side) < w) avoid += (side > 0 ? -1 : 1) * (w - Math.abs(side)) * 1.4;
+      }
+    }
+    lateral += clamp(avoid, -12, 12);
     lateral = clamp(lateral, -track.width * 0.46, track.width * 0.46);
 
     if (!usingShortcut) {

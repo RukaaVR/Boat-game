@@ -238,6 +238,32 @@ export function chevronTexture(fg: string, bg: string, key: string): Texture {
   return t;
 }
 
+/** Battle item box face: a "?" on a rainbow panel. */
+export function itemBoxTexture(): Texture {
+  const key = 'itembox';
+  if (cache.has(key)) return cache.get(key)!;
+  const { c, ctx } = canvas(128, 128);
+  const g = ctx.createLinearGradient(0, 0, 128, 128);
+  ['#ff3b5c', '#ffd21e', '#a6ff3d', '#26e8ff', '#8b6cff'].forEach((col, i) => g.addColorStop(i / 4, col));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, 118, 118);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 92px Arial Black, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(0,0,0,.45)';
+  ctx.strokeText('?', 64, 70);
+  ctx.fillText('?', 64, 70);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  cache.set(key, t);
+  return t;
+}
+
 /** Checkered start/finish banner with lettering. */
 export function bannerTexture(text: string, accent: string, key: string): Texture {
   if (cache.has(key)) return cache.get(key)!;
@@ -289,6 +315,54 @@ export function dropletTexture(): Texture {
   t.wrapS = t.wrapT = RepeatWrapping;
   cache.set(key, t);
   return t;
+}
+
+/**
+ * Battle damage drawn over a painted livery: scratches, scorch marks and dent
+ * shadows, deterministic per seed so the same boat always scuffs the same way.
+ * `level` is 0..4.
+ */
+export function paintDamage(tex: CanvasTexture, level: number, seed: number) {
+  const cv = tex.image as HTMLCanvasElement;
+  const ctx = cv.getContext('2d')!;
+  const W = cv.width;
+  const H = cv.height;
+  let s = seed * 9301 + 49297;
+  const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  ctx.save();
+  for (let i = 0; i < level * 14; i++) {
+    // Scratches: thin pale streaks running roughly along the hull.
+    const x = rnd() * W;
+    const y = H * (0.2 + rnd() * 0.6);
+    const len = 30 + rnd() * 120;
+    ctx.strokeStyle = `rgba(235,235,235,${0.35 + rnd() * 0.35})`;
+    ctx.lineWidth = 1 + rnd() * 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + len, y + (rnd() - 0.5) * 18);
+    ctx.stroke();
+  }
+  for (let i = 0; i < level * 3; i++) {
+    // Dents and scorch: soft dark blotches with a bright rim on one side.
+    const x = rnd() * W;
+    const y = H * (0.22 + rnd() * 0.56);
+    const r = 14 + rnd() * 26;
+    const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+    g.addColorStop(0, 'rgba(20,16,14,0.75)');
+    g.addColorStop(0.7, 'rgba(30,24,20,0.35)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.4, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x - 2, y - 2, r * 1.1, r * 0.75, 0, Math.PI * 1.1, Math.PI * 1.7);
+    ctx.stroke();
+  }
+  ctx.restore();
+  tex.needsUpdate = true;
 }
 
 /**

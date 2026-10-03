@@ -272,6 +272,11 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
   };
 }
 
+/** Results summary for events that award nothing (split-screen). */
+export function noRewards(level: number): RewardSummary {
+  return { xp: 0, credits: 0, medal: 0, medalLabel: '—', levelBefore: level, levelAfter: level, xpIntoBefore: 0, xpIntoAfter: 0, xpNeedAfter: 1, unlocks: [], records: [], breakdown: [], achievements: [], challenge: null, career: null, bottlesFound: 0 };
+}
+
 /** Award any newly met achievements (credits included). Returns their names. */
 export function checkAchievements(store: SaveStore): string[] {
   const d = store.data;

@@ -181,6 +181,13 @@ export class World {
     void _v;
   }
 
+  /** Point camera-following pieces at `cam` before rendering a split-screen view. */
+  prepareView(cam: import('three').Camera, time: number) {
+    this.ocean.update(cam);
+    this.sky.update(cam.position, time);
+    this.atmosphere.followCamera(cam);
+  }
+
   dispose() {
     this.ocean.dispose();
     this.sky.dispose();

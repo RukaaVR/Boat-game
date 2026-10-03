@@ -21,7 +21,7 @@ import { Input } from '../input/input';
 import { AudioEngine, type Listener } from '../audio/audio';
 import { Music } from '../audio/music';
 import { SaveStore } from '../save/save';
-import { applyRewards, finishChampionship, type RewardSummary } from '../save/rewards';
+import { applyRewards, finishChampionship, noRewards, type RewardSummary } from '../save/rewards';
 import { CAREER, type Challenge } from '../save/progress';
 import { RaceSession, type SessionConfig } from '../race/session';
 import { CUPS, trackDef } from '../race/trackDefs';
@@ -56,6 +56,10 @@ export interface EventRequest {
   challenge?: Challenge | null;
   /** Career stage index. */
   careerStage?: number;
+  /** Split-screen: player 2's boat (presence turns split-screen on). */
+  p2Boat?: BoatId;
+  /** Number of AI rivals (default 5). */
+  opponents?: number;
 }
 
 type State = 'boot' | 'title' | 'menu' | 'race';
@@ -74,6 +78,13 @@ export class Game implements ReplayHost, PhotoHost {
   readonly screens: Screens;
   readonly events = new EventQueue();
   readonly rig: CameraRig;
+  /** Split-screen: player 2's camera and HUD. */
+  rig2: CameraRig | null = null;
+  hud2: Hud | null = null;
+  private splitWraps: HTMLElement[] = [];
+  get split() {
+    return !!this.session?.cfg.player2;
+  }
   session: RaceSession | null = null;
   world: World | null = null;
   hud: Hud | null = null;
@@ -245,13 +256,27 @@ export class Game implements ReplayHost, PhotoHost {
   private onResize() {
     this.applyHudScale();
     this.renderer.resize();
-    this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight));
+    const splitH = this.rig2 ? 2 : 1;
+    this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight / splitH));
+    this.rig2?.setAspect(window.innerWidth / Math.max(1, window.innerHeight / 2));
+    for (const h of [this.hud, this.hud2]) {
+      if (!h) continue;
+      h.viewW = window.innerWidth;
+      h.viewH = window.innerHeight / splitH;
+    }
     this.hud?.resize();
+    this.hud2?.resize();
   }
 
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
     this.tutorial = null;
+    this.hud2?.destroy();
+    this.hud2 = null;
+    this.rig2 = null;
+    for (const w of this.splitWraps) w.remove();
+    this.splitWraps.length = 0;
+    this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight));
     this.replay = null;
     this.replayData = null;
     this.recorder = null;
@@ -429,8 +454,9 @@ export class Game implements ReplayHost, PhotoHost {
       difficulty: stage ? stage.difficulty : req.difficulty,
       playerBoat: req.boat,
       playerLivery: this.save.livery(req.boat),
-      playerName: d.playerName,
-      opponents: req.mode === 'battle' ? 5 : 5,
+      playerName: req.p2Boat ? 'P1' : d.playerName,
+      opponents: req.opponents ?? 5,
+      player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
       ghost: req.mode === 'timetrial' ? (d.ghosts[req.trackId] ?? null) : null,
       champPoints: champ?.points,
       playerUpgrades: this.save.upgrades(req.boat),
@@ -447,12 +473,36 @@ export class Game implements ReplayHost, PhotoHost {
     setTimeout(() => {
       this.build(cfg, weather);
       const s = this.session!;
-      this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings, this.touchEnabled);
+      if (s.cfg.player2) {
+        // Two stacked half-screen HUDs and a second camera.
+        for (let i = 0; i < 2; i++) {
+          const w = document.createElement('div');
+          w.className = 'splitwrap ' + (i ? 'bottom' : 'top');
+          this.ui.appendChild(w);
+          this.splitWraps.push(w);
+        }
+        this.hud = new Hud(s, this.splitWraps[0], d.settings.units, d.settings.bindings, false);
+        this.hud2 = new Hud(s, this.splitWraps[1], d.settings.units, d.settings.bindings, false, s.racers[1]);
+        for (const h of [this.hud, this.hud2]) {
+          h.viewW = window.innerWidth;
+          h.viewH = window.innerHeight / 2;
+        }
+        this.rig2 = new CameraRig(window.innerWidth / Math.max(1, window.innerHeight / 2));
+        this.rig2.ramps = s.track.ramps;
+        this.rig2.boats = s.racers.map((r) => r.boat);
+        const sc = this.world!.scenery;
+        this.rig2.ground = (x, z) => sc.ground(x, z);
+        this.rig2.seaLift = this.rig.seaLift;
+        this.rig2.shakeScale = this.rig.shakeScale;
+        this.rig2.motionScale = this.rig.motionScale;
+        this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight / 2));
+        this.rig2.startIntro();
+      } else this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings, this.touchEnabled);
       this.tutorial = req.mode === 'tutorial' ? new Tutorial(s) : null;
-      this.recorder = req.mode === 'tutorial' ? null : new ReplayRecorder(s);
+      this.recorder = req.mode === 'tutorial' || req.p2Boat ? null : new ReplayRecorder(s);
       this.replayData = null;
       this.hud.guide = this.tutorial;
-      this.hud.showTutorial = !d.seenTutorial && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'freeride');
+      this.hud.showTutorial = !req.p2Boat && !d.seenTutorial && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'freeride');
       if (this.hud.showTutorial) {
         d.seenTutorial = true;
         this.save.save();
@@ -701,7 +751,7 @@ export class Game implements ReplayHost, PhotoHost {
         this.pauseGame();
         return;
       }
-      if (this.input.pressed('camera') && s.phase !== 'results') this.cycleCamera();
+      if (!this.split && this.input.pressed('camera') && s.phase !== 'results') this.cycleCamera();
       if (this.input.pressed('restart') && s.phase !== 'results' && s.mode !== 'championship') {
         this.restartRace();
         return;
@@ -712,6 +762,21 @@ export class Game implements ReplayHost, PhotoHost {
         const c = s.player.controls;
         c.throttle = c.brake = c.steer = c.pitch = 0;
         c.drift = c.boost = c.roll = false;
+      } else if (this.split) {
+        if (!s.player.finished) this.input.readSplit(0, s.player.controls, dt);
+        const p2 = s.racers[1];
+        if (!p2.finished) this.input.readSplit(1, p2.controls, dt);
+        if (this.input.pressedSplit(1, 'camera') && this.rig2) {
+          this.rig2.cycle();
+          this.hud2?.showCamera(this.rig2.mode);
+        }
+        if (this.input.pressedSplit(0, 'camera')) this.cycleCamera();
+        if (s.phase === 'racing' && this.input.pressedSplit(1, 'respawn')) s.respawn(p2);
+        if (s.phase === 'racing' && this.input.pressedSplit(0, 'respawn')) s.respawn(s.player);
+        if (this.input.anyStart() && s.phase !== 'results') {
+          this.pauseGame();
+          return;
+        }
       } else if (!s.playerAutopilot && !s.player.finished) {
         this.input.read(s.player.controls, dt);
         if (this.controlOverride) Object.assign(s.player.controls, this.controlOverride);
@@ -771,6 +836,12 @@ export class Game implements ReplayHost, PhotoHost {
     const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : s.player.boat;
     if (this.rig.scripted === 'free') this.driveFreeCam(dt);
     if (simDt > 0 || this.garage || this.rig.scripted === 'free' || rp) this.rig.update(simDt || dt, target, s.track, s.time);
+    const r2 = this.rig2;
+    if (r2 && racing) {
+      if (s.phase !== 'intro' && r2.scripted === 'intro') r2.endScripted();
+      if ((s.phase === 'finished' || s.phase === 'results') && r2.scripted !== 'finish') r2.startFinish();
+      if (simDt > 0) r2.update(simDt, s.racers[1].boat, s.track, s.time);
+    }
 
     w.update(simDt, s.time, this.rig, this.events);
     if (this.hud) this.hud.camera = this.rig.camera;
@@ -780,6 +851,10 @@ export class Game implements ReplayHost, PhotoHost {
       fx.speed = fx.radial = fx.chroma = fx.flash = fx.drops = fx.damage = 0;
     }
     if (this.hud) this.hud.update(simDt);
+    if (this.hud2) {
+      this.hud2.camera = this.rig2?.camera ?? null;
+      this.hud2.update(simDt);
+    }
 
     // Events → audio + HUD.
     const cam = this.rig.camera;
@@ -795,6 +870,7 @@ export class Game implements ReplayHost, PhotoHost {
       if (racing) {
         this.audio.onEvent(e, _listener, e.racer === 0 || e.racer === -1);
         this.hud?.onEvent(e);
+        this.hud2?.onEvent(e);
       } else if (e.type === 'lightning') this.audio.onEvent(e, _listener, true);
       this.debug?.onEvent(e);
     }
@@ -823,9 +899,11 @@ export class Game implements ReplayHost, PhotoHost {
       this.resultsShown = true;
       this.replayData = this.recorder?.finish() ?? null;
       this.recorder = null;
-      this.rewards = applyRewards(s, this.save, { challenge: this.lastReq?.challenge, careerStage: this.lastReq?.careerStage });
+      this.rewards = this.split ? noRewards(this.save.level) : applyRewards(s, this.save, { challenge: this.lastReq?.challenge, careerStage: this.lastReq?.careerStage });
       this.hud?.destroy();
       this.hud = null;
+      this.hud2?.destroy();
+      this.hud2 = null;
       this.screens.results(this.rewards);
     }
     this.debug?.update(dt);
@@ -836,6 +914,11 @@ export class Game implements ReplayHost, PhotoHost {
     const w = this.world;
     if (!w) return;
     this.renderTime += dt;
+    if (this.rig2 && this.state === 'race') {
+      const t = this.session?.time ?? 0;
+      this.renderer.renderSplit(w.scene, [this.rig.camera, this.rig2.camera], w.atmosphere.post, dt, (cam) => w.prepareView(cam, t));
+      return;
+    }
     this.renderer.render(w.scene, this.rig.camera, w.atmosphere.post, dt);
   }
 

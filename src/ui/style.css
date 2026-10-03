@@ -408,3 +408,10 @@ body.touchmode .hud .tutorial { bottom: auto; top: 46%; }
 .photopanel input[type=range] { width: 150px; }
 .photopanel .pp-snap { background: var(--pink); }
 .photopanel.flash { box-shadow: 0 0 0 100vmax rgba(255,255,255,.35); }
+
+/* ── Split-screen ────────────────────────────────────────────────────── */
+.splitwrap { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; pointer-events: none !important; --hud: .64; }
+.splitwrap.top { top: 0; border-bottom: 2px solid rgba(0,0,0,.6); }
+.splitwrap.bottom { top: 50%; }
+.splitwrap .hud .standings { display: none; }
+.splitwrap .hud .minimap { width: 150px; height: 150px; }

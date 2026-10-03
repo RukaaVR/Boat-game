@@ -245,7 +245,7 @@ export class Screens {
         g.cycleCamera();
         break;
       default:
-        this.handleGarage(act, arg, el) || this.handleSettings(act, arg, el);
+        this.handleGarage(act, arg, el) || this.handleSettings(act, arg, el) || this.handleSplit(act, arg);
     }
   }
 
@@ -422,7 +422,86 @@ export class Screens {
     this.eventSetup('career', st.trackId);
   }
 
-  splitSetup() {}
+  // ── Split-screen setup ───────────────────────────────────────────────────
+  private split = { trackId: 'coral', weather: 'default' as WeatherId | 'default', laps: 3, opponents: 2, difficulty: 'normal' as EventRequest['difficulty'], p1: 'speedster' as BoatId, p2: 'drifter' as BoatId };
+
+  splitSetup() {
+    const g = this.game;
+    this.split.p1 = g.save.data.selectedBoat;
+    this.mount(
+      'split',
+      `<h1 class="h">${t('splitscreen')}</h1><div class="sub">${t('splitSub')} · No progression is awarded</div>
+      <div class="scroll" style="flex:1" id="splitBody"></div>
+      <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button><span class="spacer"></span>
+      <button class="btn big primary" data-nav data-act="splitGo" id="splitGo"><span>${t('start')}</span><span class="k">ENTER</span></button></div>`,
+      () => this.modes(),
+      'screen full',
+    );
+    this.refreshSplit();
+    g.nav.focus(this.root!.querySelector('#splitGo') as HTMLElement, false);
+  }
+
+  private refreshSplit() {
+    const body = this.root?.querySelector('#splitBody');
+    if (!body) return;
+    const g = this.game;
+    const sp = this.split;
+    const focusedAct = g.nav.current?.dataset.act;
+    const focusedArg = g.nav.current?.dataset.arg;
+    const lvl = g.save.level;
+    const opt = (act: string, arg: string, label: string, on: boolean, locked = false) => `<button class="opt ${on ? 'on' : ''} ${locked ? 'disabled' : ''}" data-nav data-act="${act}" data-arg="${arg}">${label}</button>`;
+    body.innerHTML = `
+      <div class="label">${t('course')}</div><div class="opts">${TRACKS.map((tr) => opt('sp_track', tr.id, tr.name + (lvl < tr.unlockLevel ? ' 🔒' : ''), sp.trackId === tr.id, lvl < tr.unlockLevel)).join('')}</div>
+      <div class="label">${t('weather')}</div><div class="opts">${['default', ...WEATHER_IDS].map((w) => opt('sp_weather', w, w === 'default' ? t('trackDefault') : WEATHER[w as WeatherId].name, sp.weather === w)).join('')}</div>
+      ${trackDef(sp.trackId).sprint ? '' : `<div class="label">${t('laps')}</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => opt('sp_laps', String(n), String(n), sp.laps === n)).join('')}</div>`}
+      <div class="label">AI rivals</div><div class="opts">${[0, 1, 2, 3, 4].map((n) => opt('sp_opp', String(n), String(n), sp.opponents === n)).join('')}${(['easy', 'normal', 'hard'] as const).map((d) => opt('sp_diff', d, d.toUpperCase(), sp.difficulty === d)).join('')}</div>
+      <div class="grid2" style="margin-top:8px;flex:none">
+        <div class="panel"><div class="label" style="margin-top:0;color:var(--pink)">PLAYER 1 · TOP</div><div class="opts">${BOATS.map((b) => opt('sp_p1', b.id, b.name, sp.p1 === b.id)).join('')}</div>
+          <div class="hint" style="margin-top:8px"><b>W A S D</b> drive · <b>SPACE</b> drift · <b>E</b> nitro · <b>Q</b> roll · <b>F</b> item · <b>C</b> camera · <b>T</b> respawn · or gamepad 1</div></div>
+        <div class="panel"><div class="label" style="margin-top:0;color:var(--cyan)">PLAYER 2 · BOTTOM</div><div class="opts">${BOATS.map((b) => opt('sp_p2', b.id, b.name, sp.p2 === b.id)).join('')}</div>
+          <div class="hint" style="margin-top:8px"><b>ARROWS</b> drive · <b>R-SHIFT</b> drift · <b>R-CTRL</b> nitro · <b>.</b> roll · <b>/</b> item · <b>M</b> camera · <b>\</b> respawn · or gamepad 2 (gamepad 1 if only one)</div></div>
+      </div>`;
+    const again = focusedAct ? (body.querySelector(`[data-act="${focusedAct}"][data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
+    if (again) g.nav.focus(again, false);
+  }
+
+  private handleSplit(act: string, arg: string): boolean {
+    const g = this.game;
+    const sp = this.split;
+    switch (act) {
+      case 'sp_track':
+        sp.trackId = arg;
+        g.setBackdrop(arg, sp.weather === 'default' ? trackDef(arg).weather : sp.weather);
+        break;
+      case 'sp_weather':
+        sp.weather = arg as WeatherId | 'default';
+        break;
+      case 'sp_laps':
+        sp.laps = Number(arg);
+        break;
+      case 'sp_opp':
+        sp.opponents = Number(arg);
+        break;
+      case 'sp_diff':
+        sp.difficulty = arg as EventRequest['difficulty'];
+        break;
+      case 'sp_p1':
+        sp.p1 = arg as BoatId;
+        break;
+      case 'sp_p2':
+        sp.p2 = arg as BoatId;
+        break;
+      case 'splitGo':
+        g.audio.click('select');
+        g.startEvent({ mode: 'quick', trackId: sp.trackId, weather: sp.weather, laps: sp.laps, difficulty: sp.difficulty, boat: sp.p1, p2Boat: sp.p2, opponents: sp.opponents });
+        return true;
+      default:
+        return false;
+    }
+    g.audio.click('move');
+    this.refreshSplit();
+    return true;
+  }
 
   // ── Achievements ─────────────────────────────────────────────────────────
   achievements() {

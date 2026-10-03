@@ -348,7 +348,45 @@ export class Renderer {
     gl.render(scene, camera);
     this.stats.calls = gl.info.render.calls;
     this.stats.triangles = gl.info.render.triangles;
+    this.postProcess(post);
+  }
 
+  /**
+   * Split-screen: each camera renders into its own horizontal band of the
+   * scene target (top band first), then one shared post pass. `prepare` runs
+   * before each view (re-centre camera-following meshes like the ocean).
+   */
+  renderSplit(scene: Scene, cameras: Camera[], post: PostSettings, dt: number, prepare: (cam: Camera) => void) {
+    this.clock += dt;
+    const gl = this.gl;
+    gl.info.reset();
+    const W = this.size.x;
+    const H = this.size.y;
+    const n = cameras.length;
+    const band = Math.floor(H / n);
+    const rt = this.sceneRT;
+    for (let i = 0; i < n; i++) {
+      const y = H - band * (i + 1);
+      rt.viewport.set(0, y, W, band);
+      rt.scissor.set(0, y, W, band);
+      rt.scissorTest = true;
+      prepare(cameras[i]);
+      celShared.uResolution.value.set(W, band);
+      gl.setRenderTarget(rt);
+      gl.render(scene, cameras[i]);
+    }
+    celShared.uResolution.value.set(W, H);
+    rt.viewport.set(0, 0, W, H);
+    rt.scissor.set(0, 0, W, H);
+    rt.scissorTest = false;
+    gl.setRenderTarget(rt);
+    this.stats.calls = gl.info.render.calls;
+    this.stats.triangles = gl.info.render.triangles;
+    this.postProcess(post);
+  }
+
+  private postProcess(post: PostSettings) {
+    const gl = this.gl;
     const bloomOn = this.bloomEnabled && this.quality !== 'low' && post.bloom > 0.01;
     if (bloomOn) {
       const W = this.size.x;

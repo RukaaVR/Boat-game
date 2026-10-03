@@ -232,6 +232,15 @@ export class Atmosphere {
     this.nextStrike = 4 + this.rng.range(0, 6);
   }
 
+  /** Re-aim camera-relative pieces at another camera (split-screen second view). */
+  followCamera(camera: Camera) {
+    this.rainMat.uniforms.uCam.value.copy(camera.position);
+    camera.updateMatrixWorld();
+    celShared.uSunView.value.copy(this.sunDir).transformDirection(camera.matrixWorldInverse);
+    this.sun.position.copy(camera.position).addScaledVector(this.sunDir, 200);
+    this.sun.target.position.copy(camera.position);
+  }
+
   /** Per-frame: lightning, rain follow, view-space sun for cel specular. */
   update(dt: number, camera: Camera, ocean: Ocean | null) {
     this.time += dt;

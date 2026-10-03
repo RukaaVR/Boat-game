@@ -17,7 +17,10 @@ export class Minimap {
   /** Visible radius in metres. */
   range = 330;
 
-  constructor(private session: RaceSession) {
+  constructor(
+    private session: RaceSession,
+    private me = session.player,
+  ) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'minimap';
     this.ctx = this.canvas.getContext('2d')!;
@@ -51,7 +54,7 @@ export class Minimap {
   draw(nextGate: number) {
     const c = this.ctx;
     const s = this.session;
-    const p = s.player.boat;
+    const p = this.me.boat;
     const S = this.size * this.dpr;
     const R = S / 2;
     const scale = (R * 0.92) / this.range;
@@ -109,7 +112,8 @@ export class Minimap {
       c.stroke();
     }
     // Rivals.
-    for (let i = s.racers.length - 1; i >= 1; i--) {
+    for (let i = s.racers.length - 1; i >= 0; i--) {
+      if (s.racers[i] === this.me) continue;
       const b = s.racers[i].boat;
       c.beginPath();
       c.arc(b.position.x, b.position.z, 5.5 * lw * this.dpr, 0, Math.PI * 2);

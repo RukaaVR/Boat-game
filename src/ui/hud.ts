@@ -56,6 +56,8 @@ export class Hud {
   private camLabel: HTMLElement;
   private draftEl: HTMLElement;
   private tags: HTMLElement[] = [];
+  /** Everyone except this HUD's racer. */
+  private others: import('../race/racer').Racer[] = [];
   private tagPos = new Vector3();
   /** Set by the game each frame for name-tag projection. */
   camera: Camera | null = null;
@@ -68,6 +70,9 @@ export class Hud {
   private tutorialSteps: string[];
   private tutorialT = 0;
   showTutorial = false;
+  /** Size of this HUD's viewport in CSS px (split-screen halves). */
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
   /** Guided tutorial (tutorial mode). */
   guide: Tutorial | null = null;
   private guideEl: HTMLElement | null = null;
@@ -79,6 +84,8 @@ export class Hud {
     private units: 'kmh' | 'mph',
     private bindings: Bindings,
     touch = false,
+    /** The racer this HUD belongs to (split-screen: player 2). */
+    readonly me = session.player,
   ) {
     const root = (this.root = el('div', 'hud', parent));
     const tl = el('div', 'tl', root);
@@ -98,7 +105,7 @@ export class Hud {
     this.cpArrow = this.cpdir.querySelector('svg')!;
     this.cpText = this.cpdir.querySelector('span')!;
     const tr = el('div', 'tr', root);
-    this.minimap = new Minimap(session);
+    this.minimap = new Minimap(session, me);
     tr.appendChild(this.minimap.canvas);
     const br = el('div', 'br', root);
     this.speed = el('div', 'speed', br);
@@ -125,8 +132,8 @@ export class Hud {
     this.draftEl.style.opacity = '0';
     this.camLabel = el('div', 'camlabel', root);
     this.camLabel.style.opacity = '0';
-    for (let i = 1; i < session.racers.length; i++) {
-      const r = session.racers[i];
+    this.others = session.racers.filter((r) => r !== me);
+    for (const r of this.others) {
       const t = el('div', 'tag', root, `<i style="background:${r.livery.hull}"></i>${r.name}`);
       t.style.opacity = '0';
       this.tags.push(t);
@@ -179,7 +186,7 @@ export class Hud {
   }
 
   onEvent(e: GameEvent) {
-    if (e.racer !== 0 && e.racer !== -1) return;
+    if (e.racer !== this.me.id && e.racer !== -1) return;
     const s = this.session;
     switch (e.type) {
       case 'countdown':
@@ -216,7 +223,7 @@ export class Hud {
           if (s.mode === 'endless') this.message('+TIME', 'lime small', 0.9);
           break;
         }
-        const lapT = s.playerLapTime();
+        const lapT = this.me.lap >= 1 ? s.raceTime - this.me.lapStart : 0;
         const idx = e.value;
         this.curSplits[idx] = lapT;
         const prev = this.prevSplits[idx];
@@ -271,14 +278,14 @@ export class Hud {
         this.message(e.text === 'storm' ? 'A STORM IS ROLLING IN' : e.text === 'night' ? 'NIGHT IS FALLING' : e.text === 'sunset' ? 'THE SUN IS SETTING' : 'THE SKIES ARE CLEARING', 'cyan', 3);
         break;
       case 'finish':
-        this.message(s.isRace ? `FINISH — ${ordinal(s.player.place)}` : 'FINISH', 'gold', 3);
+        this.message(s.isRace ? `FINISH — ${ordinal(this.me.place)}` : 'FINISH', 'gold', 3);
         break;
     }
   }
 
   update(dt: number) {
     const s = this.session;
-    const p = s.player;
+    const p = this.me;
     const b = p.boat;
     const n = s.racers.length;
 
@@ -364,7 +371,7 @@ export class Hud {
     const tt = s.phase === 'racing' || s.phase === 'finished' ? formatTime(s.raceTime) : formatTime(0);
     this.set('time', showTime ? tt : '', () => (this.timer.textContent = showTime ? tt : ''));
     if (s.hasLaps) {
-      const lt = `LAP ${formatTime(s.playerLapTime())} · BEST ${isFinite(p.bestLap) ? formatTime(p.bestLap) : '--:--.---'}`;
+      const lt = `LAP ${formatTime(p.lap >= 1 ? s.raceTime - p.lapStart : 0)} · BEST ${isFinite(p.bestLap) ? formatTime(p.bestLap) : '--:--.---'}`;
       this.set('laptimes', lt, () => (this.laptimes.textContent = lt));
     }
     if (typeof this.cache.splitT === 'number') {
@@ -412,8 +419,8 @@ export class Hud {
     let r = 0;
     const fx = Math.sin(b.heading);
     const fz = Math.cos(b.heading);
-    for (let i = 1; i < s.racers.length; i++) {
-      const o = s.racers[i].boat;
+    for (let i = 0; i < this.others.length; i++) {
+      const o = this.others[i].boat;
       const dx = o.position.x - b.position.x;
       const dz = o.position.z - b.position.z;
       const ahead = dx * fx + dz * fz;
@@ -475,11 +482,11 @@ export class Hud {
     // Rival name tags (nearby, in front of the lens).
     if (this.camera) {
       const cam = this.camera;
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      for (let i = 1; i < s.racers.length; i++) {
-        const r = s.racers[i];
-        const tag = this.tags[i - 1];
+      const W = this.viewW;
+      const H = this.viewH;
+      for (let i = 0; i < this.others.length; i++) {
+        const r = this.others[i];
+        const tag = this.tags[i];
         const d = cam.position.distanceTo(r.boat.position);
         this.tagPos.copy(r.boat.position);
         this.tagPos.y += 2.6;

@@ -65,6 +65,8 @@ export interface SessionConfig {
   dynamicWeather?: boolean;
   /** Fishing-boat traffic crossing the course. */
   traffic?: boolean;
+  /** Split-screen second player. */
+  player2?: { name: string; boat: BoatId; livery: Livery };
 }
 
 /** Per-event player counters (achievements, challenges). */
@@ -149,6 +151,9 @@ export class RaceSession {
   /** Player throttle discipline at the start. */
   startState: 'none' | 'false' | 'perfect' = 'none';
   playerAutopilot = false;
+  /** Human racers (1, or 2 in split-screen). */
+  readonly humans: Racer[] = [];
+  private p2Driver: AIDriver;
   /** Admin: rivals cut their engines. */
   aiFrozen = false;
   playerDriver: AIDriver;
@@ -225,6 +230,13 @@ export class RaceSession {
     // Racers: player + rivals.
     this.player = new Racer(0, cfg.playerName, upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerLivery, true, null);
     this.racers.push(this.player);
+    this.humans.push(this.player);
+    if (cfg.player2) {
+      const p2 = new Racer(1, cfg.player2.name, boatSpec(cfg.player2.boat), cfg.player2.livery, true, null);
+      this.racers.push(p2);
+      this.humans.push(p2);
+    }
+    const idBase = this.racers.length;
     const field = cfg.field ?? Array.from({ length: clamp(cfg.opponents, 0, RACE_RIVALS) }, (_, i) => i);
     const nOpp = racing ? field.length : 0;
     for (let i = 0; i < nOpp; i++) {
@@ -233,9 +245,9 @@ export class RaceSession {
       const liv = defaultLivery(r.hull, r.accent, r.number);
       liv.stripe = (['racing', 'twin', 'chevron', 'flame', 'split', 'digital', 'single'] as const)[i % 7];
       liv.decal = (['star', 'eye', 'bolt', 'wave', 'skull', 'crown', 'flame'] as const)[i % 7];
-      const racer = new Racer(i + 1, r.name, BOATS.find((b) => b.id === r.boat)!, liv, false, ai);
+      const racer = new Racer(i + idBase, r.name, BOATS.find((b) => b.id === r.boat)!, liv, false, ai);
       racer.reaction = this.rng.range(0.0, 0.35);
-      racer.points = cfg.champPoints?.[i + 1] ?? 0;
+      racer.points = cfg.champPoints?.[i + idBase] ?? 0;
       racer.rivalIndex = field[i];
       if (cfg.boss === field[i]) racer.boat.basePower = racer.boat.powerScale = cfg.bossPower ?? 1;
       this.racers.push(racer);
@@ -250,6 +262,7 @@ export class RaceSession {
       this.weatherPlan = { at: this.rng.range(30, 60), to: opts[this.rng.int(0, opts.length - 1)], done: false };
     }
     this.playerDriver = new AIDriver('technical', 'hard', 4242);
+    this.p2Driver = new AIDriver('technical', 'hard', 4343);
     this.boats = this.racers.map((r) => r.boat);
     this.ids = this.racers.map((r) => r.id);
     this.order.push(...this.racers);
@@ -260,9 +273,9 @@ export class RaceSession {
 
     // Grid. Player starts at the back in a race (more overtaking), front otherwise.
     const slots = this.racers.map((_, i) => i);
-    if (racing && this.racers.length > 1) {
-      const p = slots.shift()!;
-      slots.push(p);
+    if (racing && this.racers.length > this.humans.length) {
+      // Humans start at the back (more overtaking).
+      for (let h = 0; h < this.humans.length; h++) slots.push(slots.shift()!);
     }
     this.racers.forEach((r, i) => {
       this.track.gridSlot(slots[i], _tp);
@@ -357,7 +370,7 @@ export class RaceSession {
         }
         continue;
       }
-      const drive = r.ai ?? (this.playerAutopilot || r.finished ? this.playerDriver : null);
+      const drive = r.ai ?? (r === this.player ? (this.playerAutopilot || r.finished ? this.playerDriver : null) : r.finished ? this.p2Driver : null);
       if (drive && !(r.ai && this.raceTime < r.reaction && this.phase === 'racing')) {
         this.view.myDistance = r.raceDist;
         this.view.lap = r.lap;
@@ -500,7 +513,7 @@ export class RaceSession {
                 r.finished = true;
                 r.finishTime = this.raceTime;
                 this.events.push('finish', r.id, b.position.x, b.position.y, b.position.z, r.place);
-                if (r.isPlayer) this.onPlayerFinish();
+                if (r.isPlayer && this.humans.every((h) => h.finished)) this.onPlayerFinish();
                 break;
               }
               r.lap++;

@@ -61,6 +61,13 @@ const PAD: Partial<Record<Action, number[]>> = {
   back: [1],
 };
 
+/** Split-screen keyboard layouts: player 1 on the left of the keyboard, player 2 on the right. */
+export type SplitAction = 'throttle' | 'brake' | 'left' | 'right' | 'drift' | 'boost' | 'roll' | 'item' | 'camera' | 'respawn';
+export const SPLIT_KEYS: Record<SplitAction, string[]>[] = [
+  { throttle: ['KeyW'], brake: ['KeyS'], left: ['KeyA'], right: ['KeyD'], drift: ['ShiftLeft', 'Space'], boost: ['KeyE'], roll: ['KeyQ'], item: ['KeyF'], camera: ['KeyC'], respawn: ['KeyT'] },
+  { throttle: ['ArrowUp'], brake: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], drift: ['ShiftRight', 'Numpad0'], boost: ['ControlRight', 'Numpad1'], roll: ['Period', 'Numpad2'], item: ['Slash', 'Numpad3'], camera: ['KeyM', 'Numpad5'], respawn: ['Backslash', 'Numpad6'] },
+];
+
 export function keyLabel(code: string) {
   return code
     .replace(/^Key/, '')
@@ -90,6 +97,11 @@ export class Input {
   readonly padNav: ('up' | 'down' | 'left' | 'right' | 'ok' | 'back')[] = [];
   private stickRepeat = 0;
   private stickDir = '';
+  /** Every connected pad this frame (split-screen). */
+  private pads: Gamepad[] = [];
+  private padPrevById = new Map<number, boolean[]>();
+  private codesPressed = new Set<string>();
+  private splitSteer = [0, 0];
   /** On-screen touch controls, when active. */
   touch: TouchControls | null = null;
   /** When set, the next key press is captured for rebinding instead of acting. */
@@ -106,6 +118,7 @@ export class Input {
       }
       if (e.target instanceof HTMLInputElement) return;
       if (!e.repeat) {
+        this.codesPressed.add(e.code);
         for (const a of ACTIONS) if (this.bindings[a].includes(e.code)) this.pressedQ.add(a);
         if (DEFAULT_BINDINGS.back.includes(e.code)) this.pressedQ.add('back');
       }
@@ -136,6 +149,10 @@ export class Input {
   poll() {
     let gp: Gamepad | null = null;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    // Remember last frame's buttons per pad for split-screen edges.
+    for (const p of this.pads) this.padPrevById.set(p.index, p.buttons.map((b) => b.pressed));
+    this.pads.length = 0;
+    for (const p of pads) if (p && p.connected) this.pads.push(p);
     for (const p of pads) if (p && p.connected) {
       gp = p;
       break;
@@ -198,6 +215,7 @@ export class Input {
   /** Drop queued presses (screen changes). */
   flush() {
     this.pressedQ.clear();
+    this.codesPressed.clear();
     this.touch?.pressed.clear();
   }
 
@@ -244,6 +262,50 @@ export class Input {
         });
       }
     }
+  }
+
+  /** Pad assigned to a split-screen player: two pads → one each; one pad → player 2. */
+  private splitPad(which: number): Gamepad | null {
+    if (this.pads.length >= 2) return this.pads[which] ?? null;
+    if (this.pads.length === 1) return which === 1 ? this.pads[0] : null;
+    return null;
+  }
+
+  /** Split-screen: fill one player's controls from their keys and pad. */
+  readSplit(which: number, c: Controls, dt: number) {
+    const map = SPLIT_KEYS[which];
+    const k = (a: SplitAction) => map[a].some((code) => this.down.has(code));
+    const pad = this.splitPad(which);
+    const pb = (i: number) => !!pad?.buttons[i]?.pressed;
+    const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
+    const kb = (k('right') ? 1 : 0) - (k('left') ? 1 : 0);
+    const rate = (kb === 0 ? 10 : 6) * this.sensitivity;
+    this.splitSteer[which] += clamp(kb - this.splitSteer[which], -rate * dt, rate * dt);
+    const ps = clamp(dz(pad?.axes[0] ?? 0) * this.sensitivity, -1, 1);
+    c.steer = Math.abs(ps) > Math.abs(this.splitSteer[which]) ? ps : this.splitSteer[which];
+    c.throttle = Math.max(k('throttle') ? 1 : 0, pad?.buttons[7]?.value ?? 0);
+    c.brake = Math.max(k('brake') ? 1 : 0, pad?.buttons[6]?.value ?? 0);
+    c.pitch = clamp((k('throttle') ? 1 : 0) - (k('brake') ? 1 : 0) - dz(pad?.axes[1] ?? 0), -1, 1);
+    c.drift = k('drift') || pb(0) || pb(5);
+    c.boost = k('boost') || pb(2);
+    c.roll = k('roll') || pb(4);
+    c.item = k('item') || pb(1);
+  }
+
+  /** Split-screen edge-triggered action for one player. */
+  pressedSplit(which: number, a: 'camera' | 'respawn') {
+    let hit = false;
+    for (const code of SPLIT_KEYS[which][a]) if (this.codesPressed.delete(code)) hit = true;
+    const pad = this.splitPad(which);
+    const btn = a === 'camera' ? 3 : 11;
+    if (pad && pad.buttons[btn]?.pressed && !this.padPrevById.get(pad.index)?.[btn]) hit = true;
+    return hit;
+  }
+
+  /** Any pad's Start button this frame (split-screen pause). */
+  anyStart() {
+    for (const p of this.pads) if (p.buttons[9]?.pressed && !this.padPrevById.get(p.index)?.[9]) return true;
+    return false;
   }
 
   /** Raw key state (free camera, photo mode). */

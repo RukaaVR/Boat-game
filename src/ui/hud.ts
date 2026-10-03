@@ -156,7 +156,6 @@ export class Hud {
     const s = this.session;
     switch (e.type) {
       case 'countdown':
-        if (e.value === 3 && this.showTutorial) this.message('TIP: hit the throttle on <b>1</b> for a PERFECT START', 'small', 2.8);
         this.count.style.display = 'block';
         this.count.className = 'count' + (e.value === 0 ? ' go' : '');
         this.count.textContent = e.value === 0 ? 'GO!' : String(e.value);
@@ -377,7 +376,12 @@ export class Hud {
     }
 
     // First-race tutorial.
-    if (this.showTutorial && (s.phase === 'racing' || s.phase === 'countdown')) {
+    if (this.showTutorial && s.phase === 'countdown') {
+      this.set('tut', 'start', () => {
+        this.tutorial.innerHTML = 'TIP: hit the throttle on <b>1</b> for a PERFECT START — too early floods the engine';
+        this.tutorial.style.opacity = '1';
+      });
+    } else if (this.showTutorial && s.phase === 'racing') {
       this.tutorialT += dt;
       const step = Math.floor(this.tutorialT / 5.5);
       if (step < this.tutorialSteps.length) {

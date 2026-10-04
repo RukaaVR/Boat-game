@@ -473,7 +473,9 @@ export class Screens {
   }
 
   // ── Split-screen setup ───────────────────────────────────────────────────
-  private split = { trackId: 'coral', weather: 'default' as WeatherId | 'default', laps: 3, opponents: 2, difficulty: 'normal' as EventRequest['difficulty'], p1: 'speedster' as BoatId, p2: 'drifter' as BoatId };
+  private split = { trackId: 'coral', weather: 'default' as WeatherId | 'default', laps: 3, opponents: 2, difficulty: 'normal' as EventRequest['difficulty'], p1: 'speedster' as BoatId, p2: 'drifter' as BoatId, players: 2, p3: 'bullet' as BoatId, p4: 'aero' as BoatId };
+  /** Most AI rivals per player count: more screens to draw → fewer boats. */
+  private static readonly SPLIT_MAX_AI: Record<number, number> = { 2: 4, 3: 3, 4: 2 };
 
   splitSetup() {
     const g = this.game;
@@ -504,15 +506,39 @@ export class Screens {
       <div class="label">${t('course')}</div><div class="opts">${TRACKS.map((tr) => opt('sp_track', tr.id, tr.name + (lvl < tr.unlockLevel ? ' 🔒' : ''), sp.trackId === tr.id, lvl < tr.unlockLevel)).join('')}</div>
       <div class="label">${t('weather')}</div><div class="opts">${['default', ...WEATHER_IDS].map((w) => opt('sp_weather', w, w === 'default' ? t('trackDefault') : WEATHER[w as WeatherId].name, sp.weather === w)).join('')}</div>
       ${trackDef(sp.trackId).sprint ? '' : `<div class="label">${t('laps')}</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => opt('sp_laps', String(n), String(n), sp.laps === n)).join('')}</div>`}
-      <div class="label">AI rivals</div><div class="opts">${[0, 1, 2, 3, 4].map((n) => opt('sp_opp', String(n), String(n), sp.opponents === n)).join('')}${(['easy', 'normal', 'hard'] as const).map((d) => opt('sp_diff', d, d.toUpperCase(), sp.difficulty === d)).join('')}</div>
-      <div class="grid2" style="margin-top:8px;flex:none">
+      <div class="label">Players</div><div class="opts">${[2, 3, 4].map((n) => opt('sp_players', String(n), `${n} PLAYERS`, sp.players === n)).join('')}</div>
+      <div class="label">AI rivals</div><div class="opts">${[0, 1, 2, 3, 4].filter((n) => n <= Screens.SPLIT_MAX_AI[sp.players]).map((n) => opt('sp_opp', String(n), String(n), sp.opponents === n)).join('')}${(['easy', 'normal', 'hard'] as const).map((d) => opt('sp_diff', d, d.toUpperCase(), sp.difficulty === d)).join('')}</div>
+      ${sp.players > 2 ? this.quadPanels(opt) : `<div class="grid2" style="margin-top:8px;flex:none">
         <div class="panel"><div class="label" style="margin-top:0;color:var(--pink)">PLAYER 1 · TOP</div><div class="opts">${BOATS.map((b) => opt('sp_p1', b.id, b.name, sp.p1 === b.id)).join('')}</div>
           <div class="hint" style="margin-top:8px"><b>W A S D</b> drive · <b>SPACE</b> drift · <b>E</b> nitro · <b>Q</b> roll · <b>F</b> item · <b>C</b> camera · <b>T</b> respawn · or gamepad 1</div></div>
         <div class="panel"><div class="label" style="margin-top:0;color:var(--cyan)">PLAYER 2 · BOTTOM</div><div class="opts">${BOATS.map((b) => opt('sp_p2', b.id, b.name, sp.p2 === b.id)).join('')}</div>
           <div class="hint" style="margin-top:8px"><b>ARROWS</b> drive · <b>R-SHIFT</b> drift · <b>R-CTRL</b> nitro · <b>.</b> roll · <b>/</b> item · <b>M</b> camera · <b>\</b> respawn · or gamepad 2 (gamepad 1 if only one)</div></div>
-      </div>`;
+      </div>`}`;
     const again = focusedAct ? (body.querySelector(`[data-act="${focusedAct}"][data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
     if (again) g.nav.focus(again, false);
+  }
+
+  /** 3–4 players: one panel per player with their boat and how they drive. */
+  private quadPanels(opt: (act: string, arg: string, label: string, on: boolean) => string) {
+    const sp = this.split;
+    const n = sp.players;
+    const pads = this.game.input.padCount;
+    // Same assignment as Input.splitPad: pads go to the last players first.
+    const off = Math.max(0, n - pads);
+    const padOf = (i: number) => (pads >= n ? i : i >= off ? i - off : -1);
+    const colors = ['var(--pink)', 'var(--cyan)', '#a6ff3d', '#ffd21e'];
+    const place = ['TOP LEFT', 'TOP RIGHT', 'BOTTOM LEFT', 'BOTTOM RIGHT'];
+    const keys = ['<b>W A S D</b> · <b>SPACE</b> drift · <b>E</b> nitro', '<b>ARROWS</b> · <b>R-SHIFT</b> drift · <b>R-CTRL</b> nitro'];
+    const boats = [sp.p1, sp.p2, sp.p3, sp.p4];
+    let h = '<div class="splitpanels">';
+    for (let i = 0; i < n; i++) {
+      const pad = padOf(i);
+      const how = pad >= 0 ? `Gamepad ${pad + 1}` + (i < 2 ? ` (or ${keys[i]})` : '') : i < 2 ? keys[i] : '<span style="color:#ff3b5c">Needs a gamepad — connect one</span>';
+      h += `<div class="panel"><div class="label" style="margin-top:0;color:${colors[i]}">PLAYER ${i + 1} · ${place[i]}</div><div class="opts">${BOATS.map((b) => opt('sp_p' + (i + 1), b.id, b.name, boats[i] === b.id)).join('')}</div><div class="hint" style="margin-top:8px">${how}</div></div>`;
+    }
+    if (n === 3) h += `<div class="panel"><div class="label" style="margin-top:0">BOTTOM RIGHT</div><div class="hint">Course map and live standings</div></div>`;
+    h += `</div><div class="hint" style="margin-top:8px">${pads} gamepad${pads === 1 ? '' : 's'} connected · the scene is drawn ${n} times, so detail and resolution step down automatically</div>`;
+    return h;
   }
 
   private handleSplit(act: string, arg: string): boolean {
@@ -541,9 +567,19 @@ export class Screens {
       case 'sp_p2':
         sp.p2 = arg as BoatId;
         break;
+      case 'sp_p3':
+        sp.p3 = arg as BoatId;
+        break;
+      case 'sp_p4':
+        sp.p4 = arg as BoatId;
+        break;
+      case 'sp_players':
+        sp.players = Math.max(2, Math.min(4, Number(arg) || 2));
+        sp.opponents = Math.min(sp.opponents, Screens.SPLIT_MAX_AI[sp.players]);
+        break;
       case 'splitGo':
         g.audio.click('select');
-        g.startEvent({ mode: 'quick', trackId: sp.trackId, weather: sp.weather, laps: sp.laps, difficulty: sp.difficulty, boat: sp.p1, p2Boat: sp.p2, opponents: sp.opponents });
+        g.startEvent({ mode: 'quick', trackId: sp.trackId, weather: sp.weather, laps: sp.laps, difficulty: sp.difficulty, boat: sp.p1, p2Boat: sp.p2, opponents: Math.min(sp.opponents, Screens.SPLIT_MAX_AI[sp.players]), ...(sp.players > 2 ? { moreBoats: [sp.p3, sp.p4].slice(0, sp.players - 2) } : {}) });
         return true;
       default:
         return false;
@@ -1301,6 +1337,10 @@ export class Screens {
           this.choice('tilt', 'TILT TO STEER (TOUCH)', [
             [false, 'OFF'],
             [true, 'ON'],
+          ]) +
+          this.choice('rumble', 'RUMBLE (GAMEPAD)', [
+            [true, 'ON'],
+            [false, 'OFF'],
           ]) +
           ACTIONS.map((a) => `<div class="setting"><span class="nm">${ACTION_LABEL[a].toUpperCase()}</span><div class="opts">${s.bindings[a].map((k) => `<span class="opt on">${keyLabel(k)}</span>`).join('')}<button class="opt" data-nav data-act="sbind" data-arg="${a}">+ REBIND</button></div><span></span></div>`).join('') +
           `<div class="row" style="margin-top:12px"><button class="btn small" data-nav data-act="sbindreset"><span>RESET TO DEFAULTS</span></button></div>

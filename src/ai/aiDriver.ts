@@ -104,6 +104,9 @@ export class AIDriver {
   private reverseSteer = 1;
   private band = 1;
   private trickPlanned = false;
+  /** Wave flips: decided once per qualifying jump. */
+  private waveDecided = false;
+  private wavePlanned = false;
   private boosting = false;
   private t = 0;
 
@@ -364,7 +367,17 @@ export class AIDriver {
     let roll = false;
     if (boat.airborne) {
       if (boat.airTime < 0.15) this.trickPlanned = this.rng.next() < p.stunt && boat.velocity.y > 2.5;
-      if (this.trickPlanned && boat.trick === 'none' && boat.clearance > 1.4 && boat.velocity.y > 0) {
+      // Occasionally flip off a natural wave crest (a light trick with a small boost).
+      if (boat.waveTrickReady && !this.waveDecided) {
+        this.waveDecided = true;
+        this.wavePlanned = this.rng.next() < 0.15 + 0.5 * p.stunt;
+      }
+    } else this.waveDecided = this.wavePlanned = false;
+    if (boat.airborne) {
+      if (this.wavePlanned && boat.waveTrickReady && !this.lastDrift) {
+        drift = true;
+        this.wavePlanned = false;
+      } else if (this.trickPlanned && boat.trick === 'none' && boat.clearance > 1.4 && boat.velocity.y > 0) {
         drift = true;
         steer = this.seed % 2 ? 1 : -1;
         this.trickPlanned = false;

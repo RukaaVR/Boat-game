@@ -52,6 +52,7 @@ import { CAM_LABEL, CAM_MODES } from '../camera/cameraRig';
 import { checkAchievements } from '../save/rewards';
 import { decodeGhost, encodeGhost, ghostFingerprint } from '../save/ghostCode';
 import { A11Y } from './a11y';
+import { enterSplitPerf, MoreViews, splitHaptics } from './moreViews';
 
 export interface EventRequest {
   mode: ModeId;
@@ -66,6 +67,8 @@ export interface EventRequest {
   careerStage?: number;
   /** Split-screen: player 2's boat (presence turns split-screen on). */
   p2Boat?: BoatId;
+  /** Split-screen players 3 and 4 (with `p2Boat`): their boats. */
+  moreBoats?: BoatId[];
   /** Number of AI rivals (default 5). */
   opponents?: number;
   /** Time trial: race your own best ghost or an imported friend's ghost. */
@@ -97,6 +100,9 @@ export class Game implements ReplayHost, PhotoHost {
   /** Split-screen: player 2's camera and HUD. */
   rig2: CameraRig | null = null;
   hud2: Hud | null = null;
+  /** 3–4 player split-screen: players 3–4's views + the 2×2 layout (null otherwise). */
+  more: MoreViews | null = null;
+  private splitPerfOn = false;
   private splitWraps: HTMLElement[] = [];
   get split() {
     return !!this.session?.cfg.player2;
@@ -424,6 +430,7 @@ export class Game implements ReplayHost, PhotoHost {
     document.body.classList.toggle('symbols', s.symbols);
     document.body.classList.toggle('reduced-motion', s.motion < 0.5);
     this.input.sensitivity = s.sensitivity;
+    this.input.rumbleOn = s.rumble;
     this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');
     if (this.world) this.world.shadows.mesh.visible = s.shadows;
@@ -448,12 +455,16 @@ export class Game implements ReplayHost, PhotoHost {
     }
     this.hud?.resize();
     this.hud2?.resize();
+    this.more?.resize(this.rig, this.rig2, this.hud, this.hud2);
   }
 
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
     this.closePodium();
     this.tutorial = null;
+    this.more?.destroy();
+    this.more = null;
+    this.endSplitPerf();
     this.hud2?.destroy();
     this.hud2 = null;
     this.rig2 = null;
@@ -478,6 +489,11 @@ export class Game implements ReplayHost, PhotoHost {
 
   private build(cfg: SessionConfig, weather: WeatherId) {
     this.teardown();
+    if (cfg.player2 && cfg.morePlayers?.length) {
+      // 3–4 views: step graphics down before the world takes its budgets.
+      enterSplitPerf(this.renderer, 2 + cfg.morePlayers.length);
+      this.splitPerfOn = true;
+    }
     this.session = new RaceSession(cfg, this.events);
     this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows && PRESETS[this.renderer.quality].shadows, symbols: this.save.data.settings.symbols });
     this.rig.ramps = this.session.track.ramps;
@@ -693,6 +709,7 @@ export class Game implements ReplayHost, PhotoHost {
       playerName: req.p2Boat ? 'P1' : d.playerName,
       opponents: req.opponents ?? 5,
       player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
+      morePlayers: req.p2Boat && req.moreBoats?.length ? req.moreBoats.slice(0, 2).map((b, i) => ({ name: `P${i + 3}`, boat: b, livery: this.save.livery(b) })) : undefined,
       ghost: req.mode === 'timetrial' ? ((req.ghost === 'rival' ? d.rivalGhosts[req.trackId] : d.ghosts[req.trackId]) ?? null) : null,
       champPoints: champ?.points,
       // Split-screen is a fair fight: neither player brings garage upgrades.
@@ -713,10 +730,12 @@ export class Game implements ReplayHost, PhotoHost {
       this.build(cfg, weather);
       const s = this.session!;
       if (s.cfg.player2) {
-        // Two stacked half-screen HUDs and a second camera.
+        // Two stacked half-screen HUDs and a second camera (3–4 players: a 2×2 grid).
+        const quad = s.humans.length > 2;
+        this.input.splitPlayers = s.humans.length;
         for (let i = 0; i < 2; i++) {
           const w = document.createElement('div');
-          w.className = 'splitwrap ' + (i ? 'bottom' : 'top');
+          w.className = 'splitwrap ' + (quad ? `quad q${i}` : i ? 'bottom' : 'top');
           this.ui.appendChild(w);
           this.splitWraps.push(w);
         }
@@ -736,6 +755,13 @@ export class Game implements ReplayHost, PhotoHost {
         this.rig2.motionScale = this.rig.motionScale;
         this.rig.setAspect(window.innerWidth / Math.max(1, window.innerHeight / 2));
         this.rig2.startIntro();
+        if (quad) {
+          this.more = new MoreViews(s, this.ui, this.rig, (x, z) => sc.ground(x, z), d.settings.units, d.settings.bindings);
+          this.more.resize(this.rig, this.rig2, this.hud, this.hud2);
+          const wd = this.world!;
+          wd.extraCams = [this.rig2.camera, ...this.more.cameras];
+          wd.fx.splitHumans = true;
+        }
       } else this.hud = new Hud(s, this.ui, d.settings.units, d.settings.bindings, this.touchEnabled);
       this.tutorial = req.mode === 'tutorial' ? new Tutorial(s) : null;
       this.recorder = req.mode === 'tutorial' || req.p2Boat ? null : new ReplayRecorder(s);
@@ -1048,6 +1074,7 @@ export class Game implements ReplayHost, PhotoHost {
         if (this.input.pressedSplit(0, 'camera')) this.cycleCamera();
         if (s.phase === 'racing' && this.input.pressedSplit(1, 'respawn')) s.respawn(p2);
         if (s.phase === 'racing' && this.input.pressedSplit(0, 'respawn')) s.respawn(s.player);
+        this.more?.readInput(this.input, dt);
         if (this.input.anyStart() && s.phase !== 'results') {
           this.pauseGame();
           return;
@@ -1138,6 +1165,7 @@ export class Game implements ReplayHost, PhotoHost {
       if ((s.phase === 'finished' || s.phase === 'results') && r2.scripted !== 'finish') r2.startFinish();
       if (simDt > 0) r2.update(simDt, s.racers[1].boat, s.track, s.time);
     }
+    if (this.more && racing) this.more.update(simDt, dt);
 
     w.update(simDt, s.time, this.rig, this.events);
     if (this.hud) this.hud.camera = this.rig.camera;
@@ -1167,6 +1195,10 @@ export class Game implements ReplayHost, PhotoHost {
         this.audio.onEvent(e, _listener, e.racer === 0 || e.racer === -1);
         this.hud?.onEvent(e);
         this.hud2?.onEvent(e);
+        if (this.split) {
+          this.more?.onEvent(e);
+          splitHaptics(e, s, this.input, true);
+        }
       } else if (e.type === 'lightning') this.audio.onEvent(e, _listener, true);
       this.debug?.onEvent(e);
     }
@@ -1194,7 +1226,9 @@ export class Game implements ReplayHost, PhotoHost {
       this.music.setIntensity(clamp01(s.player.boat.boostLevel));
       this.music.setPressure((this.pressure = this.pressure + (this.racePressure(s) - this.pressure) * Math.min(1, dt * 0.8)));
       const r = w.fx.rumble;
-      if (r.ms > 0 && this.input.lastDevice === 'gamepad') this.input.rumble(r.strong, r.weak, r.ms);
+      // Split-screen: player 1's rumble goes to player 1's pad only.
+      if (this.split) this.input.rumbleSplit(0, r.strong, r.weak, r.ms);
+      else if (r.ms > 0 && this.input.lastDevice === 'gamepad') this.input.rumble(r.strong, r.weak, r.ms);
     }
 
     // Results.
@@ -1207,6 +1241,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.hud = null;
       this.hud2?.destroy();
       this.hud2 = null;
+      this.more?.destroyHuds();
       if (this.podiumWorthy(s)) this.showRacePodium(s, this.rewards);
       else this.screens.results(this.rewards);
     }
@@ -1226,12 +1261,33 @@ export class Game implements ReplayHost, PhotoHost {
     }
     if (!w) return;
     this.renderTime += dt;
+    if (this.more && this.rig2 && this.state === 'race') {
+      const t = this.session?.time ?? 0;
+      const cams = this.quadCams;
+      cams.length = 0;
+      cams.push(this.rig.camera, this.rig2.camera);
+      const extra = this.more.cameras;
+      for (let i = 0; i < extra.length; i++) cams.push(extra[i]);
+      this.renderer.renderGrid(w.scene, cams, this.more.rects, w.atmosphere.post, dt, (cam) => w.prepareView(cam, t));
+      return;
+    }
     if (this.rig2 && this.state === 'race') {
       const t = this.session?.time ?? 0;
       this.renderer.renderSplit(w.scene, [this.rig.camera, this.rig2.camera], w.atmosphere.post, dt, (cam) => w.prepareView(cam, t));
       return;
     }
     this.renderer.render(w.scene, this.rig.camera, w.atmosphere.post, dt);
+  }
+
+  private quadCams: import('three').Camera[] = [];
+  /** Undo the 3–4 player graphics step-down (back to the saved settings). */
+  private endSplitPerf() {
+    if (!this.splitPerfOn) return;
+    this.splitPerfOn = false;
+    const st = this.save.data.settings;
+    // Restore the renderer quality first, so applySettings does not see a change (no backdrop rebuild here).
+    this.renderer.setQuality(st.quality === 'auto' && this.autoQuality ? this.autoQuality : resolveQuality(st.quality));
+    this.applySettings();
   }
 
   // ── Harness ───────────────────────────────────────────────────────────────
@@ -1468,6 +1524,8 @@ export class Game implements ReplayHost, PhotoHost {
         return new Promise<void>((res) =>
           requestAnimationFrame(() => {
             g.hud?.update(0);
+            g.hud2?.update(0);
+            g.more?.update(0, 0);
             g.render(0);
             res();
           }),

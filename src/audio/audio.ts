@@ -443,6 +443,27 @@ export class AudioEngine {
     this.burst(big ? 2.2 : 1.4, 'highpass', 5000, 0.05, 0, end, 7000, 0.6);
   }
 
+  /** Drift hop: a light slap of water under a short rubbery "boing". */
+  private driftHop(isPlayer: boolean, att: number, pan: number) {
+    const v = isPlayer ? 1 : att * 0.6;
+    if (v < 0.05) return;
+    this.burst(0.16, 'bandpass', 1700, 0.07 * v, pan, 0, 700, 1.4);
+    this.tone(240, 0.13, 'triangle', 0.05 * v, 0, pan, 430);
+    this.tone(430, 0.1, 'sine', 0.025 * v, 0.1, pan, 300);
+  }
+
+  /**
+   * Drift spark tier: a rising "shing" per tier — each tier starts higher and
+   * adds a note, over a short sparkle of high noise (blue → orange → pink).
+   */
+  private sparkTier(tier: number) {
+    const k = Math.max(1, Math.min(3, Math.round(tier)));
+    const base = [0, 740, 932, 1175][k];
+    const steps = [1, 1.26, 1.5, 2];
+    for (let i = 0; i <= k; i++) this.tone(base * steps[i], 0.09 + 0.02 * k, i === k ? 'triangle' : 'square', (i === k ? 0.05 : 0.032) * (0.85 + 0.1 * k), i * 0.045);
+    this.burst(0.18 + 0.05 * k, 'highpass', 4500 + 900 * k, 0.035 + 0.012 * k, 0, 0, 9000, 1.2);
+  }
+
   /** Crowd cheer + scattered applause (filtered noise swells). */
   crowdCheer(seconds = 3) {
     if (!this.ctx) return;
@@ -476,7 +497,25 @@ export class AudioEngine {
     this.reactExtras(e, isPlayer, att, pan);
     switch (e.type) {
       case 'splash':
+        if (e.text === 'hop') {
+          this.driftHop(isPlayer, att, pan);
+          break;
+        }
         this.burst(0.5 + e.value * 0.4, 'bandpass', 1200, (0.08 + e.value * 0.2) * att, pan, 0, 300);
+        break;
+      case 'driftStart':
+        // The hull snapping into the slide: a short bright "shk" over a soft thump.
+        if (isPlayer || att > 0.5) {
+          this.burst(0.09, 'bandpass', 3200, 0.07 * att, pan, 0, 1800, 2.2);
+          this.tone(150, 0.09, 'sine', 0.06 * att, 0, pan, 90);
+        }
+        break;
+      case 'waveLand':
+        // Landed a WAVE FLIP: a light whoosh and a two-note lift (smaller than a trick fanfare).
+        if (isPlayer) {
+          this.burst(0.45, 'bandpass', 700, 0.12, 0, 0, 2600, 1.1);
+          [784, 1175].forEach((f, i) => this.tone(f, 0.1, 'triangle', 0.045, 0.04 + i * 0.05));
+        }
         break;
       case 'land':
         this.tone(110, 0.3, 'sine', (0.15 + e.value * 0.3) * att, 0, pan, 38);
@@ -502,7 +541,7 @@ export class AudioEngine {
         if (isPlayer) this.tone(300, 0.5, 'sawtooth', 0.06, 0, 0, 80);
         break;
       case 'driftTier':
-        if (isPlayer) this.tone(500 + e.value * 220, 0.12, 'square', 0.06, 0, 0, 700 + e.value * 300);
+        if (isPlayer) this.sparkTier(e.value);
         break;
       case 'boostStart':
       case 'nitro':

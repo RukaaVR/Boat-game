@@ -47,6 +47,8 @@ export class CameraRig {
   private lift = 0;
   private dip = 0;
   private side = 0;
+  /** 0..1 how far into the drift framing the chase cam is (eases back on release). */
+  private driftSwing = 0;
   private t = 0;
   private cineT = 0;
   private cinePos = new Vector3();
@@ -178,7 +180,12 @@ export class CameraRig {
     this.lift = damp(this.lift, b.airborne ? clamp(b.clearance * 0.35, 0, 2.5) + 0.8 : 0, b.airborne ? 2.5 : 4, dt);
     const landK = b.sinceLand < 0.6 ? (1 - b.sinceLand / 0.6) * b.landStrength : 0;
     this.dip = damp(this.dip, -landK * 0.9, 14, dt);
-    this.side = damp(this.side, b.drifting ? -b.driftDir * 1.3 : clamp(b.yawRate * 0.6, -1, 1), 3, dt);
+    // Drift framing: swing out to the outside of the slide (further as the
+    // sparks build, scaled by the motion setting) and ease back on release.
+    const slide = b.drifting && !b.airborne;
+    this.driftSwing = damp(this.driftSwing, slide ? 1 : 0, slide ? 3.2 : 1.7, dt);
+    const swingOut = (1.3 + (0.75 + 0.2 * b.driftTier) * this.motionScale) * b.driftDir;
+    this.side = damp(this.side, b.drifting ? -swingOut : clamp(b.yawRate * 0.6, -1, 1), b.drifting ? 3 : 2, dt);
 
     if (this.scripted === 'free') {
       this.pos.copy(this.freePos);
@@ -224,7 +231,9 @@ export class CameraRig {
         const height = (far ? 4.6 : 2.9) + this.lift + this.dip + this.seaLift;
         _want.set(b.position.x - _fwd.x * dist + _right.x * this.side, b.surfaceY + height + Math.max(0, b.position.y - b.surfaceY) * 0.6, b.position.z - _fwd.z * dist + _right.z * this.side);
         const ahead = far ? 9 : 7 + sp01 * 4;
-        _look.set(b.position.x + _fwd.x * ahead, b.position.y + (far ? 0.6 : 1.1) + this.lift * 0.3, b.position.z + _fwd.z * ahead);
+        // While sliding, aim a little into the corner (toward the inside).
+        const into = this.driftSwing * b.driftDir * 1.1 * this.motionScale;
+        _look.set(b.position.x + _fwd.x * ahead + _right.x * into, b.position.y + (far ? 0.6 : 1.1) + this.lift * 0.3, b.position.z + _fwd.z * ahead + _right.z * into);
         rollT = clamp(-b.yawRate * 0.05, -0.06, 0.06) * this.motionScale;
         break;
       }

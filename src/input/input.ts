@@ -6,6 +6,7 @@
 import { clamp } from '../core/mathx';
 import type { Controls } from '../core/types';
 import type { TouchControls } from './touch';
+import { pulsePad } from './haptics';
 
 export type Action = 'throttle' | 'brake' | 'left' | 'right' | 'drift' | 'boost' | 'roll' | 'item' | 'camera' | 'pause' | 'restart' | 'respawn' | 'confirm' | 'back';
 
@@ -106,7 +107,11 @@ export class Input {
   private pads: Gamepad[] = [];
   private padPrevById = new Map<number, boolean[]>();
   private codesPressed = new Set<string>();
-  private splitSteer = [0, 0];
+  private splitSteer = [0, 0, 0, 0];
+  /** Human players in split-screen (2–4): decides which pad goes to whom. */
+  splitPlayers = 2;
+  /** Settings → RUMBLE. */
+  rumbleOn = true;
   /** On-screen touch controls, when active. */
   touch: TouchControls | null = null;
   /** When set, the next key press is captured for rebinding instead of acting. */
@@ -260,29 +265,39 @@ export class Input {
   }
 
   rumble(strong: number, weak: number, ms: number) {
-    if (ms <= 0) return;
+    if (ms <= 0 || !this.rumbleOn) return;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const p of pads) {
-      const act = p?.vibrationActuator as (GamepadHapticActuator & { playEffect?: (t: string, o: object) => Promise<unknown> }) | undefined;
-      if (act?.playEffect) {
-        act.playEffect('dual-rumble', { duration: ms, strongMagnitude: clamp(strong, 0, 1), weakMagnitude: clamp(weak, 0, 1) }).catch(() => {
-          /* Haptics are best-effort: unsupported actuators reject and that is fine. */
-        });
-      }
-    }
+    for (const p of pads) if (p && p.connected) pulsePad(p, strong, weak, ms);
   }
 
-  /** Pad assigned to a split-screen player: two pads → one each; one pad → player 2. */
+  /** Rumble one split-screen player's pad (if they have one). */
+  rumbleSplit(which: number, strong: number, weak: number, ms: number) {
+    if (ms <= 0 || !this.rumbleOn) return;
+    pulsePad(this.splitPad(which), strong, weak, ms);
+  }
+
+  /** Connected gamepads right now. */
+  get padCount() {
+    return this.pads.length;
+  }
+
+  /**
+   * Pad assigned to a split-screen player. With a pad for everyone, pad i goes
+   * to player i; with fewer, the pads go to the last players (players 3–4 have
+   * no keyboard half), so two players with one pad → it is player 2's.
+   */
   private splitPad(which: number): Gamepad | null {
-    if (this.pads.length >= 2) return this.pads[which] ?? null;
-    if (this.pads.length === 1) return which === 1 ? this.pads[0] : null;
-    return null;
+    const n = Math.max(2, this.splitPlayers);
+    const k = this.pads.length;
+    if (k >= n) return this.pads[which] ?? null;
+    const off = n - k;
+    return which >= off ? (this.pads[which - off] ?? null) : null;
   }
 
   /** Split-screen: fill one player's controls from their keys and pad. */
   readSplit(which: number, c: Controls, dt: number) {
-    const map = SPLIT_KEYS[which];
-    const k = (a: SplitAction) => map[a].some((code) => this.down.has(code));
+    const map = SPLIT_KEYS[which] as Record<SplitAction, string[]> | undefined;
+    const k = (a: SplitAction) => !!map && map[a].some((code) => this.down.has(code));
     const pad = this.splitPad(which);
     const pb = (i: number) => !!pad?.buttons[i]?.pressed;
     const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
@@ -303,7 +318,8 @@ export class Input {
   /** Split-screen edge-triggered action for one player. */
   pressedSplit(which: number, a: 'camera' | 'respawn') {
     let hit = false;
-    for (const code of SPLIT_KEYS[which][a]) if (this.codesPressed.delete(code)) hit = true;
+    const keys = SPLIT_KEYS[which]?.[a] ?? [];
+    for (const code of keys) if (this.codesPressed.delete(code)) hit = true;
     const pad = this.splitPad(which);
     const btn = a === 'camera' ? 3 : 11;
     if (pad && pad.buttons[btn]?.pressed && !this.padPrevById.get(pad.index)?.[btn]) hit = true;

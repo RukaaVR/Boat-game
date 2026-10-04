@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { BoatSpec } from './specs';
 
-export type TrickKind = 'none' | 'frontflip' | 'backflip' | 'spin' | 'roll';
+export type TrickKind = 'none' | 'frontflip' | 'backflip' | 'spin' | 'roll' | 'waveflip';
 
 export const TRICK_NAMES: Record<TrickKind, string> = {
   none: '',
@@ -9,6 +9,7 @@ export const TRICK_NAMES: Record<TrickKind, string> = {
   backflip: 'BACK FLIP',
   spin: '360 SPIN',
   roll: 'BARREL ROLL',
+  waveflip: 'WAVE FLIP',
 };
 
 /**
@@ -87,6 +88,8 @@ export class Boat {
   visPitch = 0;
   visYaw = 0;
   visRoll = 0;
+  /** A wave-crest launch with enough air for a WAVE FLIP: tap drift now (read by AI / HUD). */
+  waveTrickReady = false;
   /** Accumulated stunt points this jump. */
   jumpScore = 0;
 
@@ -160,6 +163,7 @@ export class Boat {
     this.nitroActive = false;
     this.trick = 'none';
     this.trickT = 0;
+    this.waveTrickReady = false;
     this.visPitch = this.visYaw = this.visRoll = 0;
     this.wipeout = 0;
     this.slip = 0;

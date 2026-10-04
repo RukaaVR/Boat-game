@@ -257,6 +257,32 @@ function addHair(gb: GeoBuilder, liv: Livery) {
     const tone = new Color(col).multiplyScalar(0.86 + rnd() * 0.2);
     lock(gb, tone, base.addScaledVector(n, -0.03), dir, n, len, 0.07 + rnd() * 0.03, 0.04, curl);
   }
+  // Front crown: spikes across the front of the head pointing forward and
+  // up, so the hair is full from the front too, not just at the back.
+  for (let row = 0; row < 2; row++) {
+    const cnt = row === 0 ? 7 : 5;
+    for (let i = 0; i < cnt; i++) {
+      const f = i / (cnt - 1) - 0.5;
+      const az = f * (row === 0 ? 2.2 : 1.6);
+      const el = row === 0 ? 0.62 : 0.92;
+      const base = onHead(el, az, 1.02);
+      const n = normalAt(base);
+      const dir = n.clone().add(new Vector3(Math.sin(az) * 0.3, row === 0 ? 0.35 : 0.6, row === 0 ? 0.55 : 0.3));
+      dir.x += (rnd() - 0.5) * 0.3;
+      const tone = new Color(col).multiplyScalar(0.88 + rnd() * 0.18);
+      lock(gb, tone, base, dir, n, 0.15 + rnd() * 0.08 + (style === 0 ? 0.03 : 0), 0.08, 0.04, new Vector3(0, row === 0 ? -0.18 : -0.05, 0));
+    }
+  }
+  // Face-framing locks hanging down at the front corners.
+  for (const sd of [-1, 1])
+    for (const [el, az, len] of [
+      [0.5, 0.95, 0.2],
+      [0.4, 1.15, 0.18],
+    ] as const) {
+      const base = onHead(el, sd * az, 1.02);
+      const n = normalAt(base);
+      lock(gb, new Color(col).multiplyScalar(0.9 + rnd() * 0.12), base, new Vector3(sd * 0.25, -1, 0.35), n, len + rnd() * 0.03, 0.075, 0.035, new Vector3(sd * 0.05, 0, 0.08));
+    }
   // Temple spikes poking out sideways, longest on the burst style.
   for (const sd of [-1, 1])
     for (const [el, az] of [

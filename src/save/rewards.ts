@@ -102,7 +102,7 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
     med.race = Math.max(med.race, medal);
     d.races++;
     if (place === 1) d.wins++;
-    if (p.finished && (!rec.race || p.finishTime < rec.race)) {
+    if (p.finished && session.mode !== 'battle' && (!rec.race || p.finishTime < rec.race)) {
       if (rec.race) records.push('NEW RECORD — RACE TIME');
       rec.race = p.finishTime;
     }

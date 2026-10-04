@@ -36,7 +36,8 @@ export type GameEventType =
   | 'itemUse' // text = item id
   | 'itemHit' // racer hit by a battle item; text = item id
   | 'collectible' // hidden bottle found; value = index
-  | 'weatherShift'; // mid-race weather change; text = new weather id
+  | 'weatherShift' // mid-race weather change; text = new weather id
+  | 'eliminated'; // battle: racer lost their last life
 
 export interface GameEvent {
   type: GameEventType;

@@ -71,6 +71,10 @@ export interface AIRaceView {
   others: readonly Boat[];
   /** Moving obstacles to steer around (fishing boats, mines, oil). */
   obstacles?: readonly { x: number; z: number; r: number }[];
+  /** Battle: a point the driver wants to reach (item box, rival). */
+  seek?: { x: number; z: number } | null;
+  /** Open water (battle arena): steer straight at `seek` instead of along the course. */
+  free?: boolean;
 }
 
 const _tp: TrackPoint = { x: 0, z: 0, tx: 0, tz: 1, heading: 0 };
@@ -215,9 +219,18 @@ export class AIDriver {
       lateral = rp.lateral;
     }
 
-    // Traffic avoidance.
+    // Battle on a course: drift across the lane toward a box / rival ahead.
     const fx = Math.sin(boat.heading);
     const fz = Math.cos(boat.heading);
+    const seek = view.seek;
+    if (seek && !view.free && !usingShortcut) {
+      const dx = seek.x - pos.x;
+      const dz = seek.z - pos.z;
+      const ahead = dx * fx + dz * fz;
+      if (ahead > 8 && ahead < 90) lateral = track.project(seek.x, seek.z, track.indexAt(s + Math.min(ahead, look)), _rp).lateral;
+    }
+
+    // Traffic avoidance.
     let avoid = 0;
     let speedCap = Infinity;
     for (const o of view.others) {
@@ -248,6 +261,12 @@ export class AIDriver {
     if (!usingShortcut) {
       ax = _tp.x - _tp.tz * lateral;
       az = _tp.z + _tp.tx * lateral;
+    }
+    if (seek && view.free) {
+      // Open water: head straight for the target, sidestepping whatever is in the way.
+      const dodge = clamp(avoid, -12, 12);
+      ax = seek.x - fz * dodge;
+      az = seek.z + fx * dodge;
     }
 
     // ── Steering ──────────────────────────────────────────────────────────────

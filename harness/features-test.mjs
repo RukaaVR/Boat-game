@@ -196,6 +196,28 @@ await test('battle mode: boxes give items, rivals fire them, hits damage hulls',
   assert(r.dmg > 0, 'no hull damage taken by anyone');
 });
 
+await test('lagoon arena: every battle rule runs, AI fights, standings follow the rule', async () => {
+  for (const battleRule of ['balloons', 'timed', 'score']) {
+    await race({ mode: 'battle', trackId: 'lagoon', battleRule });
+    await E(() => window.__RIPTIDE__.autopilot(true));
+    const r = await E(() => {
+      const R = window.__RIPTIDE__;
+      const s = R.game.session;
+      let pickups = 0;
+      const push = s.events.push.bind(s.events);
+      s.events.push = (t, ...a) => (t === 'itemPickup' && pickups++, push(t, ...a));
+      R.simulate(70, 1 / 30);
+      s.events.push = push;
+      return { pickups, rule: s.battleRule, laps: s.totalLaps, boxes: s.items.boxes.length, hits: s.racers.reduce((n, x) => n + x.timesHit, 0), lives: s.racers.map((x) => x.lives), mode: document.querySelector('.modebox')?.textContent ?? '' };
+    });
+    assert(r.rule === battleRule && r.laps === 0, 'rule not applied: ' + JSON.stringify(r));
+    assert(r.boxes >= 40 && r.pickups >= 8, 'arena boxes not being collected: ' + JSON.stringify(r));
+    assert(r.hits >= 1, 'nobody got hit in 70 s: ' + JSON.stringify(r));
+    assert(r.mode.length > 0, 'battle mode box empty');
+  }
+  await E(() => window.__RIPTIDE__.menu());
+});
+
 await test('split-screen: two players drive their own boats', async () => {
   await race({ trackId: 'coral', laps: 1, p2Boat: 'drifter', opponents: 1 });
   await P.keyboard.down('KeyW');
@@ -220,7 +242,7 @@ await test('point-to-point sprint finishes after one run', async () => {
 });
 
 await test('new courses build and race cleanly', async () => {
-  for (const id of ['glacier', 'canal', 'fjord']) {
+  for (const id of ['glacier', 'canal', 'fjord', 'splash', 'hopscotch', 'lighthouse', 'starfall']) {
     await race({ trackId: id, laps: 1 });
     await E(() => window.__RIPTIDE__.autopilot(true));
     const st = await E(() => window.__RIPTIDE__.simulate(12, 1 / 30));

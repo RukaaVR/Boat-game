@@ -45,6 +45,15 @@ export class Racer {
   /** Battle items: held item and hits taken/landed. */
   item: string | null = null;
   itemHits = 0;
+  /** Battle rules: lives left (balloons), points (hits landed), hits taken, out of the fight. */
+  lives = 0;
+  battleScore = 0;
+  timesHit = 0;
+  eliminated = false;
+  /** Order of elimination (1 = first out). */
+  outOrder = 0;
+  /** Seconds of grace after losing a life. */
+  hitCooldown = 0;
   /** Checkpoint respawn location. */
   respawnS = 0;
 

@@ -49,6 +49,7 @@ uniform float uFlash;
 uniform vec3 uGlow;
 uniform float uGlowAmt;
 uniform float uMoon;
+uniform float uStarHue;
 varying vec3 vDir;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -78,7 +79,7 @@ void main() {
   // Halo as two flat rings rather than a photographic bloom.
   float halo = step(0.9965, sd) * 0.35 + step(0.985, sd) * 0.12 + pow(max(sd, 0.0), 12.0) * 0.08;
   // Moon crescent shadow.
-  vec3 off = normalize(uSunDir + vec3(0.012, 0.006, 0.0));
+  vec3 off = normalize(uSunDir + vec3(0.012, 0.006, 0.0) * max(1.0, uSunSize * 0.8));
   float bite = uMoon * smoothstep(0.9994 - uSunSize * 0.0009, 0.9996 - uSunSize * 0.0009, dot(d, off));
   col += uSunColor * (disc * (1.0 - bite) * 2.2 + halo * (1.0 - uMoon * 0.6));
 
@@ -91,7 +92,10 @@ void main() {
     float big = step(0.996, h);
     float star = step(0.975, h) * smoothstep(0.16 + big * 0.12, 0.0, length(f));
     star *= 0.75 + 0.25 * sin(uTime * 2.0 + h * 50.0);
-    col += mix(vec3(0.8, 0.88, 1.0), vec3(1.0, 0.9, 0.75), big) * star * uStars * 1.6 * smoothstep(0.03, 0.3, y);
+    vec3 sc = mix(vec3(0.8, 0.88, 1.0), vec3(1.0, 0.9, 0.75), big);
+    // Neon night: candy-coloured stars.
+    sc = mix(sc, 0.6 + 0.4 * cos(6.2831 * (hash(cell + 11.3) + vec3(0.0, 0.33, 0.67))), uStarHue);
+    col += sc * star * uStars * 1.6 * smoothstep(0.03, 0.3, y);
   }
 
   // Stylised banded clouds on a plane above the sea.
@@ -152,6 +156,7 @@ export class Sky {
         uGlow: { value: new Color() },
         uGlowAmt: { value: 0 },
         uMoon: { value: 0 },
+        uStarHue: { value: 0 },
       },
       vertexShader: vert,
       fragmentShader: frag,

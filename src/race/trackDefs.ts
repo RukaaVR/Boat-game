@@ -33,6 +33,14 @@ export interface TrackDef {
   medals: [number, number, number];
   /** Point-to-point sprint: the fraction of the generated loop that is raced, start → finish. The rest is walled off. */
   sprint?: number;
+  /** Battle arena: an open circular lagoon rather than a race course (the loop is only a navigation aid). */
+  arena?: boolean;
+  /** Visual style layered over the theme (e.g. the neon night ocean). */
+  look?: 'neonnight';
+  /** Sea-state multiplier on the weather preset (beginner courses run calmer water). */
+  sea?: number;
+  /** A run of consecutive ramps on the longest straight (teaches tricks). */
+  rampRun?: number;
 }
 
 export const TRACKS: TrackDef[] = [
@@ -288,10 +296,145 @@ export const TRACKS: TrackDef[] = [
     medals: [60.7, 63.4, 67.4],
     sprint: 0.78,
   },
+  {
+    id: 'splash',
+    name: 'PALM SHALLOWS',
+    theme: 'tropical',
+    weather: 'clear',
+    blurb: 'Wide, calm and friendly: sweeping bends, glassy water and an easy reef shortcut. Learn the ropes here.',
+    laps: 3,
+    unlockLevel: 1,
+    seed: 11213,
+    radius: 235,
+    aspect: 1.35,
+    harmonics: [
+      [2, 0.14, 0.6],
+      [3, 0.08, 2.4],
+    ],
+    rotation: 0.2,
+    width: 54,
+    ramps: 2,
+    pads: 5,
+    swells: 0,
+    hazards: 1,
+    shortcuts: 1,
+    medals: [51.1, 53.6, 58.9],
+    sea: 0.55,
+  },
+  {
+    id: 'hopscotch',
+    name: 'HOPSCOTCH KEYS',
+    theme: 'tropical',
+    weather: 'sunset',
+    blurb: 'A run of ramps down the back straight: hold DRIFT in the air to spin, land flat for a boost.',
+    laps: 3,
+    unlockLevel: 1,
+    seed: 12329,
+    radius: 245,
+    aspect: 1.5,
+    harmonics: [
+      [2, 0.1, 1.6],
+      [3, 0.1, 0.4],
+      [4, 0.04, 1.0],
+    ],
+    rotation: -0.35,
+    width: 50,
+    ramps: 1,
+    rampRun: 4,
+    pads: 4,
+    swells: 1,
+    hazards: 1,
+    shortcuts: 1,
+    medals: [57.0, 59.8, 65.7],
+    sea: 0.6,
+  },
+  {
+    id: 'lighthouse',
+    name: 'LIGHTHOUSE POINT',
+    theme: 'storm',
+    weather: 'clear',
+    blurb: 'Blue skies on the cliffs: a chain of S-bends made for linking drifts, past the old lighthouse.',
+    laps: 3,
+    unlockLevel: 1,
+    seed: 13441,
+    radius: 250,
+    aspect: 1.2,
+    harmonics: [
+      [4, 0.1, 0.5],
+      [2, 0.12, 2.0],
+      [5, 0.035, 1.2],
+    ],
+    rotation: 0.6,
+    width: 50,
+    ramps: 2,
+    pads: 4,
+    swells: 0,
+    hazards: 2,
+    shortcuts: 1,
+    medals: [50.8, 53.2, 58.5],
+    sea: 0.65,
+  },
+  {
+    id: 'starfall',
+    name: 'STARFALL CIRCUIT',
+    theme: 'neon',
+    weather: 'night',
+    look: 'neonnight',
+    blurb: 'A glowing night ocean under a giant moon: light-rail barriers, floating hoops and a city on the horizon.',
+    laps: 3,
+    unlockLevel: 8,
+    seed: 14551,
+    radius: 285,
+    aspect: 1.3,
+    harmonics: [
+      [2, 0.15, 0.9],
+      [3, 0.2, 2.6],
+      [5, 0.06, 0.4],
+    ],
+    rotation: -0.2,
+    width: 46,
+    ramps: 3,
+    pads: 6,
+    swells: 1,
+    hazards: 3,
+    shortcuts: 1,
+    medals: [65.1, 68.7, 73.7],
+  },
+];
+
+/**
+ * Battle arenas. Not race courses: they never appear in race, time-trial or
+ * championship lists. The generated loop is a wide ring that only serves AI
+ * navigation, respawn and the minimap; the arena layout fills the lagoon.
+ */
+export const ARENAS: TrackDef[] = [
+  {
+    id: 'lagoon',
+    name: 'LAGOON ARENA',
+    theme: 'tropical',
+    weather: 'clear',
+    arena: true,
+    blurb: 'A ring of palm islands around an open lagoon: item boxes everywhere, ramps, whirlpools and channels to sneak through.',
+    laps: 0,
+    unlockLevel: 1,
+    seed: 15661,
+    radius: 150,
+    aspect: 1,
+    harmonics: [],
+    rotation: 0,
+    width: 330,
+    ramps: 4,
+    pads: 6,
+    swells: 0,
+    hazards: 6,
+    shortcuts: 0,
+    medals: [0, 0, 0],
+    sea: 0.7,
+  },
 ];
 
 export function trackDef(id: string): TrackDef {
-  return TRACKS.find((t) => t.id === id) ?? TRACKS[0];
+  return TRACKS.find((t) => t.id === id) ?? ARENAS.find((t) => t.id === id) ?? TRACKS[0];
 }
 
 /** Championship cups: ordered track lists. */
@@ -303,10 +446,12 @@ export interface Cup {
 }
 
 export const CUPS: Cup[] = [
+  { id: 'splash', name: 'SPLASH CUP', tracks: ['splash', 'hopscotch', 'lighthouse'], unlockLevel: 1 },
   { id: 'surf', name: 'SURF CUP', tracks: ['coral', 'atoll', 'shipyard'], unlockLevel: 1 },
   { id: 'storm', name: 'STORM CUP', tracks: ['thunder', 'neon', 'cinder'], unlockLevel: 3 },
   { id: 'grand', name: 'RIPTIDE GRAND PRIX', tracks: ['coral', 'thunder', 'neon', 'atoll', 'cinder', 'shipyard'], unlockLevel: 5 },
   { id: 'frontier', name: 'FRONTIER CUP', tracks: ['jungle', 'glacier', 'canal', 'fjord'], unlockLevel: 7 },
+  { id: 'midnight', name: 'MIDNIGHT CUP', tracks: ['neon', 'glacier', 'starfall'], unlockLevel: 8 },
 ];
 
 /** Championship points by finishing position (1st..6th). */

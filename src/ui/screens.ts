@@ -9,7 +9,8 @@ import { detectQuality } from '../render/graphics';
 import { EXPRESSIONS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, sanitizeLook, SKIN_TONES, type RiderLook } from '../boat/riderLook';
 import { BOATS, boatSpec, boatStats, type BoatId } from '../boat/specs';
 import { BOOSTS, DECALS, PAINTS, STRIPES, TRAILS, type Livery } from '../boat/livery';
-import { CUPS, CHAMP_POINTS, TRACKS, trackDef } from '../race/trackDefs';
+import { ARENAS, CUPS, CHAMP_POINTS, TRACKS, trackDef } from '../race/trackDefs';
+import { BATTLE_RULES, BATTLE_RULE_IDS, type BattleRule } from '../race/session';
 import { Track } from '../race/track';
 import { WEATHER, WEATHER_IDS } from '../environment/weatherDefs';
 import { cosmeticUnlocks, levelFromXp, type Settings } from '../save/save';
@@ -56,7 +57,7 @@ export class Screens {
   private toastBox: HTMLElement;
   current = '';
   /** Pending setup choices. */
-  private setup: EventRequest = { mode: 'quick', trackId: 'coral', weather: 'default', laps: 3, difficulty: 'normal', boat: 'speedster' };
+  private setup: EventRequest = { mode: 'quick', trackId: 'coral', weather: 'default', laps: 3, difficulty: 'normal', boat: 'speedster', battleRule: 'balloons' };
 
   constructor(
     private game: Game,
@@ -212,6 +213,11 @@ export class Screens {
         this.setup.weather = arg as WeatherId | 'default';
         this.refreshSetup();
         g.setBackdrop(this.setup.trackId, this.weatherFor());
+        break;
+      case 'brule':
+        a.click('move');
+        this.setup.battleRule = arg as BattleRule;
+        this.refreshSetup();
         break;
       case 'laps':
         a.click('move');
@@ -594,6 +600,9 @@ export class Screens {
     else if (g.save.level < trackDef(this.setup.trackId).unlockLevel) this.setup.trackId = 'coral';
     // Stunt and endless need a lapped course; sprints are hidden from their list.
     if ((mode === 'stunt' || mode === 'endless') && trackDef(this.setup.trackId).sprint) this.setup.trackId = 'coral';
+    // Arenas are battle-only; battle opens in the arena.
+    if (mode === 'battle' && !fixedTrack) this.setup.trackId = ARENAS[0].id;
+    else if (mode !== 'battle' && trackDef(this.setup.trackId).arena) this.setup.trackId = 'coral';
     this.mount(
       'setup',
       `<h1 class="h">${modeName(mode)}</h1><div class="sub">${modeBlurb(mode)}</div>
@@ -623,10 +632,13 @@ export class Screens {
     const focusedArg = g.nav.current?.dataset.arg;
     const showTracks = st.mode !== 'championship' && st.mode !== 'career';
     const stage = st.mode === 'career' && st.careerStage !== undefined ? CAREER[st.careerStage] : null;
-    const tracks = TRACKS.filter((t) => !(t.sprint && (st.mode === 'stunt' || st.mode === 'endless'))).map((t) => {
+    // Beginner (Splash Cup) courses lead the list; arenas only appear for battle.
+    const splash = CUPS[0].tracks;
+    const ordered = [...(st.mode === 'battle' ? ARENAS : []), ...TRACKS.filter((t) => splash.includes(t.id)), ...TRACKS.filter((t) => !splash.includes(t.id))];
+    const tracks = ordered.filter((t) => !(t.sprint && (st.mode === 'stunt' || st.mode === 'endless'))).map((t) => {
       const locked = lvl < t.unlockLevel;
       return `<div class="card ${t.id === st.trackId ? 'sel' : ''} ${locked ? 'locked' : ''}" data-nav data-act="track" data-arg="${t.id}">
-        <span class="tag">${t.theme.toUpperCase()}</span>
+        <span class="tag">${t.arena ? 'ARENA' : t.look === 'neonnight' ? 'NEON NIGHT' : t.theme.toUpperCase()}</span>
         <canvas data-track="${t.id}"></canvas>
         <div class="ct">${t.name}</div><div class="cs">${t.blurb}</div>
         ${locked ? `<div class="lock">🔒 LEVEL ${t.unlockLevel}</div>` : this.medalsHtml(t.id)}
@@ -643,8 +655,13 @@ export class Screens {
     const stats = boatStats(spec);
     const bars = Object.entries(stats).map(([k, v]) => `<span>${k.toUpperCase()}</span><div class="sbar"><div style="width:${v * 10}%"></div></div>`).join('');
     const sprint = !!trackDef(st.trackId).sprint;
-    const laps = (st.mode === 'quick' || st.mode === 'timetrial' || st.mode === 'battle') && !sprint ? `<div class="label">Laps</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => `<button class="opt ${st.laps === n ? 'on' : ''}" data-nav data-act="laps" data-arg="${n}">${n}</button>`).join('')}</div>` : '';
+    const laps = (st.mode === 'quick' || st.mode === 'timetrial') && !sprint ? `<div class="label">Laps</div><div class="opts">${[1, 2, 3, 4, 5].map((n) => `<button class="opt ${st.laps === n ? 'on' : ''}" data-nav data-act="laps" data-arg="${n}">${n}</button>`).join('')}</div>` : '';
     const diff = st.mode === 'quick' || st.mode === 'championship' || st.mode === 'battle' ? `<div class="label">Opponents</div><div class="opts">${(['easy', 'normal', 'hard'] as const).map((d) => `<button class="opt ${st.difficulty === d ? 'on' : ''}" data-nav data-act="diff" data-arg="${d}">${d.toUpperCase()}</button>`).join('')}</div>` : '';
+    const rule = st.battleRule ?? 'balloons';
+    const ruleHtml =
+      st.mode === 'battle'
+        ? `<div class="label">Battle rules</div><div class="opts">${BATTLE_RULE_IDS.map((r) => `<button class="opt ${rule === r ? 'on' : ''}" data-nav data-act="brule" data-arg="${r}">${BATTLE_RULES[r].name}</button>`).join('')}<span class="hint" style="align-self:center">${BATTLE_RULES[rule].blurb}</span></div>`
+        : '';
     let records = '';
     const ghost = g.save.data.ghosts[st.trackId];
     if (st.mode === 'timetrial') {
@@ -658,6 +675,8 @@ export class Screens {
       records = `BEST <b>${rec.endless ?? '—'} m</b> · GOLD ${gm} m · SILVER ${sm} m · BRONZE ${bm} m`;
     } else if (st.mode === 'career' && stage) {
       records = '';
+    } else if (st.mode === 'battle') {
+      records = trackDef(st.trackId).arena ? 'OPEN LAGOON · ITEM BOXES EVERYWHERE · WHIRLPOOLS · CHANNELS BEHIND THE ISLANDS' : 'BATTLE ON A RACE COURSE: boxes sit in rows across the lane';
     } else if (st.mode !== 'freeride') records = `RECORD <b>${rec.race ? formatTime(rec.race) : '—'}</b> · BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b>`;
     const dyn = st.mode === 'quick' || st.mode === 'championship' || st.mode === 'battle' || st.mode === 'freeride';
     const dynHtml = dyn ? `<div class="label">${t('dynWeather')}</div><div class="opts">${[false, true].map((v) => `<button class="opt ${g.save.data.settings.dynamicWeather === v ? 'on' : ''}" data-nav data-act="dynw" data-arg="${v}">${v ? t('on') : t('off')}</button>`).join('')}</div>` : '';
@@ -673,7 +692,7 @@ export class Screens {
       ${showTracks ? `<div class="label">Course</div><div class="cards">${tracks}</div>` : `<div class="label">Course</div><div class="panel"><b style="font-family:var(--font);font-size:22px;font-style:italic">${trackDef(fixedTrack ?? st.trackId).name}</b><div class="hint">${trackDef(st.trackId).blurb}</div></div>`}
       <div class="hint" style="margin:4px 0 4px">${records}</div>
       ${stage ? '' : `<div class="label">${t('weather')}</div><div class="opts">${weather}</div>`}
-      ${laps}${diff}${dynHtml}${ghostHtml}
+      ${ruleHtml}${laps}${diff}${dynHtml}${ghostHtml}
       <div class="label">Watercraft</div><div class="opts">${boats}</div>
       <div class="panel" style="margin-top:10px;max-width:520px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>`;
     body.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
@@ -1306,8 +1325,13 @@ export class Screens {
     let table = '';
     if (s.isRace) {
       head = `<div class="bigplace">${ordinal(p.place)}</div><div class="sub">${trackDef(s.cfg.trackId).name} · ${s.cfg.difficulty.toUpperCase()}</div>`;
+      if (s.battleRule) head = `<div class="bigplace">${ordinal(p.place)}</div><div class="sub">BATTLE · ${BATTLE_RULES[s.battleRule].name} · ${trackDef(s.cfg.trackId).name}</div>`;
       table = `<table class="res">${s.results
-        .map((r) => `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint">${r.boat}</td><td class="t">${r.finished ? formatTime(r.time) : '~' + formatTime(r.time)}</td><td class="t hint">${isFinite(r.bestLap) ? formatTime(r.bestLap) : '—'}</td></tr>`)
+        .map((r) =>
+          r.battle !== undefined
+            ? `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint">${r.boat}</td><td class="t" style="white-space:nowrap">${r.battle}</td></tr>`
+            : `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint">${r.boat}</td><td class="t">${r.finished ? formatTime(r.time) : '~' + formatTime(r.time)}</td><td class="t hint">${isFinite(r.bestLap) ? formatTime(r.bestLap) : '—'}</td></tr>`,
+        )
         .join('')}</table>`;
     } else if (s.mode === 'timetrial') {
       head = `<div class="bigplace" style="font-size:clamp(50px,8vw,110px)">${isFinite(p.bestLap) ? formatTime(p.bestLap) : '—'}</div><div class="sub">BEST LAP · ${trackDef(s.cfg.trackId).name}${s.newGhost ? ' · NEW GHOST SAVED' : ''}</div>`;

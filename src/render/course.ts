@@ -138,12 +138,19 @@ export class CourseVisuals {
     const style = THEME_STYLE[track.def.theme];
 
     // ── Buoys ────────────────────────────────────────────────────────────────
+    // Chubby cartoon buoy: a round belly, a soft cone hat and a ball on top.
+    // The body takes the per-buoy colour; the white trim is a second mesh
+    // sharing the same instance matrices (instance colour would tint it).
     const bb = new GeoBuilder();
-    bb.cyl(0.55, 0.7, 1.3, 0xffffff, { y: 0.15 }, 10);
-    bb.cone(0.55, 1.1, 0xffffff, { y: 1.35 }, 10);
-    bb.cyl(0.72, 0.72, 0.18, 0x23262e, { y: -0.35 }, 10);
-    bb.cyl(0.58, 0.58, 0.16, 0x23262e, { y: 0.75 }, 10);
+    bb.sphere(0.82, 0xffffff, { y: 0.2, sy: 0.85 }, 12, 7);
+    bb.cone(0.62, 1.15, 0xffffff, { y: 1.15 }, 12);
+    bb.sphere(0.24, 0xffffff, { y: 1.78 }, 8, 4);
     const bgeo = bb.build();
+    const tb = new GeoBuilder();
+    tb.cyl(0.86, 0.86, 0.22, 0xffffff, { y: 0.32 }, 12);
+    tb.cyl(0.5, 0.56, 0.2, 0xffffff, { y: 0.98 }, 12);
+    tb.cyl(0.9, 0.9, 0.16, 0x2c3a5a, { y: -0.28 }, 12);
+    const tgeo = tb.build();
     const buoys = session.buoys;
     this.buoyMesh = new InstancedMesh(bgeo, cel('buoy', { vertexColors: true, gloss: 0.5 }), buoys.length);
     const col = new Color();
@@ -156,6 +163,11 @@ export class CourseVisuals {
     this.buoyMesh.name = 'buoys';
     addOutline(this.buoyMesh, 1.6);
     this.add(this.buoyMesh, bgeo);
+    const trim = new InstancedMesh(tgeo, cel('buoyTrim', { vertexColors: true, gloss: 0.3 }), buoys.length);
+    trim.instanceMatrix = this.buoyMesh.instanceMatrix;
+    trim.frustumCulled = false;
+    trim.name = 'buoyTrim';
+    this.add(trim, tgeo);
     // Little lamp on each buoy top (bright at night).
     const lg = new CylinderGeometry(0.16, 0.16, 0.3, 6);
     this.buoyLights = new InstancedMesh(lg, new MeshBasicMaterial({ color: 0xffffff, fog: true }), buoys.length);
@@ -198,10 +210,15 @@ export class CourseVisuals {
       for (const s of [-1, 1]) {
         const x = g.x - Math.cos(g.heading) * half * s;
         const z = g.z + Math.sin(g.heading) * half * s;
-        const pyl = start ? 0xf4f1e8 : 0x2b2f3b;
-        gp.cyl(1.2, 1.7, 13, pyl, { x, y: 4.5, z }, 8);
-        gp.cyl(1.9, 1.9, 0.6, start ? 0xff3b5c : style.glow2, { x, y: 11.2, z }, 8);
-        gp.cyl(2.3, 2.6, 1.6, 0x23262e, { x, y: -1.2, z }, 8);
+        // Friendly pylons: rounded, banded, with a ball cap and a float collar.
+        const pyl = start ? 0xfffaf0 : 0x3a8fe0;
+        const band = start ? 0xff3b5c : 0xffffff;
+        gp.cyl(1.25, 1.6, 13, pyl, { x, y: 4.5, z }, 14);
+        for (const by of [2.2, 5.6]) gp.cyl(1.52 - by * 0.022, 1.58 - by * 0.022, 0.9, band, { x, y: by, z }, 14);
+        gp.cyl(1.95, 1.95, 0.7, start ? 0xff3b5c : style.glow2, { x, y: 11.2, z }, 14);
+        gp.sphere(1.0, start ? 0xffd21e : 0xffffff, { x, y: 12.2, z }, 12, 8);
+        gp.cyl(2.4, 2.6, 1.6, 0xffd21e, { x, y: -1.0, z }, 14);
+        gp.torus(2.45, 0.28, 0xffffff, { x, y: -0.2, z, rx: Math.PI / 2 });
       }
     }
     const gGeo = gp.build();
@@ -328,8 +345,12 @@ export class CourseVisuals {
       for (const s of signs) {
         const ch = Math.cos(s.heading);
         const sh = Math.sin(s.heading);
-        for (const o of [-2.6, 2.6]) posts.cyl(0.18, 0.22, 7, 0x2b2f3b, { x: s.x + ch * o, y: 1.5, z: s.z - sh * o }, 6);
-        posts.cyl(1.4, 1.6, 1.2, 0x2b2f3b, { x: s.x, y: -0.2, z: s.z }, 8);
+        for (const o of [-2.6, 2.6]) {
+          posts.cyl(0.2, 0.24, 7, 0x2c3a5a, { x: s.x + ch * o, y: 1.5, z: s.z - sh * o }, 8);
+          posts.sphere(0.3, 0xffffff, { x: s.x + ch * o, y: 5.1, z: s.z - sh * o }, 8, 6);
+        }
+        posts.cyl(1.4, 1.6, 1.2, 0xffd21e, { x: s.x, y: -0.2, z: s.z }, 12);
+        posts.torus(1.5, 0.18, 0xffffff, { x: s.x, y: 0.35, z: s.z, rx: Math.PI / 2 });
         // Board quad, facing along `heading` (toward the approaching racer).
         const base = bpos.length / 3;
         const W = 3.4;
@@ -388,7 +409,7 @@ export class CourseVisuals {
       const m = new Mesh(geo, makeCel({ map: bannerTexture('SHORTCUT ›', '#ffd21e', 'banner_sc'), side: DoubleSide, emissive: 0x332a00 }));
       this.add(m, geo, m.material as { dispose(): void });
       const pg = new GeoBuilder();
-      for (const a of [-1, 1]) pg.cyl(0.2, 0.25, 9, 0x2b2f3b, { x: cx + ch * a * W, y: 3.6, z: cz - sh * a * W }, 6);
+      for (const a of [-1, 1]) pg.cyl(0.2, 0.25, 9, 0x2c3a5a, { x: cx + ch * a * W, y: 3.6, z: cz - sh * a * W }, 8);
       const pgeo = pg.build();
       const pm = new Mesh(pgeo, cel('signPosts', { vertexColors: true }));
       this.add(pm, pgeo);
@@ -405,13 +426,15 @@ export class CourseVisuals {
     // ── Endless mines ────────────────────────────────────────────────────────
     if (session.mines.length) {
       const mg = new GeoBuilder();
-      mg.sphere(1, 0x5a1e1e, {}, 12, 9);
+      mg.sphere(1, 0x3a3456, {}, 14, 10);
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
-        mg.cyl(0.08, 0.12, 0.7, 0x2a2a2a, { x: Math.cos(a) * 1.05, z: Math.sin(a) * 1.05, rz: -a + Math.PI / 2, ry: 0 }, 5);
+        mg.cyl(0.1, 0.14, 0.55, 0x6a6488, { x: Math.cos(a) * 1.05, z: Math.sin(a) * 1.05, rz: -a + Math.PI / 2, ry: 0 }, 6);
+        mg.sphere(0.14, 0xff3a3a, { x: Math.cos(a) * 1.35, z: Math.sin(a) * 1.35 }, 6, 4);
       }
-      mg.cyl(0.08, 0.12, 0.7, 0x2a2a2a, { y: 1.05 }, 5);
-      mg.sphere(0.18, 0xff2020, { y: 1.35 }, 6, 4);
+      mg.cyl(0.1, 0.14, 0.6, 0x6a6488, { y: 1.05 }, 6);
+      mg.sphere(0.2, 0xff2020, { y: 1.38 }, 8, 6);
+      mg.sphere(0.22, 0xeae6ff, { x: -0.45, y: 0.55, z: 0.55 }, 6, 4);
       const geo = mg.build();
       this.mineMesh = new InstancedMesh(geo, cel('endlessMine', { vertexColors: true, gloss: 0.8 }), session.mines.length);
       this.mineMesh.frustumCulled = false;
@@ -473,14 +496,16 @@ export class CourseVisuals {
       const cy = (y0 + y1) / 2 - 0.9;
       for (const s of [-1, 1]) {
         const [x, , z] = toW(mid, s * (W2 + 0.25), 0);
-        side.box(0.5, 2.2, Math.hypot(r.length, r.height), 0x23262e, { x, y: cy + 0.75, z, ry: r.heading, rx: -ang });
+        side.box(0.5, 2.2, Math.hypot(r.length, r.height), 0x3a8fe0, { x, y: cy + 0.75, z, ry: r.heading, rx: -ang });
         const [x2, , z2] = toW(mid, s * (W2 + 0.3), 0);
-        side.box(0.35, 0.35, Math.hypot(r.length, r.height), 0xffd21e, { x: x2, y: cy + 1.95, z: z2, ry: r.heading, rx: -ang });
+        side.box(0.45, 0.4, Math.hypot(r.length, r.height), 0xffffff, { x: x2, y: cy + 1.95, z: z2, ry: r.heading, rx: -ang });
       }
       const [lx, , lz] = toW(r.length - 0.2, 0, 0);
-      side.box(r.width + 1, r.height + 0.6, 0.5, 0x23262e, { x: lx, y: y1 / 2 - 0.5, z: lz, ry: r.heading });
+      side.box(r.width + 1, r.height + 0.6, 0.5, 0x3a8fe0, { x: lx, y: y1 / 2 - 0.5, z: lz, ry: r.heading });
+      const [lx2, , lz2] = toW(r.length + 0.05, 0, 0);
+      side.box(r.width + 1.1, 0.4, 0.6, 0xffffff, { x: lx2, y: y1 + 0.05, z: lz2, ry: r.heading });
       const [fx, , fz] = toW(r.length * 0.5, 0, 0);
-      side.box(r.width + 1.4, 1.2, r.length + 1, 0x3a3e48, { x: fx, y: -0.9, z: fz, ry: r.heading });
+      side.box(r.width + 1.4, 1.2, r.length + 1, 0xffd21e, { x: fx, y: -0.9, z: fz, ry: r.heading });
     }
     const geo = new BufferGeometry();
     geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
@@ -568,7 +593,7 @@ export class CourseVisuals {
       _p.set(b.x, _sample.height - 0.1, b.z);
       _m.compose(_p, _q, _s.set(1, 1, 1));
       this.buoyMesh.setMatrixAt(i, _m);
-      _p.set(0, 2.0, 0).applyQuaternion(_q);
+      _p.set(0, 2.05, 0).applyQuaternion(_q);
       _p.x += b.x;
       _p.y += _sample.height - 0.1;
       _p.z += b.z;

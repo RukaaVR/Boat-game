@@ -229,11 +229,11 @@ export interface ThemeStyle {
 }
 
 export const THEME_STYLE: Record<ThemeId, ThemeStyle> = {
-  tropical: { glow: 0xffd34d, glow2: 0x3dffe0, rock: 0x8a7f73, rockDark: 0x4d4640, sand: 0xf3dfa6, grass: 0x4fb84a, horizonGlow: 0xffffff, horizonGlowAmt: 0, ambientFx: 0, buoyLeft: 0xff4a3d, buoyRight: 0xfff4e0 },
-  storm: { glow: 0xfff0b0, glow2: 0x9fd7ff, rock: 0x4c535a, rockDark: 0x24292e, sand: 0x8c8676, grass: 0x3f5a3a, horizonGlow: 0x9fb4c8, horizonGlowAmt: 0.1, ambientFx: 2, buoyLeft: 0xff5a2a, buoyRight: 0xf2f2f2 },
+  tropical: { glow: 0xffd34d, glow2: 0x3dffe0, rock: 0xa89a90, rockDark: 0x6e6676, sand: 0xfbe3a2, grass: 0x56b552, horizonGlow: 0xffffff, horizonGlowAmt: 0, ambientFx: 0, buoyLeft: 0xff4a3d, buoyRight: 0xfff4e0 },
+  storm: { glow: 0xfff0b0, glow2: 0x9fd7ff, rock: 0x66707c, rockDark: 0x3c4450, sand: 0xa49c86, grass: 0x4f8a4a, horizonGlow: 0x9fb4c8, horizonGlowAmt: 0.1, ambientFx: 2, buoyLeft: 0xff5a2a, buoyRight: 0xf2f2f2 },
   neon: { glow: 0xff2fa8, glow2: 0x26e8ff, rock: 0x4a4e5c, rockDark: 0x252836, sand: 0x6a6a72, grass: 0x3a4a3a, horizonGlow: 0xff4fd8, horizonGlowAmt: 0.25, ambientFx: 0, buoyLeft: 0xff2fa8, buoyRight: 0x26e8ff },
-  arctic: { glow: 0x9fe8ff, glow2: 0xb6ffd8, rock: 0xdfeaf2, rockDark: 0x8fa6b8, sand: 0xf4f8fc, grass: 0xe8f0f6, horizonGlow: 0x7fffd0, horizonGlowAmt: 0.12, ambientFx: 3, buoyLeft: 0xff3b5c, buoyRight: 0x1e2a44 },
-  jungle: { glow: 0xffe26a, glow2: 0x7dff6a, rock: 0x5e6b4e, rockDark: 0x2f3a28, sand: 0x9a8058, grass: 0x2f7d32, horizonGlow: 0xffffff, horizonGlowAmt: 0, ambientFx: 2, buoyLeft: 0xffb21e, buoyRight: 0xf4f0e0 },
-  canal: { glow: 0xffc46a, glow2: 0x6ad8ff, rock: 0xa0644a, rockDark: 0x5a3626, sand: 0xc8b89a, grass: 0x5a7a4a, horizonGlow: 0xffb070, horizonGlowAmt: 0.15, ambientFx: 0, buoyLeft: 0xe8233a, buoyRight: 0xfff4e0 },
-  volcanic: { glow: 0xff5a1a, glow2: 0xffb02a, rock: 0x3a3236, rockDark: 0x17131a, sand: 0x2d2628, grass: 0x3a3a30, horizonGlow: 0xff5a1a, horizonGlowAmt: 0.35, ambientFx: 1, buoyLeft: 0xffb02a, buoyRight: 0xf2e8e0 },
+  arctic: { glow: 0x9fe8ff, glow2: 0xb6ffd8, rock: 0xd4e8f4, rockDark: 0x9cbcd8, sand: 0xf6fbff, grass: 0xf2f8fc, horizonGlow: 0x7fffd0, horizonGlowAmt: 0.12, ambientFx: 3, buoyLeft: 0xff3b5c, buoyRight: 0x1e2a44 },
+  jungle: { glow: 0xffe26a, glow2: 0x7dff6a, rock: 0x8a9a74, rockDark: 0x56664e, sand: 0xc89a62, grass: 0x4aac44, horizonGlow: 0xffffff, horizonGlowAmt: 0, ambientFx: 2, buoyLeft: 0xffb21e, buoyRight: 0xf4f0e0 },
+  canal: { glow: 0xffc46a, glow2: 0x6ad8ff, rock: 0xc08a6a, rockDark: 0x8a5a48, sand: 0xe8d4a8, grass: 0x78cc5a, horizonGlow: 0xffb070, horizonGlowAmt: 0.15, ambientFx: 0, buoyLeft: 0xe8233a, buoyRight: 0xfff4e0 },
+  volcanic: { glow: 0xff5a1a, glow2: 0xffb02a, rock: 0x5a4a5c, rockDark: 0x352a3a, sand: 0x3e3240, grass: 0x6a5468, horizonGlow: 0xff5a1a, horizonGlowAmt: 0.35, ambientFx: 1, buoyLeft: 0xffb02a, buoyRight: 0xf2e8e0 },
 };

@@ -11,18 +11,17 @@ import {
   BackSide,
   Color,
   Group,
-  IcosahedronGeometry,
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   Quaternion,
   ShaderMaterial,
   SphereGeometry,
   Vector3,
 } from 'three';
 import { Rng } from '../core/rng';
-import { cel } from '../render/cel';
-import { GeoBuilder, lumpify } from '../render/geo';
+import { GeoBuilder } from '../render/geo';
 
 const vert = /* glsl */ `
 varying vec3 vDir;
@@ -129,6 +128,9 @@ export class Sky {
   readonly material: ShaderMaterial;
   private clouds: InstancedMesh;
   private cloudData: { a: number; r: number; h: number; s: number; sp: number }[] = [];
+  private towers: InstancedMesh;
+  private cloudMat: MeshBasicMaterial;
+  private towerData: { a: number; r: number; h: number; s: number; sp: number }[] = [];
   private center = new Vector3();
 
   constructor(seed: number) {
@@ -163,33 +165,40 @@ export class Sky {
     this.mesh.name = 'sky';
     this.group.add(this.mesh);
 
-    // Cumulus clusters: merged lumpy spheres, instanced around the horizon.
-    const gb = new GeoBuilder();
+    // Anime cumulus: a flat-bottomed stack of smooth puffs. Vertex colour does
+    // the crisp white top / pale blue-grey underside; the toon ramp adds the
+    // sun-side split.
     const rng = new Rng(seed);
-    for (let i = 0; i < 7; i++) {
-      const g = new IcosahedronGeometry(1, 2);
-      lumpify(g, 0.12, i * 2.3);
-      gb.add(g, 0xffffff, { x: rng.range(-1.6, 1.6), y: rng.range(0, 0.5), z: rng.range(-0.6, 0.6), sx: rng.range(0.9, 1.4), sy: rng.range(0.7, 1.0), sz: rng.range(0.9, 1.3) });
-    }
-    const cg = gb.build();
-    cg.translate(0, 0.3, 0);
-    // Flatten the base.
-    const pos = cg.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) if (pos.getY(i) < 0) pos.setY(i, pos.getY(i) * 0.25);
-    cg.computeVertexNormals();
+    const cg = cumulusGeometry(rng, false);
     const n = 26;
-    this.clouds = new InstancedMesh(cg, cel('cloud', { color: 0xffffff, rim: 1.5, fog: false }), n);
+    // Unlit: the painted two-tone lives in the vertex colours, like a cel background.
+    const cloudMat = new MeshBasicMaterial({ color: 0xffffff, vertexColors: true, fog: false });
+    this.cloudMat = cloudMat;
+    this.clouds = new InstancedMesh(cg, cloudMat, n);
     this.clouds.frustumCulled = false;
     this.clouds.renderOrder = -9;
     for (let i = 0; i < n; i++) {
-      this.cloudData.push({ a: rng.range(0, Math.PI * 2), r: rng.range(1100, 1900), h: rng.range(170, 380), s: rng.range(55, 130), sp: rng.range(0.002, 0.006) });
+      this.cloudData.push({ a: rng.range(0, Math.PI * 2), r: rng.range(1100, 1900), h: rng.range(170, 380), s: rng.range(60, 135), sp: rng.range(0.002, 0.006) });
     }
+    // A few tall cloud towers sitting on the horizon.
+    const tg = cumulusGeometry(rng, true);
+    const nt = 5;
+    this.towers = new InstancedMesh(tg, cloudMat, nt);
+    this.towers.frustumCulled = false;
+    this.towers.renderOrder = -9;
+    for (let i = 0; i < nt; i++) {
+      this.towerData.push({ a: (i / nt) * Math.PI * 2 + rng.range(-0.4, 0.4), r: rng.range(1900, 2150), h: rng.range(-30, 0), s: rng.range(85, 120), sp: rng.range(0.0008, 0.0016) });
+    }
+    this.group.add(this.towers);
     this.group.add(this.clouds);
   }
 
   setCloudColor(c: Color, cover: number) {
-    (this.clouds.material as import('three').MeshToonMaterial).color.copy(c);
+    this.cloudMat.color.copy(c);
     this.clouds.count = Math.round(this.cloudData.length * Math.min(1, cover * 1.6));
+    // Towers belong to fair-weather skies; heavy overcast hides them.
+    const lum = c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
+    this.towers.count = cover > 0.8 || lum < 0.25 ? 0 : Math.max(2, Math.round(this.towerData.length * Math.min(1, cover * 2.2)));
   }
 
   update(cameraPos: Vector3, time: number) {
@@ -206,11 +215,74 @@ export class Sky {
       this.clouds.setMatrixAt(i, _m);
     }
     this.clouds.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < this.towers.count; i++) {
+      const c = this.towerData[i];
+      const a = c.a + time * c.sp;
+      _p.set(this.center.x + Math.cos(a) * c.r, c.h, this.center.z + Math.sin(a) * c.r);
+      _q.identity();
+      _m.compose(_p, _q, _s.set(c.s, c.s, c.s));
+      this.towers.setMatrixAt(i, _m);
+    }
+    this.towers.instanceMatrix.needsUpdate = true;
   }
 
   dispose() {
     this.mesh.geometry.dispose();
     this.material.dispose();
     this.clouds.geometry.dispose();
+    this.towers.geometry.dispose();
+    this.cloudMat.dispose();
   }
+}
+
+/**
+ * One cumulus cluster: a wide row of base puffs, bigger domes stacked on top,
+ * a flattened base. `tower` builds a tall cumulonimbus-style stack instead.
+ */
+function cumulusGeometry(rng: Rng, tower: boolean) {
+  const gb = new GeoBuilder();
+  const puff = (r: number, x: number, y: number, z: number) => gb.add(new SphereGeometry(1, 12, 8), 0xffffff, { x, y, z, s: r });
+  if (!tower) {
+    for (let i = 0; i < 5; i++) puff(rng.range(0.6, 0.8), -1.7 + i * 0.85, rng.range(0, 0.1), rng.range(-0.3, 0.3));
+    for (let i = 0; i < 3; i++) puff(rng.range(0.85, 1.05), -0.9 + i * 0.9, rng.range(0.45, 0.7), rng.range(-0.2, 0.2));
+    puff(rng.range(0.8, 0.95), rng.range(-0.3, 0.3), 1.15, 0);
+  } else {
+    // A broad, lumpy mass that narrows as it climbs (towering cumulus).
+    const rows: [number, number, number, number][] = [
+      // count, y, puff radius, half-width
+      [6, 0.0, 0.8, 2.1],
+      [4, 0.85, 0.95, 1.45],
+      [3, 1.75, 0.88, 0.95],
+      [2, 2.55, 0.78, 0.5],
+      [1, 3.25, 0.8, 0],
+    ];
+    for (const [cnt, y, r, hw] of rows)
+      for (let i = 0; i < cnt; i++) {
+        const x = cnt === 1 ? rng.range(-0.15, 0.15) : -hw + (2 * hw * i) / (cnt - 1);
+        puff(r * rng.range(0.9, 1.1), x + rng.range(-0.12, 0.12), y + rng.range(-0.1, 0.1), rng.range(-0.4, 0.4));
+      }
+  }
+  const g = gb.build();
+  const pos = g.getAttribute('position');
+  const col = g.getAttribute('color');
+  const top = new Color(0xffffff);
+  const mid = new Color(0xe6eef9);
+  const under = new Color(0xb4c8e4);
+  const nrm = g.getAttribute('normal');
+  for (let i = 0; i < pos.count; i++) {
+    let y = pos.getY(i);
+    // Flatten the base.
+    if (y < 0) {
+      y *= 0.25;
+      pos.setY(i, y);
+      nrm.setXYZ(i, nrm.getX(i) * 0.5, -1, nrm.getZ(i) * 0.5);
+    }
+    // Crisp two-tone: blue-grey belly, white everywhere the light reaches.
+    const ny = nrm.getY(i);
+    const sx = nrm.getX(i) * 0.6 + nrm.getZ(i) * 0.3;
+    const c = ny < -0.3 || y < 0.12 ? under : ny + sx * 0.5 > 0.1 ? top : mid;
+    col.setXYZ(i, c.r, c.g, c.b);
+  }
+  g.translate(0, 0.3, 0);
+  return g;
 }

@@ -53,6 +53,9 @@ import { checkAchievements } from '../save/rewards';
 import { decodeGhost, encodeGhost, ghostFingerprint } from '../save/ghostCode';
 import { A11Y } from './a11y';
 import { enterSplitPerf, MoreViews, splitHaptics } from './moreViews';
+import { courseKey, courseName, type CourseVariant } from '../race/variants';
+import { speedClassDef, type SpeedClass } from '../race/speedClass';
+import { staffGhost } from '../race/staffGhosts';
 
 export interface EventRequest {
   mode: ModeId;
@@ -71,10 +74,14 @@ export interface EventRequest {
   moreBoats?: BoatId[];
   /** Number of AI rivals (default 5). */
   opponents?: number;
-  /** Time trial: race your own best ghost or an imported friend's ghost. */
-  ghost?: 'mine' | 'rival';
+  /** Time trial: race your own best ghost, an imported friend's ghost or the staff (AI reference) ghost. */
+  ghost?: 'mine' | 'rival' | 'staff';
   /** Battle mode rule set. */
   battleRule?: BattleRule;
+  /** Course variant (reverse / mirror). */
+  variant?: CourseVariant;
+  /** Engine class (Quick Race, Championship). */
+  speedClass?: SpeedClass;
 }
 
 type State = 'boot' | 'title' | 'menu' | 'race';
@@ -506,7 +513,7 @@ export class Game implements ReplayHost, PhotoHost {
     this.renderTime = 0;
   }
 
-  private buildBackdrop(trackId: string, weather: WeatherId) {
+  private buildBackdrop(trackId: string, weather: WeatherId, variant: CourseVariant = 'normal') {
     const d = this.save.data;
     const cfg: SessionConfig = {
       mode: 'quick',
@@ -520,6 +527,7 @@ export class Game implements ReplayHost, PhotoHost {
       playerName: d.playerName,
       opponents: 5,
       ghost: null,
+      variant,
     };
     this.build(cfg, weather);
     const s = this.session!;
@@ -530,9 +538,10 @@ export class Game implements ReplayHost, PhotoHost {
     for (let i = 0; i < 240; i++) s.step(1 / 30);
     this.events.clear();
     this.world!.particles.clear();
-    this.backdropKey = `${trackId}|${weather}|${d.selectedBoat}`;
+    this.backdropKey = `${trackId}|${weather}|${d.selectedBoat}|${variant}`;
     this.rig.endScripted();
     this.rig.mode = 'cinematic';
+    this.rig.classFov = 0;
     this.rig.cut();
     this.music.seed(trackDef(trackId).seed);
   }
@@ -546,17 +555,17 @@ export class Game implements ReplayHost, PhotoHost {
   }
 
   /** Menu preview: swap the backdrop course/weather (debounced). */
-  setBackdrop(trackId: string, weather: WeatherId) {
-    const key = `${trackId}|${weather}|${this.save.data.selectedBoat}`;
+  setBackdrop(trackId: string, weather: WeatherId, variant: CourseVariant = 'normal') {
+    const key = `${trackId}|${weather}|${this.save.data.selectedBoat}|${variant}`;
     if (key === this.backdropKey) return;
     window.clearTimeout(this.backdropTimer);
     this.backdropTimer = window.setTimeout(() => {
       if (this.state !== 'menu') return;
-      if (this.session && this.session.cfg.trackId === trackId && this.world) {
+      if (this.session && this.session.cfg.trackId === trackId && this.session.track.variant === variant && this.world) {
         this.world.applyWeather(weather);
         this.session.cfg.weather = weather;
         this.backdropKey = key;
-      } else this.buildBackdrop(trackId, weather);
+      } else this.buildBackdrop(trackId, weather, variant);
     }, 180);
   }
 
@@ -678,8 +687,9 @@ export class Game implements ReplayHost, PhotoHost {
     }
     if (this.loadingEvent) return;
     this.loadingEvent = true;
-    void this.loader.show(trackDef(req.trackId).name).then(() => {
-      this.loader.set(0.35, 'BUILDING ' + trackDef(req.trackId).name);
+    const title = courseName(req.trackId, trackDef(req.trackId).arena ? 'normal' : (req.variant ?? 'normal'));
+    void this.loader.show(title).then(() => {
+      this.loader.set(0.35, 'BUILDING ' + title);
       try {
         this.buildEvent(req);
       } finally {
@@ -699,6 +709,13 @@ export class Game implements ReplayHost, PhotoHost {
     const weather: WeatherId = req.weather === 'default' ? def.weather : req.weather;
     const champ = req.mode === 'championship' ? d.champ : null;
     const stage = req.mode === 'career' && req.careerStage !== undefined ? CAREER[req.careerStage] : null;
+    // Variants: race courses in the modes that offer the picker. Engine class:
+    // Quick Race and Championship only (Time Trial stays at SURGE so medal
+    // times hold; Career keeps its tuned SURGE bosses).
+    const variant: CourseVariant = !def.arena && !stage && req.mode !== 'championship' && req.mode !== 'battle' && req.mode !== 'tutorial' && !req.p2Boat ? (req.variant ?? 'normal') : 'normal';
+    const speedClass: SpeedClass = req.mode === 'quick' || req.mode === 'championship' ? (req.mode === 'championship' ? (champ?.speedClass ?? 'surge') : (req.speedClass ?? 'surge')) : 'surge';
+    const key = courseKey(req.trackId, variant);
+    const ttGhost = req.ghost === 'staff' && variant === 'normal' ? staffGhost(req.trackId) : req.ghost === 'rival' ? d.rivalGhosts[key] : d.ghosts[key];
     const cfg: SessionConfig = {
       mode: req.mode,
       trackId: req.trackId,
@@ -712,7 +729,9 @@ export class Game implements ReplayHost, PhotoHost {
       opponents: req.opponents ?? 5,
       player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
       morePlayers: req.p2Boat && req.moreBoats?.length ? req.moreBoats.slice(0, 2).map((b, i) => ({ name: `P${i + 3}`, boat: b, livery: this.save.livery(b) })) : undefined,
-      ghost: req.mode === 'timetrial' ? ((req.ghost === 'rival' ? d.rivalGhosts[req.trackId] : d.ghosts[req.trackId]) ?? null) : null,
+      ghost: req.mode === 'timetrial' ? (ttGhost ?? null) : null,
+      variant,
+      speedClass,
       champPoints: champ?.points,
       // Split-screen is a fair fight: neither player brings garage upgrades.
       playerUpgrades: req.p2Boat ? undefined : this.save.upgrades(req.boat),
@@ -783,6 +802,8 @@ export class Game implements ReplayHost, PhotoHost {
       this.finishCamStarted = false;
       this.adminCamTarget = null;
       this.rig.mode = this.rig.mode === 'cinematic' ? 'chase' : this.rig.mode;
+      this.rig.classFov = speedClassDef(speedClass).fov;
+      if (this.rig2) this.rig2.classFov = this.rig.classFov;
       this.rig.startIntro();
       this.audio.unlock();
       this.audio.startRace(def.theme);

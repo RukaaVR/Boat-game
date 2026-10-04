@@ -87,6 +87,8 @@ export interface ProgressView {
   bottles: Record<string, number>;
   career: { stage: number };
   stats: LifetimeStats;
+  /** Courses whose staff ghost lap has been beaten. */
+  staffBeaten: string[];
 }
 
 // ── Collectibles ───────────────────────────────────────────────────────────
@@ -134,6 +136,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'photo', name: 'SHUTTERBUG', desc: 'Save a photo in Photo Mode', credits: 150, test: (v) => v.stats.photos >= 1 },
   { id: 'weather', name: 'ALL WEATHER', desc: 'Race in clear, sunset, storm and night', credits: 400, test: (v) => (['clear', 'sunset', 'storm', 'night'] as const).every((w) => v.stats.weathers.includes(w)) },
   { id: 'distance', name: 'OCEAN CROSSING', desc: 'Travel 100 km in total', credits: 1200, test: (v) => v.stats.distance >= 100000 },
+  { id: 'staff', name: 'BEAT THE MACHINE', desc: 'Beat 5 staff ghost laps in Time Trial', credits: 1000, test: (v) => v.staffBeaten.length >= 5 },
 ];
 
 // ── Challenges ─────────────────────────────────────────────────────────────

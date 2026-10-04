@@ -39,6 +39,8 @@ export class CameraRig {
   motionScale = 1;
   /** 0..1 extra FOV punch requested by the FX director (Golden Surge). */
   fovKick = 0;
+  /** Extra field of view (degrees) for the race's engine class. */
+  classFov = 0;
   private pos = new Vector3(0, 5, -10);
   private look = new Vector3();
   private fov = 64;
@@ -170,7 +172,7 @@ export class CameraRig {
     } else _fwd.set(hx, 0, hz);
     _right.set(-_fwd.z, 0, _fwd.x);
 
-    let fovT = 62 + sp01 * 9 * this.motionScale + b.boostLevel * 9 * this.motionScale + (b.airborne ? 4 * this.motionScale : 0) + this.fovKick * 8 * this.motionScale;
+    let fovT = 62 + this.classFov + sp01 * 9 * this.motionScale + b.boostLevel * 9 * this.motionScale + (b.airborne ? 4 * this.motionScale : 0) + this.fovKick * 8 * this.motionScale;
     let rollT = 0;
     // Stiffer follow at speed so the boat never runs away from the lens.
     const posRate = 7 + sp01 * 5;

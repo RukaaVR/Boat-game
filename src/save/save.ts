@@ -16,6 +16,8 @@ import type { GhostData } from '../race/session';
 import { CUPS, TRACKS } from '../race/trackDefs';
 import { BOTTLES_PER_TRACK, emptyStats, emptyUpgrades, UPGRADE_KINDS, UPGRADE_MAX, ACHIEVEMENTS, CAREER, type LifetimeStats, type Upgrades } from './progress';
 import { LANGS, type Lang } from '../ui/i18n';
+import { allCourseKeys } from '../race/variants';
+import { SPEED_CLASS_IDS, type SpeedClass } from '../race/speedClass';
 
 export const SAVE_KEY = 'riptide.save.v1';
 
@@ -80,6 +82,8 @@ export interface ChampState {
   round: number;
   /** Points per racer slot (0 = player). */
   points: number[];
+  /** Engine class the cup is being raced at (default SURGE). */
+  speedClass?: SpeedClass;
 }
 
 export interface SaveData {
@@ -114,6 +118,13 @@ export interface SaveData {
   rivalGhosts: Record<string, GhostData>;
   /** Bitmask of message bottles found per track. */
   bottles: Record<string, number>;
+  /**
+   * Cup trophies at the RIPPLE and TSUNAMI engine classes. SURGE trophies stay
+   * in `cups` (so saves from before engine classes keep theirs as SURGE).
+   */
+  classCups: { ripple: Record<string, number>; tsunami: Record<string, number> };
+  /** Course ids (normal direction) whose staff ghost lap the player has beaten. */
+  staffBeaten: string[];
 }
 
 export function defaultSettings(): Settings {
@@ -178,6 +189,8 @@ export function defaultSave(): SaveData {
     rider: { ...DEFAULT_LOOK },
     rivalGhosts: {},
     bottles: {},
+    classCups: { ripple: {}, tsunami: {} },
+    staffBeaten: [],
   };
 }
 
@@ -274,27 +287,36 @@ export function sanitizeSave(raw: unknown): SaveData {
   const gh = obj(o.ghosts);
   const rivalGhosts: SaveData['ghosts'] = {};
   const rgh = obj(o.rivalGhosts);
-  for (const t of TRACKS) {
-    const m = obj(md[t.id]);
-    medals[t.id] = { race: Math.round(num(m.race, 0, 0, 3)), tt: Math.round(num(m.tt, 0, 0, 3)), stunt: Math.round(num(m.stunt, 0, 0, 3)) };
-    const r = obj(rc[t.id]);
+  // Keyed per course variant: `coral` (normal), `coral~r`, `coral~m`, `coral~mr`.
+  const plain = new Set(TRACKS.map((t) => t.id));
+  for (const key of allCourseKeys()) {
+    const m = obj(md[key]);
+    // Normal-direction entries always exist (older code relies on that); variants only once earned.
+    if (plain.has(key) || md[key] !== undefined) medals[key] = { race: Math.round(num(m.race, 0, 0, 3)), tt: Math.round(num(m.tt, 0, 0, 3)), stunt: Math.round(num(m.stunt, 0, 0, 3)) };
+    const r = obj(rc[key]);
     const rec: Records = {};
     for (const k of ['race', 'lap', 'stunt', 'endless'] as const) if (typeof r[k] === 'number' && Number.isFinite(r[k]) && (r[k] as number) > 0) rec[k] = r[k] as number;
-    records[t.id] = rec;
-    const g = sanitizeGhost(gh[t.id]);
-    if (g && g.trackId === t.id) ghosts[t.id] = g;
-    const rg = sanitizeGhost(rgh[t.id]);
-    if (rg && rg.trackId === t.id) rivalGhosts[t.id] = rg;
+    if (plain.has(key) || Object.keys(rec).length) records[key] = rec;
+    const g = sanitizeGhost(gh[key]);
+    if (g && g.trackId === key) ghosts[key] = g;
+    const rg = sanitizeGhost(rgh[key]);
+    if (rg && rg.trackId === key) rivalGhosts[key] = rg;
   }
-  const cups: SaveData['cups'] = {};
-  const cp = obj(o.cups);
-  for (const c of CUPS) cups[c.id] = Math.round(num(cp[c.id], 0, 0, 3));
+  const cupTable = (v: unknown) => {
+    const src = obj(v);
+    const out: Record<string, number> = {};
+    for (const c of CUPS) out[c.id] = Math.round(num(src[c.id], 0, 0, 3));
+    return out;
+  };
+  const cups: SaveData['cups'] = cupTable(o.cups);
+  const cc = obj(o.classCups);
+  const classCups: SaveData['classCups'] = { ripple: cupTable(cc.ripple), tsunami: cupTable(cc.tsunami) };
   let champ: ChampState | null = null;
   const ch = obj(o.champ);
   if (typeof ch.cupId === 'string' && CUPS.some((c) => c.id === ch.cupId) && Array.isArray(ch.points)) {
     const cup = CUPS.find((c) => c.id === ch.cupId)!;
     const round = Math.round(num(ch.round, 0, 0, cup.tracks.length - 1));
-    champ = { cupId: cup.id, round, points: ch.points.slice(0, 8).map((p) => num(p, 0, 0, 999)) };
+    champ = { cupId: cup.id, round, points: ch.points.slice(0, 8).map((p) => num(p, 0, 0, 999)), speedClass: oneOf(ch.speedClass, SPEED_CLASS_IDS, 'surge') };
   }
   return {
     version: 2,
@@ -322,6 +344,8 @@ export function sanitizeSave(raw: unknown): SaveData {
     rider: sanitizeLook(o.rider),
     rivalGhosts,
     bottles: sanitizeBottles(o.bottles),
+    classCups,
+    staffBeaten: Array.isArray(o.staffBeaten) ? [...new Set(o.staffBeaten.filter((k) => typeof k === 'string' && plain.has(k)) as string[])] : [],
   };
 }
 

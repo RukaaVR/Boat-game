@@ -4,10 +4,13 @@
  */
 
 import { BOATS, type BoatId } from '../boat/specs';
-import { CHAMP_POINTS, CUPS, TRACKS, trackDef } from '../race/trackDefs';
+import { CHAMP_POINTS, CUPS, TRACKS } from '../race/trackDefs';
 import type { RaceSession } from '../race/session';
 import { cosmeticUnlocks, levelFromXp, type SaveStore } from './save';
 import { ACHIEVEMENTS, CAREER, challengeMet, type Challenge } from './progress';
+import { courseMedals } from '../race/variants';
+import { staffGhostTime } from '../race/staffGhosts';
+import { setCupTrophy } from './classCups';
 
 export interface RewardSummary {
   xp: number;
@@ -76,15 +79,19 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
   const d = store.data;
   const p = session.player;
   const trackId = session.cfg.trackId;
-  const def = trackDef(trackId);
   const before = levelFromXp(d.xp);
   const breakdown: [string, number][] = [];
   let xp = 0;
   let credits = 0;
   let medal = 0;
   const records: string[] = [];
-  const rec = (d.records[trackId] ??= {});
-  const med = (d.medals[trackId] ??= { race: 0, tt: 0, stunt: 0 });
+  // Records, medals and ghosts are kept per course variant (`coral`, `coral~r`, …).
+  const key = session.courseKey;
+  const variant = session.track.variant;
+  // Race and lap records only count at the standard SURGE engine class, so they stay comparable.
+  const classOk = (session.cfg.speedClass ?? 'surge') === 'surge';
+  const rec = classOk ? (d.records[key] ??= {}) : {};
+  const med = (d.medals[key] ??= { race: 0, tt: 0, stunt: 0 });
 
   const add = (label: string, x: number) => {
     if (x <= 0) return;
@@ -110,15 +117,23 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
   if (session.mode === 'timetrial') {
     const best = p.bestLap;
     if (isFinite(best)) {
-      const [g, s, b] = def.medals;
+      const [g, s, b] = courseMedals(trackId, variant);
       medal = best <= g ? 3 : best <= s ? 2 : best <= b ? 1 : 0;
       med.tt = Math.max(med.tt, medal);
       add('TIME TRIAL', 120 + medal * 90);
       credits += 150 + medal * 150;
+      // Staff ghost: an AI reference lap per course (normal direction only).
+      const staff = variant === 'normal' ? staffGhostTime(trackId) : 0;
+      if (staff > 0 && best < staff && !d.staffBeaten.includes(trackId)) {
+        d.staffBeaten.push(trackId);
+        records.push('STAFF GHOST BEATEN');
+        add('BEAT THE STAFF GHOST', 150);
+        credits += 300;
+      }
     }
     if (session.newGhost) {
-      const prev = d.ghosts[trackId];
-      if (!prev || session.newGhost.time < prev.time) d.ghosts[trackId] = { ...session.newGhost, look: { ...d.rider }, upgrades: { ...store.upgrades(session.newGhost.boatId as BoatId) } };
+      const prev = d.ghosts[key];
+      if (!prev || session.newGhost.time < prev.time) d.ghosts[key] = { ...session.newGhost, look: { ...d.rider }, upgrades: { ...store.upgrades(session.newGhost.boatId as BoatId) } };
     }
   }
   if (session.mode === 'stunt') {
@@ -300,7 +315,7 @@ export function finishChampionship(store: SaveStore): { place: number; xp: numbe
   const order = pts.map((p, i) => ({ p, i })).sort((a, b) => b.p - a.p);
   const place = order.findIndex((o) => o.i === 0) + 1;
   const trophy = place <= 3 ? 4 - place : 0;
-  d.cups[ch.cupId] = Math.max(d.cups[ch.cupId] ?? 0, trophy);
+  setCupTrophy(d, ch.speedClass ?? 'surge', ch.cupId, trophy);
   const before = levelFromXp(d.xp).level;
   const xp = [0, 300, 500, 800][trophy];
   const credits = [200, 800, 1400, 2500][trophy];

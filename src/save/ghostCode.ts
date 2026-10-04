@@ -21,13 +21,15 @@
  */
 
 import type { GhostData } from '../race/session';
-import { TRACKS } from '../race/trackDefs';
+import { parseCourseKey } from '../race/variants';
 import { BOATS } from '../boat/specs';
 import { HAIR_STYLES, sanitizeLook, type RiderLook } from '../boat/riderLook';
 import { UPGRADE_KINDS, UPGRADE_MAX, type Upgrades } from './progress';
 
 export const GHOST_CODE_VERSION = 2;
 const SCALE = [20, 100, 20, 1000, 1000, 1000];
+/** Quantisation per sample channel (x, y, z, heading, pitch, roll) — shared with the staff ghosts. */
+export const GHOST_SAMPLE_SCALE: readonly number[] = SCALE;
 
 function b64url(bytes: Uint8Array) {
   let s = '';
@@ -151,7 +153,7 @@ export async function decodeGhost(code: string): Promise<DecodedGhost | null> {
     if (parts[0] === 'RPT2' && parts.length === 9) {
       const [, trackId, boatId, ms, name, look, upg, crc, payload] = parts;
       if (crc32(parts.slice(0, 7).join('.') + '.' + payload) !== crc) return null;
-      if (!TRACKS.some((t) => t.id === trackId) || !BOATS.some((b) => b.id === boatId)) return null;
+      if (!parseCourseKey(trackId) || !BOATS.some((b) => b.id === boatId)) return null;
       const time = Number(ms) / 1000;
       if (!Number.isFinite(time) || time <= 5 || time > 1200) return null;
       const samples = await unpackSamples(payload);
@@ -160,7 +162,7 @@ export async function decodeGhost(code: string): Promise<DecodedGhost | null> {
     }
     if (parts[0] === 'RPT1' && parts.length === 6) {
       const [, trackId, boatId, ms, name, payload] = parts;
-      if (!TRACKS.some((t) => t.id === trackId) || !BOATS.some((b) => b.id === boatId)) return null;
+      if (!parseCourseKey(trackId) || !BOATS.some((b) => b.id === boatId)) return null;
       const time = Number(ms) / 1000;
       if (!Number.isFinite(time) || time <= 5 || time > 1200) return null;
       const samples = await unpackSamples(payload);

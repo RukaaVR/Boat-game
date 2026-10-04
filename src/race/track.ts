@@ -8,6 +8,7 @@ import { clamp, wrapAngle } from '../core/mathx';
 import type { BoostPad, Ramp } from '../core/types';
 import type { SwellZone } from '../water/waves';
 import type { TrackDef } from './trackDefs';
+import { VARIANTS, type CourseVariant } from './variants';
 
 export interface Gate {
   index: number;
@@ -92,12 +93,83 @@ export class Track {
   readonly arena: boolean;
   readonly bounds = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
   readonly rng: Rng;
+  /** Course variant (reverse / mirror) this track was built as. */
+  readonly variant: CourseVariant;
+  /** For a variant: the normal-direction course it was transformed from. */
+  readonly base: Track | null = null;
 
-  constructor(def: TrackDef) {
+  constructor(def: TrackDef, variant: CourseVariant = 'normal') {
     this.def = def;
     this.width = def.width;
     this.rng = new Rng(def.seed);
     this.arena = !!def.arena;
+    this.variant = def.arena ? 'normal' : variant;
+
+    if (this.variant !== 'normal') {
+      // A variant is the normal course transformed — same physical layout,
+      // mirrored left↔right and/or driven the other way. Direction-dependent
+      // data (tangents, curvature, braking profile, gates) is recomputed from
+      // the transformed centreline; features are transformed one by one.
+      const base = new Track(def);
+      this.base = base;
+      const { mirror, reverse } = VARIANTS[this.variant];
+      const n = base.n;
+      this.n = n;
+      this.length = base.length;
+      this.lapLength = base.lapLength;
+      this.sprint = base.sprint;
+      this.px = new Float32Array(n);
+      this.pz = new Float32Array(n);
+      this.tx = new Float32Array(n);
+      this.tz = new Float32Array(n);
+      this.curv = new Float32Array(n);
+      this.dist = new Float32Array(base.dist);
+      this.line = new Float32Array(n);
+      this.speed = new Float32Array(n);
+      // Reversed sprints start at the old finish: s' = off − s.
+      const offIdx = reverse && base.sprint ? Math.round(base.lapLength / (base.length / n)) % n : 0;
+      const off = (offIdx * base.length) / n;
+      const mx = mirror ? -1 : 1;
+      const lineSign = (mirror ? -1 : 1) * (reverse ? -1 : 1);
+      for (let i = 0; i < n; i++) {
+        const j = reverse ? (offIdx - i + n) % n : i;
+        this.px[i] = base.px[j] * mx;
+        this.pz[i] = base.pz[j];
+        this.line[i] = base.line[j] * lineSign;
+      }
+      this.computeTangents();
+      this.computeBounds();
+      this.computeSpeedProfile();
+      this.placeGates();
+      const mapS = (s: number) => (reverse ? this.wrapS(off - s) : s);
+      const head = (h: number) => {
+        let o = mirror ? -h : h;
+        if (reverse) o += Math.PI;
+        return wrapAngle(o);
+      };
+      for (const r of base.ramps) {
+        // Reversed: the new toe is the old lip, so the ramp still launches in the race direction.
+        const x = reverse ? r.x + Math.sin(r.heading) * r.length : r.x;
+        const z = reverse ? r.z + Math.cos(r.heading) * r.length : r.z;
+        this.ramps.push({ ...r, x: x * mx, z, heading: head(r.heading) });
+      }
+      for (const p of base.pads) this.pads.push({ ...p, x: p.x * mx, heading: head(p.heading) });
+      for (const z of base.swells) this.swells.push({ ...z, x: z.x * mx });
+      for (const h of base.hazards) this.hazards.push({ ...h, x: h.x * mx });
+      for (const sc of base.shortcuts) {
+        const m = sc.pts.length / 2;
+        const pts = new Float32Array(sc.pts.length);
+        for (let k = 0; k < m; k++) {
+          const src = reverse ? m - 1 - k : k;
+          pts[k * 2] = sc.pts[src * 2] * mx;
+          pts[k * 2 + 1] = sc.pts[src * 2 + 1];
+        }
+        const len = new Float32Array(m);
+        for (let k = 1; k < m; k++) len[k] = len[k - 1] + Math.hypot(pts[k * 2] - pts[k * 2 - 2], pts[k * 2 + 1] - pts[k * 2 - 1]);
+        this.shortcuts.push({ s1: mapS(reverse ? sc.s2 : sc.s1), s2: mapS(reverse ? sc.s1 : sc.s2), pts, len, length: len[m - 1], width: sc.width });
+      }
+      return;
+    }
 
     // ── Centreline from the harmonic radius profile ───────────────────────────
     let ampScale = 1;
@@ -137,22 +209,7 @@ export class Track {
       this.pz[i] = dense[k * 2 + 1] + (dense[j * 2 + 1] - dense[k * 2 + 1]) * f;
       this.dist[i] = s;
     }
-    for (let i = 0; i < n; i++) {
-      const a = (i - 1 + n) % n;
-      const b = (i + 1) % n;
-      const dx = this.px[b] - this.px[a];
-      const dz = this.pz[b] - this.pz[a];
-      const l = Math.hypot(dx, dz) || 1;
-      this.tx[i] = dx / l;
-      this.tz[i] = dz / l;
-    }
-    for (let i = 0; i < n; i++) {
-      const a = (i - 1 + n) % n;
-      const b = (i + 1) % n;
-      const ha = Math.atan2(this.tx[a], this.tz[a]);
-      const hb = Math.atan2(this.tx[b], this.tz[b]);
-      this.curv[i] = -wrapAngle(hb - ha) / (2 * SPACING);
-    }
+    this.computeTangents();
     this.computeBounds();
     this.computeRacingLine();
     this.computeSpeedProfile();
@@ -355,6 +412,27 @@ export class Track {
   // ─────────────────────────────────────────────────────────────────────────
   // Generation
   // ─────────────────────────────────────────────────────────────────────────
+
+  /** Tangents and signed curvature from the centreline points. */
+  private computeTangents() {
+    const n = this.n;
+    for (let i = 0; i < n; i++) {
+      const a = (i - 1 + n) % n;
+      const b = (i + 1) % n;
+      const dx = this.px[b] - this.px[a];
+      const dz = this.pz[b] - this.pz[a];
+      const l = Math.hypot(dx, dz) || 1;
+      this.tx[i] = dx / l;
+      this.tz[i] = dz / l;
+    }
+    for (let i = 0; i < n; i++) {
+      const a = (i - 1 + n) % n;
+      const b = (i + 1) % n;
+      const ha = Math.atan2(this.tx[a], this.tz[a]);
+      const hb = Math.atan2(this.tx[b], this.tz[b]);
+      this.curv[i] = -wrapAngle(hb - ha) / (2 * SPACING);
+    }
+  }
 
   private computeBounds() {
     let a = Infinity,

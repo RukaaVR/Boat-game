@@ -1188,7 +1188,7 @@ export class Screens {
     let html = '';
     switch (this.settingsTab) {
       case 'audio':
-        html = this.slider('master', 'MASTER VOLUME', 0, 1, 0.05, pct) + this.slider('music', 'MUSIC VOLUME', 0, 1, 0.05, pct) + this.slider('sfx', 'EFFECTS VOLUME', 0, 1, 0.05, pct);
+        html = this.slider('master', 'MASTER VOLUME', 0, 1, 0.05, pct) + this.slider('music', 'MUSIC VOLUME', 0, 1, 0.05, pct) + this.slider('sfx', 'EFFECTS VOLUME', 0, 1, 0.05, pct) + this.slider('ui', 'MENU / UI SOUNDS', 0, 1, 0.05, pct);
         break;
       case 'video':
         html =

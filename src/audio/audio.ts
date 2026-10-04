@@ -389,22 +389,26 @@ export class AudioEngine {
     this.burst(1.2, 'lowpass', 900, 0.25 * s, 0.3, 0.05, 120, 0.5);
   }
 
+  /** Menu / UI sound level (0..1), separate from gameplay SFX. */
+  uiVolume = 1;
+
   click(kind: 'move' | 'select' | 'back' | 'deny' = 'move') {
-    if (!this.ctx) return;
+    if (!this.ctx || this.uiVolume <= 0) return;
+    const u = this.uiVolume;
     const now = performance.now();
     if (kind === 'move' && now - this.lastClick < 40) return;
     this.lastClick = now;
-    if (kind === 'move') this.tone(1800, 0.04, 'square', 0.025);
+    if (kind === 'move') this.tone(1800, 0.04, 'square', 0.025 * u);
     else if (kind === 'select') {
-      this.tone(880, 0.06, 'square', 0.05);
-      this.tone(1320, 0.1, 'square', 0.04, 0.05);
-      this.voice?.confirm();
-    } else if (kind === 'back') this.tone(600, 0.08, 'triangle', 0.06, 0, 0, 380);
-    else this.tone(160, 0.18, 'sawtooth', 0.06);
+      this.tone(880, 0.06, 'square', 0.05 * u);
+      this.tone(1320, 0.1, 'square', 0.04 * u, 0.05);
+      this.voice?.confirm(0.45 * u);
+    } else if (kind === 'back') this.tone(600, 0.08, 'triangle', 0.06 * u, 0, 0, 380);
+    else this.tone(160, 0.18, 'sawtooth', 0.06 * u);
   }
 
   unlockSting() {
-    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.07, i * 0.07));
+    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.07 * this.uiVolume, i * 0.07));
   }
 
   /** React to simulation events. */

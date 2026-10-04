@@ -287,6 +287,7 @@ export class Game implements ReplayHost, PhotoHost {
       if (this.screens.current === 'settings') this.screens.settings(this.screens.settingsReturn);
     }
     this.audio.setVolumes(s.master, s.music, s.sfx);
+    this.audio.uiVolume = s.ui;
     this.renderer.adaptive = s.autoRes;
     // AUTO keeps any runtime step-down until the player picks another setting.
     const q = s.quality === 'auto' && this.autoQuality ? this.autoQuality : resolveQuality(s.quality);

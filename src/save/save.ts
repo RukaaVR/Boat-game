@@ -23,6 +23,8 @@ export interface Settings {
   master: number;
   music: number;
   sfx: number;
+  /** Menu / UI sounds. */
+  ui: number;
   shake: number;
   motion: number;
   /** Graphics preset; 'auto' resolves from the device at start-up. */
@@ -117,6 +119,7 @@ export function defaultSettings(): Settings {
     master: 0.8,
     music: 0.6,
     sfx: 0.85,
+    ui: 0.8,
     shake: 1,
     motion: 1,
     quality: 'auto',
@@ -195,6 +198,7 @@ function sanitizeSettings(v: unknown): Settings {
     master: num(o.master, d.master, 0, 1),
     music: num(o.music, d.music, 0, 1),
     sfx: num(o.sfx, d.sfx, 0, 1),
+    ui: num(o.ui, d.ui, 0, 1),
     shake: num(o.shake, d.shake, 0, 1),
     motion: num(o.motion, d.motion, 0, 1),
     quality: oneOf(o.quality, ['auto', 'low', 'medium', 'high'] as const, d.quality),

@@ -9,12 +9,12 @@
 
 import {
   type ColorRepresentation,
-  AdditiveBlending,
+  LatheGeometry,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   Color,
-  ConeGeometry,
+  Vector2,
   Euler,
   Group,
   Mesh,
@@ -230,6 +230,18 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
   gb.torus(0.17, 0.025, STEEL, { y: deck + 0.08, z: zRider - 0.98, ry: Math.PI / 2, rz: 0 }, Math.PI);
   // Non-slip foot pads either side of the console.
   for (const s of [-1, 1]) gb.box(0.26, 0.025, 0.7, 0x2b2f38, { x: s * 0.22, y: deck + 0.0, z: zRider + 0.15 });
+  // Anime trim: a white rub rail along the sheer of every hull, meeting at the bow.
+  for (const h of shapes) {
+    for (const sd of [-1, 1]) {
+      let prev: Vector3 | null = null;
+      for (let k = 0; k <= 22; k++) {
+        const t = 0.01 + (k / 22) * 0.975;
+        const pt = new Vector3(h.offsetX + sd * beamAt(h, t) * 1.01, sheerAt(h, t) - 0.015, (t - 0.5) * h.L);
+        if (prev) limb(gb, prev, pt, 0.034, 0xf8f6ee);
+        prev = pt;
+      }
+    }
+  }
   // Bow tow eye.
   gb.torus(0.06, 0.016, STEEL, { y: deckAt(main, 0.95) + 0.03, z: main.L * 0.43 }, Math.PI);
   // Jet nozzle / outboard.
@@ -383,7 +395,8 @@ export class BoatVisual {
     const partsMat = this.ghost ? hullMat : cel('boatParts', { vertexColors: true, gloss: 0.6 });
     this.parts = new Mesh(geo, partsMat);
     this.rider = new Rider(livery, rig, this.ghost ? hullMat : null);
-    if (!this.ghost) for (const m of [this.hull, this.parts]) addOutline(m, m === this.hull ? 2.6 : 2.0);
+    // Bold anime ink round the hull and fittings.
+    if (!this.ghost) for (const m of [this.hull, this.parts]) addOutline(m, m === this.hull ? 3.6 : 2.8);
     // Nav lights: port red, starboard green, stern white, plus an accent strip.
     const lb = new GeoBuilder();
     const main = shapes[0];
@@ -393,14 +406,27 @@ export class BoatVisual {
     lb.box(0.02, 0.025, main.L * 0.5, livery.boost, { x: main.B * 0.505 + main.offsetX, y: -0.02, z: -0.05 });
     lb.box(0.02, 0.025, main.L * 0.5, livery.boost, { x: -main.B * 0.505 + main.offsetX, y: -0.02, z: -0.05 });
     this.lights = new Mesh(lb.build(), new MeshBasicMaterial({ vertexColors: true, fog: true, transparent: this.ghost, opacity: this.ghost ? 0.3 : 1 }));
-    // Boost flame.
-    const fg = new ConeGeometry(0.22, 1.6, 10, 1, true);
-    fg.rotateX(-Math.PI / 2);
-    fg.translate(0, 0, -0.8);
-    this.flame = new Mesh(
-      fg,
-      new MeshBasicMaterial({ color: new Color(livery.boost), transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false, fog: false }),
-    );
+    // Boost flame: a cartoon fireball — solid livery-coloured outer flame
+    // with a white-hot core, bulbous at the nozzle and licking to a point.
+    const flameGeo = (k: number) => {
+      const g = new LatheGeometry(
+        [
+          [0.001, 0],
+          [0.2, 0.08],
+          [0.25, 0.3],
+          [0.2, 0.62],
+          [0.11, 1.05],
+          [0.001, 1.6],
+        ].map(([r, y]) => new Vector2(r * k, y * k)),
+        8,
+      );
+      g.rotateX(-Math.PI / 2);
+      return g;
+    };
+    this.flame = new Mesh(flameGeo(1), new MeshBasicMaterial({ color: new Color(livery.boost), fog: false }));
+    const core = new Mesh(flameGeo(0.58), new MeshBasicMaterial({ color: 0xffffff, fog: false }));
+    core.position.z = -0.04;
+    this.flame.add(core);
     this.flame.position.copy(rig.nozzle);
     this.flame.visible = false;
     // Physics floats every hull at one reference draft; lift deeper keels so
@@ -461,9 +487,9 @@ export class BoatVisual {
     const bl = b.boostLevel;
     this.flame.visible = bl > 0.05;
     if (this.flame.visible) {
-      const flick = 0.85 + 0.15 * Math.sin(time * 60 + b.position.x);
-      this.flame.scale.set(0.6 + bl * 0.6, 0.6 + bl * 0.6, (0.4 + bl * 1.2) * flick);
-      (this.flame.material as MeshBasicMaterial).opacity = 0.35 + 0.55 * bl;
+      // Snappy cartoon flicker: alternate two lengths rather than a smooth pulse.
+      const flick = Math.sin(time * 40 + b.position.x) > 0 ? 1 : 0.82;
+      this.flame.scale.set(0.5 + bl * 0.6, 0.5 + bl * 0.6, (0.35 + bl * 1.1) * flick);
     }
   }
 

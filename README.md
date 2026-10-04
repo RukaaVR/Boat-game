@@ -305,6 +305,7 @@ node harness/capture.mjs --shots=racing,storm,night --out=shots
 npx tsx harness/sim-probe.ts coral     # headless full race, numeric report
 npx tsx harness/drift-probe.ts         # drift feel: turn rate wide/neutral/tight, speed kept, tier times
 node harness/perf.mjs --url=http://localhost:4173/   # real-clock perf sampling
+node harness/ui-audit.mjs --url=http://localhost:4173/  # every menu at 6 window sizes: clipped / wrapped / off-screen UI
 ```
 
 The feature suite covers: the admin password gate and lockout, upgrades

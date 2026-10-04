@@ -48,7 +48,7 @@ for (const [w, h] of VIEWS) {
     if (only && !only.some((o) => name.startsWith(o))) continue;
     await page.evaluate((js) => { const R = window.__RIPTIDE__; const g = R.game; const s = g.screens; return new Function('g', 's', 'R', js)(g, s, R); }, js);
     await page.evaluate(() => window.__RIPTIDE__.tick?.());
-    await page.waitForTimeout(450); // let the screen-in animation finish
+    await page.waitForTimeout(1400); // the screen-in animation runs slowly in software-GL Chromium
     const issues = await page.evaluate(() => {
       const out = [];
       const W = innerWidth, H = innerHeight;

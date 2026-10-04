@@ -1038,7 +1038,39 @@ table.res td.boatcol { font-size: 12px; }
 .setup-courses .cards.grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 .setup-courses .card canvas { height: 92px; }
 .setup-opts .opts { flex-wrap: wrap; }
-@media (max-width: 900px) {
+@media (max-width: 640px) {
   .setup2 { grid-template-columns: 1fr; height: auto; }
   .setup-col { overflow: visible; }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  .setup2 { grid-template-columns: minmax(0, 1fr) minmax(280px, 330px); gap: 14px; }
+}
+/* Garage / rider: stack the preview under the list on narrow screens (the
+   garage's own column rule would otherwise beat the generic one). */
+@media (max-width: 860px) { .garage .grid2 { grid-template-columns: 1fr; } .garage .g-side { min-height: 260px; } }
+/* Room for the focused button's grow-on-select inside scrolling lists. */
+.careergrid .scroll { padding-left: 12px; padding-right: 12px; margin-left: -12px; }
+@media (max-width: 560px) {
+  .garage .g-credits { font-size: 16px; padding: 4px 10px 4px 6px; top: 12px; right: 12px; }
+  .garage .g-credits small { font-size: 11px; }
+  .garage .g-banner { padding-right: 30px; }
+  .garage .g-banner h1.h { font-size: 26px; }
+  .garage .g-inspect { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; margin-bottom: 8px; }
+  .garage .g-side { min-height: 0; }
+}
+/* Narrow screens: stacked columns take their natural height and the screen
+   itself scrolls, so the footer always sits below the content. */
+@media (max-width: 860px) {
+  .grid2 { flex: none; }
+  .grid2 > .scroll { overflow: visible; }
+}
+
+/* Short screens (phone landscape): compact course cards and footer. */
+@media (max-height: 560px) {
+  .setup-courses .card canvas { height: 56px; }
+  .setup-courses .card .cs { display: none; }
+  .setup-courses .cards.grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .footer .btn.big { font-size: 19px; padding: 7px 18px; }
+  .footer .btn { padding-top: 6px; padding-bottom: 6px; font-size: 16px; }
+  .label { margin: 8px 0 4px; }
 }

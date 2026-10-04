@@ -743,3 +743,88 @@ h1.h { text-shadow: 4px 4px 0 #ff4f8b, 7px 7px 0 #12306e; }
 /* The creator's pattern stops short of the rider so it never washes it out. */
 .screen.rider::before { -webkit-mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); }
 .screen.rider::after { display: none; }
+
+
+/* ── Podium / trophy overlay (over the podium scene, no backdrop) ── */
+.screen.podium { background: none; padding: clamp(14px, 2.6vw, 38px); pointer-events: auto; animation: none; }
+.screen.podium::before, .screen.podium::after { display: none; }
+.podium .pd-hit { position: absolute; inset: 0; z-index: 0; cursor: pointer; }
+.podium .pd-banner, .podium .pd-head, .podium .pd-panel, .podium .pd-foot { position: relative; z-index: 1; pointer-events: none; }
+.podium .pd-foot .btn { pointer-events: auto; }
+.podium .pd-banner {
+  align-self: flex-start; font-family: var(--font); font-size: clamp(26px, 3vw, 40px); letter-spacing: 1.5px; color: #fff;
+  -webkit-text-stroke: 5px #12306e; paint-order: stroke fill; text-shadow: 3px 3px 0 #12306e;
+  background: linear-gradient(180deg, #ff86b1, #ff4f8b 50%, #e2306f 52%, #c4245e); padding: 4px 44px 6px 22px; margin-left: -10px;
+  border: 3px solid #fff; box-shadow: 0 0 0 3px #12306e, 0 6px 0 3px #12306e; border-radius: 12px 0 0 12px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 26px) 100%, 0 100%); animation: pdSlideL .45s cubic-bezier(.2,.9,.3,1.3) both;
+}
+.podium .pd-banner small { display: block; font-family: var(--font2); font-weight: 900; font-size: 12px; letter-spacing: 2px; -webkit-text-stroke: 0; text-shadow: 0 1px 0 #9a0d3a; color: #ffe6f0; margin-bottom: -2px; }
+.podium .pd-head {
+  position: absolute; left: -30px; right: -30px; bottom: calc(100% + 14px); text-align: center; font-family: var(--font); font-size: clamp(48px, 5.2vw, 76px); line-height: 1;
+  color: #fff; letter-spacing: 3px; -webkit-text-stroke: 0.12em #12306e; paint-order: stroke fill; text-shadow: 5px 5px 0 var(--pink), 9px 9px 0 #12306e;
+  transform: skewX(-8deg) rotate(-3deg); animation: pdPop .7s .5s cubic-bezier(.2,.9,.3,1.5) both; white-space: nowrap;
+}
+.podium .pd-head.top { color: var(--yellow); }
+.podium .pd-head.out { font-size: clamp(32px, 3.4vw, 50px); }
+.podium .pd-panel {
+  position: absolute; right: clamp(14px, 2.6vw, 38px); top: 50%; transform: translateY(-46%); width: min(380px, 30vw); padding: 14px 16px 16px;
+  background: var(--glossB); border: 3px solid #fff; border-radius: 20px; box-shadow: 0 0 0 3px #12306e, 0 12px 24px rgba(0,20,70,.45);
+  animation: pdSlideR .5s .35s cubic-bezier(.2,.9,.3,1.25) both;
+}
+.podium .pd-rows { display: flex; flex-direction: column; gap: 8px; }
+.podium .pd-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: rgba(6, 20, 70, .55); border: 3px solid #12306e;
+  font-family: var(--font2); font-weight: 900; color: #fff; animation: pdSlideR .4s cubic-bezier(.2,.9,.3,1.3) both;
+}
+.podium .pd-row.me { background: var(--glossY); color: #7a2a00; border-color: #fff; box-shadow: 0 0 0 3px #12306e; }
+.podium .pd-medal {
+  width: 38px; height: 38px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font); font-size: 24px; color: #fff;
+  -webkit-text-stroke: 4px #12306e; paint-order: stroke fill; border: 3px solid #12306e; background: #6b7bb0;
+}
+.podium .pd-medal.gold, .podium .pd-chip.gold b { background: radial-gradient(circle at 35% 30%, #fff6b0 0 18%, #ffd93a 45%, #e09a00 100%); }
+.podium .pd-medal.silver, .podium .pd-chip.silver b { background: radial-gradient(circle at 35% 30%, #fff 0 18%, #d6e0ee 45%, #8a98b4 100%); }
+.podium .pd-medal.bronze, .podium .pd-chip.bronze b { background: radial-gradient(circle at 35% 30%, #ffe0c0 0 18%, #e08a4a 45%, #9a4f1e 100%); }
+.podium .pd-name { flex: 1; font-size: 18px; letter-spacing: .5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 0 rgba(0,30,90,.6); }
+.podium .pd-row.me .pd-name { text-shadow: none; }
+.podium .pd-name em { font-style: normal; font-size: 11px; background: #12306e; color: #fff; border-radius: 999px; padding: 1px 7px; vertical-align: 3px; }
+.podium .pd-time { font-size: 14px; opacity: .9; font-variant-numeric: tabular-nums; }
+.podium .pd-you {
+  margin-top: 10px; text-align: center; font-family: var(--font); font-size: 26px; letter-spacing: 1.5px; color: #fff; -webkit-text-stroke: 5px #12306e; paint-order: stroke fill;
+  background: linear-gradient(180deg, #ff86b1, #ff4f8b 50%, #e2306f 52%, #c4245e); border: 3px solid #fff; border-radius: 999px; box-shadow: 0 0 0 3px #12306e; padding: 2px 10px;
+  animation: pdPop .5s 1s cubic-bezier(.2,.9,.3,1.5) both;
+}
+.podium .pd-rw { display: flex; gap: 8px; margin-top: 12px; }
+.podium .pd-chip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; animation: pdPop .45s 1.1s cubic-bezier(.2,.9,.3,1.5) both; }
+.podium .pd-chip:nth-child(2) { animation-delay: 1.22s; }
+.podium .pd-chip:nth-child(3) { animation-delay: 1.34s; }
+.podium .pd-chip b {
+  width: 100%; text-align: center; font-family: var(--font); font-weight: 400; font-size: 24px; letter-spacing: 1px; color: #fff; -webkit-text-stroke: 4px #12306e; paint-order: stroke fill;
+  background: var(--glossW); border: 3px solid #12306e; border-radius: 999px; padding: 2px 6px; box-shadow: 0 3px 0 #12306e; color: #12306e; -webkit-text-stroke: 0;
+}
+.podium .pd-chip.cr b { background: var(--glossY); color: #7a2a00; }
+.podium .pd-chip.gold b, .podium .pd-chip.silver b, .podium .pd-chip.bronze b { color: #fff; -webkit-text-stroke: 4px #12306e; }
+.podium .pd-chip small { font-family: var(--font2); font-weight: 900; font-size: 11px; letter-spacing: 2px; color: #fff; text-shadow: 0 2px 0 #12306e; }
+.podium .pd-pb {
+  margin-top: 12px; text-align: center; font-family: var(--font); font-size: 22px; letter-spacing: 1.5px; color: var(--yellow); -webkit-text-stroke: 4px #12306e; paint-order: stroke fill;
+  animation: pdPop .5s 1.5s cubic-bezier(.2,.9,.3,1.5) both, pulse 1s 2s infinite;
+}
+.podium .pd-trophy {
+  text-align: center; margin: -2px 0 10px; font-family: var(--font); font-size: 30px; letter-spacing: 2px; color: #fff; -webkit-text-stroke: 5px #12306e; paint-order: stroke fill;
+}
+.podium .pd-trophy.gold { color: var(--gold); }
+.podium .pd-trophy.silver { color: var(--silver); }
+.podium .pd-trophy.bronze { color: var(--bronze); }
+.podium .pd-foot { position: absolute; right: clamp(14px, 2.6vw, 38px); bottom: clamp(14px, 2.6vw, 38px); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.podium .pd-bar { width: 150px; height: 8px; border-radius: 999px; background: rgba(6,20,70,.6); border: 2px solid #12306e; overflow: hidden; }
+.podium .pd-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #fff6b0, #ffd93a); transform-origin: left; animation: pdBar linear both; }
+@keyframes pdBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pdSlideR { from { opacity: 0; translate: 60px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes pdSlideL { from { opacity: 0; translate: -60px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes pdPop { 0% { opacity: 0; scale: .5; } 70% { scale: 1.1; } 100% { opacity: 1; scale: 1; } }
+/* Portrait / narrow: podium above, panel along the bottom. */
+@media (max-aspect-ratio: 5/4) {
+  .podium .pd-panel { top: auto; bottom: 78px; left: 16px; right: 16px; width: auto; transform: none; }
+  .podium .pd-head { font-size: clamp(34px, 10vw, 64px); left: 0; right: 0; }
+  .podium .pd-head.out { font-size: clamp(26px, 7vw, 44px); }
+  .podium .pd-foot { bottom: 16px; right: 16px; flex-direction: row; align-items: center; }
+}

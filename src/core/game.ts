@@ -27,6 +27,8 @@ import { RaceSession, type SessionConfig } from '../race/session';
 import { CUPS, trackDef } from '../race/trackDefs';
 import { BoatVisual } from '../boat/boatMesh';
 import { CharacterStage } from '../render/characterStage';
+import { PODIUM_POST, PodiumScene, type PodiumEntry } from '../render/podium';
+import type { Racer } from '../race/racer';
 import { applyPreset, AutoDowngrade, PRESETS, resolveQuality } from '../render/graphics';
 import type { Quality } from '../render/renderer';
 import { boatSpec, type BoatId } from '../boat/specs';
@@ -237,6 +239,120 @@ export class Game implements ReplayHost, PhotoHost {
   refreshStage() {
     this.stage?.setLook(this.save.data.rider, this.save.livery(this.save.data.selectedBoat), true);
   }
+  // ── Podium / trophy presentation ───────────────────────────────────────
+  podium: PodiumScene | null = null;
+  private podiumNext: (() => void) | null = null;
+  private static podiumEntry(r: Racer, place: number): PodiumEntry {
+    return { name: r.name, livery: r.livery, look: r.look, place, isPlayer: r.isPlayer };
+  }
+  /** Modes whose finish earns a podium: the "real" races. */
+  private podiumWorthy(s: RaceSession) {
+    return (s.mode === 'quick' || s.mode === 'championship' || s.mode === 'career') && !this.split && s.order.length > 0;
+  }
+  /** Show the podium scene with its overlay; `next` runs when it ends or is skipped. */
+  openPodium(entries: PodiumEntry[], mode: 'race' | 'trophy', overlay: Parameters<Screens['podium']>[0], next: () => void, trophyPlace = 1) {
+    this.closePodium();
+    const layout = window.innerWidth / Math.max(1, window.innerHeight) < 1.25 ? 'bottom' : 'side';
+    this.podium = new PodiumScene(entries, { mode, trophyPlace, layout }, this.audio);
+    this.podiumNext = next;
+    this.audio.muffle(false);
+    this.music.setMood('results');
+    this.screens.podium(overlay, this.podium.duration);
+    this.input.flush();
+  }
+  /** Skip (confirm / Esc / tap) — ignored for the first moment so a held key can't eat it. */
+  skipPodium() {
+    if (!this.podium || this.podium.t < 0.6) return;
+    this.endPodium();
+  }
+  private endPodium() {
+    const next = this.podiumNext;
+    this.closePodium();
+    this.input.flush();
+    next?.();
+  }
+  closePodium() {
+    if (!this.podium) return;
+    this.podium.dispose();
+    this.podium = null;
+    this.podiumNext = null;
+    if (this.screens.current === 'podium') this.screens.clear();
+  }
+  /** After a race: top three on the podium, then the normal results screen. */
+  private showRacePodium(s: RaceSession, rewards: RewardSummary) {
+    const top = s.order.slice(0, 3).map((r, i) => Game.podiumEntry(r, i + 1));
+    const p = s.player;
+    const res = s.results;
+    const timeOf = (id: number) => res.find((r) => r.id === id)?.time ?? 0;
+    this.openPodium(
+      top,
+      'race',
+      {
+        mode: 'race',
+        title: trackDef(s.cfg.trackId).name,
+        sub: s.mode === 'championship' ? 'CHAMPIONSHIP' : s.mode === 'career' ? 'CAREER' : 'QUICK RACE',
+        rows: s.order.slice(0, 3).map((r, i) => ({ place: i + 1, name: r.name, isPlayer: r.isPlayer, time: timeOf(r.id) })),
+        playerPlace: p.place,
+        rewards,
+      },
+      () => this.screens.results(rewards),
+    );
+  }
+  /** After a cup: the player lifts their trophy (top three by points share the podium). */
+  private showTrophy(place: number, points: number[], cupName: string, xp: number, credits: number, next: () => void) {
+    const s = this.session;
+    if (!s || place > 3) return next();
+    const ranked = points
+      .map((p, id) => ({ p, id }))
+      .sort((a, b) => b.p - a.p || a.id - b.id)
+      .slice(0, 3);
+    const entries: PodiumEntry[] = [];
+    ranked.forEach((o, i) => {
+      const r = s.racers.find((x) => x.id === o.id);
+      if (r) entries.push(Game.podiumEntry(r, i + 1));
+    });
+    // The final table is authoritative for the player's step.
+    const me = entries.find((e) => e.isPlayer);
+    if (me && me.place !== place) {
+      const other = entries.find((e) => e.place === place);
+      if (other) other.place = me.place;
+      me.place = place;
+    }
+    this.openPodium(entries, 'trophy', { mode: 'trophy', title: cupName, sub: 'CHAMPIONSHIP', rows: entries.map((e) => ({ place: e.place, name: e.name, isPlayer: e.isPlayer, time: 0 })), playerPlace: place, rewards: null, xp, credits }, next, place);
+  }
+  /** Harness / admin preview: the race podium from the current session. */
+  debugPodium() {
+    const s = this.session;
+    if (!s) return false;
+    const rewards = this.rewards ?? { ...noRewards(this.save.level), xp: 420, credits: 700, medal: 3, medalLabel: 'GOLD', records: ['NEW RECORD — RACE TIME'] };
+    const back = this.state;
+    const top = s.order.slice(0, 3).map((r, i) => Game.podiumEntry(r, i + 1));
+    this.openPodium(top, 'race', { mode: 'race', title: trackDef(s.cfg.trackId).name, sub: 'PREVIEW', rows: top.map((e) => ({ place: e.place, name: e.name, isPlayer: e.isPlayer, time: 0 })), playerPlace: s.player.place, rewards }, () => this.afterDebugPodium(back));
+    return true;
+  }
+  /** Harness / admin preview: the cup trophy with the player on step `place`. */
+  debugTrophy(place: 1 | 2 | 3 = 1) {
+    const s = this.session;
+    if (!s) return false;
+    const back = this.state;
+    const rivals = s.racers.filter((r) => !r.isPlayer).slice(0, 2);
+    const entries: PodiumEntry[] = [];
+    let k = 0;
+    for (let pl = 1; pl <= 3; pl++) {
+      if (pl === place) entries.push(Game.podiumEntry(s.player, pl));
+      else if (rivals[k]) entries.push(Game.podiumEntry(rivals[k++], pl));
+    }
+    this.openPodium(entries, 'trophy', { mode: 'trophy', title: 'SUNRISE CUP', sub: 'PREVIEW', rows: entries.map((e) => ({ place: e.place, name: e.name, isPlayer: e.isPlayer, time: 0 })), playerPlace: place, rewards: null, xp: 900, credits: 2500 }, () => this.afterDebugPodium(back), place);
+    return true;
+  }
+  private afterDebugPodium(back: State) {
+    if (this.state !== back) return;
+    if (back === 'menu') this.screens.mainMenu();
+    else if (back === 'title') this.screens.title();
+    else if (this.session?.phase === 'results' && this.rewards) this.screens.results(this.rewards, true);
+    else if (this.paused) this.screens.pause();
+  }
+
   closeStage() {
     if (!this.stage) return;
     this.stage.dispose();
@@ -313,6 +429,7 @@ export class Game implements ReplayHost, PhotoHost {
 
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
+    this.closePodium();
     this.tutorial = null;
     this.hud2?.destroy();
     this.hud2 = null;
@@ -757,10 +874,12 @@ export class Game implements ReplayHost, PhotoHost {
         const points = ch.points.slice();
         const fin = finishChampionship(this.save);
         this.champPendingFinal = true;
-        this.screens.champFinalStandings(cup.id, points, () => {
-          this.screens.champFinal(fin.place, fin.xp, fin.credits, cup.name);
-          fin.unlocks.forEach((u, i) => setTimeout(() => this.screens.toast(u.split(': ').pop()!, u.split(':')[0]), 600 + i * 700));
-        });
+        this.screens.champFinalStandings(cup.id, points, () =>
+          this.showTrophy(fin.place, points, cup.name, fin.xp, fin.credits, () => {
+            this.screens.champFinal(fin.place, fin.xp, fin.credits, cup.name);
+            fin.unlocks.forEach((u, i) => setTimeout(() => this.screens.toast(u.split(': ').pop()!, u.split(':')[0]), 600 + i * 700));
+          }),
+        );
         return;
       }
       this.save.save();
@@ -811,6 +930,16 @@ export class Game implements ReplayHost, PhotoHost {
       const turn = (this.input.isDown('KeyE') || this.input.isDown('BracketRight') ? 1 : 0) - (this.input.isDown('KeyQ') || this.input.isDown('BracketLeft') ? 1 : 0) + this.input.padTurn();
       if (turn) this.stage.nudge(turn, dt);
       this.stage.update(dt, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
+      return;
+    }
+    if (this.podium) {
+      // Podium / trophy: only the presentation runs; the race world is frozen behind it.
+      this.podium.update(dt, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
+      const fx = this.renderer.fx;
+      fx.speed = fx.radial = fx.chroma = fx.flash = fx.impact = fx.drops = fx.damage = 0;
+      const ps = this.session;
+      if (ps && this.state === 'race') this.audio.updateRace(dt, ps.player.boat, 0, _nearest, _listener, 0, true, 0);
+      if (this.podium.done) this.endPodium();
       return;
     }
     const s = this.session;
@@ -996,7 +1125,8 @@ export class Game implements ReplayHost, PhotoHost {
       this.hud = null;
       this.hud2?.destroy();
       this.hud2 = null;
-      this.screens.results(this.rewards);
+      if (this.podiumWorthy(s)) this.showRacePodium(s, this.rewards);
+      else this.screens.results(this.rewards);
     }
     this.debug?.update(dt);
     this.admin.update(dt);
@@ -1006,6 +1136,10 @@ export class Game implements ReplayHost, PhotoHost {
     const w = this.world;
     if (this.stage) {
       this.renderer.render(this.stage.scene, this.stage.camera, w?.atmosphere.post ?? STAGE_POST, dt);
+      return;
+    }
+    if (this.podium) {
+      this.renderer.render(this.podium.scene, this.podium.camera, PODIUM_POST, dt);
       return;
     }
     if (!w) return;
@@ -1175,6 +1309,20 @@ export class Game implements ReplayHost, PhotoHost {
       },
       afterResults() {
         g.afterResults();
+      },
+      /** Podium / trophy previews and control. */
+      debugPodium() {
+        return g.debugPodium();
+      },
+      debugTrophy(place: 1 | 2 | 3 = 1) {
+        return g.debugTrophy(place);
+      },
+      skipPodium() {
+        g.skipPodium();
+      },
+      get podium() {
+        const p = g.podium;
+        return p ? { mode: p.mode, t: p.t, duration: p.duration } : null;
       },
       /** Put the player on the course at arc length s, moving at `speed`. */
       placeOnTrack(sArc: number, speed = 28, lateral = 0) {

@@ -588,6 +588,25 @@ function orient(m: Mesh, from: Vector3, to: Vector3, pole: Vector3) {
   m.position.copy(from);
 }
 
+/** Hand target for a presentation pose (root space), written into `out`. */
+function poseGrip(out: Vector3, pose: RiderPose, sh: Vector3, sg: number, side: number, time: number, hipY: number) {
+  if (pose === 'victory') {
+    // Both fists punching up in a V, pumping.
+    const pump = Math.max(0, Math.sin(time * 7 + side * 0.4));
+    out.set(sh.x + sg * 0.3, sh.y + 0.5 + pump * 0.08, sh.z + 0.1);
+  } else if (pose === 'lift') {
+    // Hands together high above the head (holding something up).
+    out.set(sh.x + sg * 0.04, sh.y + 0.6 + Math.sin(time * 2.4) * 0.03, sh.z + 0.1);
+  } else if (pose === 'cheer') {
+    // Clapping in front of the chest.
+    const clap = Math.abs(Math.sin(time * 6));
+    out.set(sg * (0.04 + clap * 0.14), sh.y - 0.06, sh.z + 0.34);
+  } else {
+    // Arms hanging, slightly forward.
+    out.set(sh.x + sg * 0.05, hipY - 0.12, sh.z + 0.12);
+  }
+}
+
 export interface RiderAnchors {
   hip: Vector3;
   gripL: Vector3;
@@ -596,8 +615,20 @@ export interface RiderAnchors {
   footR: Vector3;
 }
 
+/**
+ * Presentation pose override (podium / trophy). 'none' keeps the normal
+ * riding behaviour; the others replace the arm targets and torso set.
+ */
+export type RiderPose = 'none' | 'victory' | 'cheer' | 'sad' | 'lift';
+
 export class Rider {
   readonly look: RiderLook;
+  /** Optional pose override; 'none' (default) leaves riding behaviour untouched. */
+  pose: RiderPose = 'none';
+  /** Where each hand actually ended up last update (root space; 0 = left). */
+  readonly hands = [new Vector3(), new Vector3()];
+  private poseK = 0;
+  private lastPose: RiderPose = 'none';
   private headMesh!: Mesh;
   private headFull!: BufferGeometry;
   private headLite!: BufferGeometry;
@@ -708,6 +739,34 @@ export class Rider {
       yawT = Math.sin(time * 1.3) * 0.4;
       waveT = 1;
     }
+    const pose = this.pose;
+    if (pose !== 'none') this.lastPose = pose;
+    if (pose !== 'none') {
+      if (pose === 'victory') {
+        crouchT = -0.12;
+        dropT = -0.03;
+        leanT = Math.sin(time * 4) * 0.1;
+        yawT = Math.sin(time * 1.7) * 0.3;
+        twistT = Math.sin(time * 2) * 0.12;
+      } else if (pose === 'lift') {
+        crouchT = -0.16;
+        dropT = 0.02;
+        leanT = Math.sin(time * 2.4) * 0.05;
+        yawT = Math.sin(time * 1.1) * 0.15;
+      } else if (pose === 'cheer') {
+        crouchT = 0.05;
+        dropT = 0.02 + Math.abs(Math.sin(time * 4.5)) * 0.03;
+        leanT = Math.sin(time * 2.2) * 0.08;
+        yawT = Math.sin(time * 0.9) * 0.35;
+      } else {
+        crouchT = 0.45;
+        dropT = 0.06;
+        leanT = 0.04;
+        yawT = Math.sin(time * 0.5) * 0.15;
+      }
+      waveT = 0;
+    }
+    this.poseK = damp(this.poseK, pose === 'none' ? 0 : 1, 6, dt);
     this.lean = damp(this.lean, leanT, 8, dt);
     this.crouch = damp(this.crouch, crouchT, 7, dt);
     this.drop = damp(this.drop, dropT, b.sinceLand < 0.15 ? 22 : 8, dt);
@@ -741,7 +800,10 @@ export class Rider {
       } else if (b.wipeout > 0) {
         grip.set(sg * 0.85, sh.y + 0.3 + Math.sin(time * 13 + side) * 0.35, sh.z - 0.15);
       } else grip.copy(side === 0 ? this.at.gripL : this.at.gripR);
+      if (this.poseK > 0.01) poseGrip(_end, this.lastPose, sh, sg, side, time, this.at.hip.y);
+      if (this.poseK > 0.01) grip.lerp(_end, this.poseK);
       solve(this.arms[side][0], this.arms[side][1], sh, grip, UPPER_ARM, FOREARM + GRIP, _pole.set(sg, -0.75, -0.45));
+      this.hands[side].copy(_end);
     }
     // Legs: hip → foothold, knees forward and slightly out.
     for (let side = 0; side < 2; side++) {

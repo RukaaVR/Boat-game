@@ -246,6 +246,9 @@ export class Screens {
         a.click('select');
         g.startChampRound();
         break;
+      case 'podiumSkip':
+        g.skipPodium();
+        break;
       case 'champTrophy':
         a.click('select');
         this.pendingFinal?.();
@@ -1380,6 +1383,67 @@ export class Screens {
     sum.unlocks.forEach((u, i) => setTimeout(() => this.toast(u.split(': ').pop()!, u.includes(':') ? u.split(':')[0] : 'UNLOCKED'), 1200 + i * 700));
     if (sum.levelAfter > sum.levelBefore) setTimeout(() => this.toast(`LEVEL ${sum.levelAfter}`, 'LEVEL UP'), 900);
     sum.achievements.forEach((n, i) => setTimeout(() => this.toast(n, 'ACHIEVEMENT'), 1500 + (sum.unlocks.length + i) * 700));
+  }
+
+  /**
+   * Overlay for the podium / trophy scene: a glossy kart-style panel with the
+   * top three, what the player earned, and a skip pill with a countdown bar.
+   * Clicking or tapping anywhere skips (as do confirm / Esc / pad A or B).
+   */
+  podium(
+    o: {
+      mode: 'race' | 'trophy';
+      title: string;
+      sub: string;
+      rows: { place: number; name: string; isPlayer: boolean; time: number }[];
+      playerPlace: number;
+      rewards: RewardSummary | null;
+      xp?: number;
+      credits?: number;
+    },
+    seconds: number,
+  ) {
+    const medalCls = ['', 'gold', 'silver', 'bronze'];
+    const rows = o.rows
+      .slice()
+      .sort((a, b) => a.place - b.place)
+      .map((r, i) => `<div class="pd-row ${r.isPlayer ? 'me' : ''}" style="animation-delay:${0.55 + i * 0.12}s"><span class="pd-medal ${medalCls[r.place] ?? ''}">${r.place}</span><span class="pd-name">${esc(r.name)}${r.isPlayer && r.name.toUpperCase() !== 'YOU' ? ' <em>YOU</em>' : ''}</span>${r.time > 0 ? `<span class="pd-time">${formatTime(r.time)}</span>` : ''}</div>`)
+      .join('');
+    const sum = o.rewards;
+    const xp = sum ? sum.xp : (o.xp ?? 0);
+    const cr = sum ? sum.credits : (o.credits ?? 0);
+    const medal = sum ? sum.medal : o.playerPlace <= 3 ? 4 - o.playerPlace : 0;
+    const medalLabel = sum ? sum.medalLabel : medalName(medal);
+    const trophy = o.mode === 'trophy';
+    const headline = trophy
+      ? o.playerPlace === 1
+        ? 'CHAMPION!'
+        : `${ordinal(o.playerPlace)} OVERALL!`
+      : o.playerPlace === 1
+        ? 'VICTORY!'
+        : o.playerPlace <= 3
+          ? `${ordinal(o.playerPlace)} PLACE!`
+          : `YOU FINISHED ${ordinal(o.playerPlace)}`;
+    const records = sum?.records.length ? `<div class="pd-pb">★ ${sum.records.length > 1 ? 'NEW RECORDS' : 'NEW PERSONAL BEST'} ★</div>` : '';
+    this.mount(
+      'podium',
+      `<div class="pd-hit" data-act="podiumSkip"></div>
+      <div class="pd-banner"><small>${esc(o.sub)}</small>${esc(o.title)}</div>
+      <div class="pd-panel">
+        <div class="pd-head ${o.playerPlace <= 3 ? 'top' : 'out'}">${headline}</div>
+        ${trophy ? `<div class="pd-trophy ${medalCls[o.playerPlace] ?? ''}">${medalName(medal)} TROPHY</div>` : ''}
+        <div class="pd-rows">${rows}</div>
+        <div class="pd-rw">
+          ${trophy ? '' : `<div class="pd-chip ${medalCls[4 - medal] ?? ''}"><b>${medal ? medalLabel : '—'}</b><small>MEDAL</small></div>`}
+          <div class="pd-chip"><b>+${xp.toLocaleString()}</b><small>XP</small></div>
+          <div class="pd-chip cr"><b>+${cr.toLocaleString()}</b><small>CREDITS</small></div>
+        </div>
+        ${records}
+      </div>
+      <div class="pd-foot"><button class="btn small" data-nav data-default data-act="podiumSkip"><span>SKIP</span><span class="k">ENTER</span></button><div class="pd-bar"><i style="animation-duration:${seconds}s"></i></div></div>`,
+      () => this.game.skipPodium(),
+      `screen podium ${trophy ? 'trophy' : ''}`,
+    );
   }
 
   confirm(text: string, yes: () => void) {

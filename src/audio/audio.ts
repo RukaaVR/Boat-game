@@ -394,6 +394,57 @@ export class AudioEngine {
     [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.07, i * 0.07));
   }
 
+  /** Podium / trophy: a short brass-ish fanfare (bigger for the cup trophy). */
+  fanfare(big = false) {
+    if (!this.ctx) return;
+    const notes: [number, number, number][] = big
+      ? [
+          [523, 0, 0.16],
+          [523, 0.16, 0.16],
+          [523, 0.32, 0.16],
+          [659, 0.48, 0.5],
+          [587, 1.0, 0.16],
+          [659, 1.16, 0.16],
+          [784, 1.32, 0.9],
+        ]
+      : [
+          [392, 0, 0.14],
+          [523, 0.14, 0.14],
+          [659, 0.28, 0.14],
+          [784, 0.42, 0.7],
+        ];
+    for (const [f, w, d] of notes) {
+      this.tone(f, d + 0.08, 'sawtooth', 0.045, w);
+      this.tone(f * 2, d, 'square', 0.02, w);
+      this.tone(f / 2, d + 0.1, 'triangle', 0.05, w);
+    }
+    const end = notes[notes.length - 1][1];
+    // Final chord with a cymbal swell.
+    for (const f of big ? [262, 330, 392, 523] : [262, 330, 392]) this.tone(f, 1.6, 'sawtooth', 0.02, end);
+    this.burst(big ? 2.2 : 1.4, 'highpass', 5000, 0.05, 0, end, 7000, 0.6);
+  }
+
+  /** Crowd cheer + scattered applause (filtered noise swells). */
+  crowdCheer(seconds = 3) {
+    if (!this.ctx) return;
+    this.burst(seconds, 'bandpass', 900, 0.09, 0, 0, 1300, 0.6);
+    this.burst(seconds * 0.8, 'bandpass', 2200, 0.05, -0.4, 0.15, 1800, 1.2);
+    this.burst(seconds * 0.8, 'bandpass', 2000, 0.05, 0.4, 0.3, 2400, 1.2);
+    for (let i = 0; i < 18; i++) this.burst(0.05, 'highpass', 2500 + Math.random() * 1500, 0.04, Math.random() * 1.6 - 0.8, 0.2 + Math.random() * seconds * 0.8);
+    // A couple of whistles.
+    this.tone(1900, 0.5, 'sine', 0.025, 0.4, -0.5, 2600);
+    this.tone(2100, 0.4, 'sine', 0.02, 1.1, 0.5, 1500);
+  }
+
+  /** Confetti cannon pop. */
+  confettiPop() {
+    if (!this.ctx) return;
+    this.tone(120, 0.18, 'sine', 0.18, 0, 0, 50);
+    this.burst(0.25, 'lowpass', 2500, 0.2, -0.3, 0, 400);
+    this.burst(0.25, 'lowpass', 2500, 0.2, 0.3, 0.05, 400);
+    this.burst(0.8, 'highpass', 6000, 0.05, 0, 0.08, 4000, 1);
+  }
+
   /** React to simulation events. */
   onEvent(e: GameEvent, L: Listener, isPlayer: boolean) {
     if (!this.ctx) return;

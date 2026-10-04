@@ -132,6 +132,19 @@ export class CameraRig {
     this.freePos.y += up;
   }
 
+  private orbitHold = 0;
+  /** Garage inspection: drag to turn the orbit (pixels). */
+  orbitDrag(dx: number) {
+    this.orbitAngle -= dx * 0.008;
+    this.orbitHold = 3;
+  }
+  /** Garage inspection: zoom in (+) / out (−). Radius clamped, height follows. */
+  orbitZoom(delta: number) {
+    this.orbitRadius = Math.max(4, Math.min(14, this.orbitRadius * (1 - delta * 0.12)));
+    this.orbitHeight = 0.9 + this.orbitRadius * 0.18;
+    this.orbitHold = 3;
+  }
+
   endScripted() {
     if (this.scripted !== 'none') this.snap = true;
     this.scripted = 'none';
@@ -189,7 +202,9 @@ export class CameraRig {
     }
     if (this.scripted === 'finish' || this.scripted === 'orbit') {
       const target = this.scripted === 'finish' ? b.position : this.orbitTarget;
-      this.orbitAngle += dt * (this.scripted === 'finish' ? 0.35 : 0.18);
+      // Auto-orbit, paused for a moment after the player steers the view.
+      this.orbitHold = Math.max(0, this.orbitHold - dt);
+      if (this.orbitHold <= 0) this.orbitAngle += dt * (this.scripted === 'finish' ? 0.35 : 0.18);
       const R = this.scripted === 'finish' ? 9 : this.orbitRadius;
       const H = this.scripted === 'finish' ? 3.2 : this.orbitHeight;
       const a = this.orbitAngle + (this.scripted === 'finish' ? b.heading + Math.PI * 0.75 : 0);

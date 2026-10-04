@@ -20,7 +20,8 @@ import type { ModeId, WeatherId } from '../core/types';
 import { RIVALS } from '../race/session';
 import { t, t as t2 } from './i18n';
 import { ACHIEVEMENTS, BOTTLES_PER_TRACK, bottleCount, CAREER, dayKey, makeChallenge, UPGRADE_INFO, UPGRADE_KINDS, UPGRADE_MAX, upgradeCost, upgradedSpec, weekKey, type Challenge } from '../save/progress';
-import { encodeGhost, decodeGhost } from '../save/ghostCode';
+import { encodeGhost, decodeGhost, ghostFingerprint } from '../save/ghostCode';
+import { LocalLeaderboard } from '../online/leaderboard';
 import { LANG_NAME, LANGS } from './i18n';
 import { checkAchievements, endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
 
@@ -612,6 +613,18 @@ export class Screens {
     this.game.nav.focus(go, false);
   }
 
+  /** Local-only leaderboard (no server exists; the label says so). */
+  private board = new LocalLeaderboard(() => this.game.save.data);
+  private fillBoard(trackId: string) {
+    void this.board.bestLaps(trackId, 'local').then((list) => {
+      const el = this.root?.querySelector('#lboard');
+      if (!el) return;
+      el.innerHTML = list.length
+        ? list.map((e, i) => `<div class="row"><b>${i + 1}</b><span>${esc(e.name)}</span><span class="hint">${e.source === 'imported' ? 'IMPORTED GHOST' : e.source === 'ghost' ? 'YOUR GHOST' : 'YOUR RECORD'} · ${esc(boatSpec(e.boatId).name)}</span><span class="spacer"></span><b>${formatTime(e.time)}</b></div>`).join('')
+        : '<span class="hint">No laps on this device yet — set one, or import a friend\'s ghost code.</span>';
+    });
+  }
+
   private refreshSetup(fixedTrack?: string) {
     const body = this.root?.querySelector('#setupBody');
     if (!body) return;
@@ -663,7 +676,16 @@ export class Screens {
     const dynHtml = dyn ? `<div class="label">${t('dynWeather')}</div><div class="opts">${[false, true].map((v) => `<button class="opt ${g.save.data.settings.dynamicWeather === v ? 'on' : ''}" data-nav data-act="dynw" data-arg="${v}">${v ? t('on') : t('off')}</button>`).join('')}</div>` : '';
     const ghostHtml =
       st.mode === 'timetrial'
-        ? `<div class="label">Ghost sharing</div><div class="opts"><button class="opt ${ghost ? '' : 'disabled'}" data-nav data-act="ghostShare">SHARE MY GHOST</button><button class="opt" data-nav data-act="ghostImport">RACE A FRIEND'S GHOST</button>${ghost?.name ? `<span class="hint" style="align-self:center">Current ghost: <b>${esc(ghost.name)}</b> ${formatTime(ghost.time)}</span>` : ''}</div>`
+        ? (() => {
+            const rival = g.save.data.rivalGhosts[st.trackId];
+            const pick = st.ghost === 'rival' && rival ? 'rival' : 'mine';
+            return `<div class="label">Ghost</div><div class="opts">
+              <button class="opt ${pick === 'mine' ? 'on' : ''} ${ghost ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="mine">MY BEST ${ghost ? formatTime(ghost.time) : '— NONE YET'}</button>
+              <button class="opt ${pick === 'rival' ? 'on' : ''} ${rival ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="rival">${rival ? `${esc(rival.name ?? 'RIVAL')} ${formatTime(rival.time)}` : "FRIEND'S — NONE"}</button></div>
+              <div class="opts" style="margin-top:6px"><button class="opt ${ghost ? '' : 'disabled'}" data-nav data-act="ghostShare">SHARE MY GHOST</button><button class="opt" data-nav data-act="ghostImport">IMPORT CODE</button></div>
+              <div class="hint" style="margin-top:6px">Ghost codes are shared by copy &amp; paste — there is no online server. Imported ghosts never replace your own best.</div>
+              <div class="label">Best laps <span class="r-val">${esc(this.board.label)}</span></div><div class="panel lboard" id="lboard"><span class="hint">Loading…</span></div>`;
+          })()
         : '';
     const bossHtml = stage
       ? `<div class="panel" style="margin:8px 0;border-left:4px solid ${RIVALS[stage.boss].hull}"><div style="font-family:var(--font);font-style:italic;font-size:22px">${RIVALS[stage.boss].name} · ${stage.title}</div><div class="hint" style="font-size:14px;margin-top:6px">${esc(stage.intro)}</div><div class="hint" style="margin-top:6px">${stage.laps} LAPS · ${stage.weather.toUpperCase()} · Finish ahead of ${RIVALS[stage.boss].name}</div></div>`
@@ -676,6 +698,7 @@ export class Screens {
       ${laps}${diff}${dynHtml}${ghostHtml}
       <div class="label">Watercraft</div><div class="opts">${boats}</div>
       <div class="panel" style="margin-top:10px;max-width:520px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>`;
+    if (st.mode === 'timetrial') this.fillBoard(st.trackId);
     body.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
       const t = trackGeo(c.dataset.track!);
       drawTrackPreview(c, t.px, t.pz, c.dataset.track === st.trackId ? '#ff3b5c' : '#26e8ff', trackDef(c.dataset.track!).sprint);
@@ -866,7 +889,7 @@ export class Screens {
       'garage',
       `<div class="g-banner"><h1 class="h">GARAGE</h1></div><div class="g-credits" id="gCredits"></div>
       <div class="tabs" id="gTabs"></div>
-      <div class="grid2"><div class="scroll" id="gBody"></div><div class="g-side"><div class="g-stats" id="gStats"></div></div></div>
+      <div class="grid2"><div class="scroll" id="gBody"></div><div class="g-side" id="gSide"><div class="g-inspect"><span class="r-hint-inline">DRAG TO ROTATE · SCROLL / PINCH TO ZOOM</span><div class="opts"><button class="opt" data-nav data-act="gprev" data-arg="boost">BOOST</button><button class="opt" data-nav data-act="gprev" data-arg="wake">WAKE</button><button class="opt" data-nav data-act="gprev" data-arg="rider">RIDER</button></div></div><div class="g-stats" id="gStats"></div></div></div>
       <div class="footer"><button class="btn" data-nav data-act="back"><span>BACK</span></button><span class="hint">Changes save automatically</span></div>`,
       () => {
         g.endGarage();
@@ -876,6 +899,38 @@ export class Screens {
     );
     g.beginGarage(this.garageBoat);
     this.refreshGarage();
+    // Inspect the boat: drag to orbit, wheel / pinch to zoom.
+    const side = this.root!.querySelector('#gSide') as HTMLElement;
+    const pts = new Map<number, { x: number; y: number }>();
+    let pinch = 0;
+    side.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('button, .g-stats')) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      side.setPointerCapture(e.pointerId);
+    });
+    side.addEventListener('pointermove', (e) => {
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      if (pts.size === 1) g.rig.orbitDrag(e.clientX - p.x);
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch) g.rig.orbitZoom((d - pinch) * 0.02);
+        pinch = d;
+      }
+    });
+    const up = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      pinch = 0;
+    };
+    side.addEventListener('pointerup', up);
+    side.addEventListener('pointercancel', up);
+    side.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      g.rig.orbitZoom(-Math.sign(e.deltaY));
+    }, { passive: false });
   }
 
   private refreshGarage() {
@@ -966,6 +1021,10 @@ export class Screens {
       this.refreshGarage();
     };
     switch (act) {
+      case 'gprev':
+        g.audio.click('select');
+        g.garagePreview(arg as 'boost' | 'wake' | 'rider');
+        return true;
       case 'gtab':
         g.audio.click('move');
         if (arg === 'rider') {
@@ -1043,25 +1102,35 @@ export class Screens {
         g.save.save();
         this.refreshSetup();
         return true;
+      case 'ghostPick':
+        g.audio.click('move');
+        this.setup.ghost = arg === 'rival' ? 'rival' : 'mine';
+        this.refreshSetup();
+        return true;
       case 'ghostShare': {
         const gh = d.ghosts[this.setup.trackId];
         if (!gh) return true;
         g.audio.click('select');
-        void encodeGhost(gh, gh.name ?? d.playerName).then((code) => this.showText('YOUR GHOST CODE', `Send this to a friend. They paste it into RACE A FRIEND'S GHOST on ${trackDef(gh.trackId).name}.`, code));
+        void encodeGhost(gh, gh.name ?? d.playerName).then((code) =>
+          this.showText(`YOUR GHOST · ${ghostFingerprint(code)}`, `${trackDef(gh.trackId).name} · ${formatTime(gh.time)} · ${boatSpec(gh.boatId).name}. Send the whole code to a friend; they choose IMPORT CODE in Time Trial. The RIPTIDE-… fingerprint lets you check you both have the same ghost.`, code),
+        );
         return true;
       }
       case 'ghostImport':
         g.audio.click('select');
-        this.promptText("FRIEND'S GHOST CODE", 'Paste a code that starts with RPT1.', (code) => {
+        this.promptText("FRIEND'S GHOST CODE", 'Paste a code that starts with RPT2. (or an older RPT1.)', (code) => {
           void decodeGhost(code).then((gh) => {
             if (!gh) {
-              this.toast('That code is not a valid ghost', 'GHOST');
+              this.toast('Not a valid ghost code (incomplete, edited or corrupted)', 'GHOST');
               return;
             }
-            d.ghosts[gh.trackId] = gh;
+            const { version, ...data } = gh;
+            void version;
+            d.rivalGhosts[gh.trackId] = data;
             g.save.save(true);
-            this.toast(`${gh.name} · ${trackDef(gh.trackId).name} · ${formatTime(gh.time)}`, 'GHOST IMPORTED');
+            this.toast(`${gh.name} · ${trackDef(gh.trackId).name} · ${formatTime(gh.time)} · ${ghostFingerprint(code.trim())}`, 'GHOST IMPORTED');
             this.setup.trackId = gh.trackId;
+            this.setup.ghost = 'rival';
             this.refreshSetup();
           });
         });

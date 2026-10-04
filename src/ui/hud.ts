@@ -14,6 +14,7 @@ import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
 import type { Tutorial, TutorialStep } from '../race/tutorial';
 import { ITEM_IDS, ITEM_LABEL, SURGE_TIME, type ItemId } from '../race/items';
+import { PEARL_MAX } from '../race/pearls';
 import type { Racer } from '../race/racer';
 
 interface Msg {
@@ -68,6 +69,9 @@ export class Hud {
   private itemIc: HTMLElement;
   private itemQty: HTMLElement;
   private itemTxt: HTMLElement;
+  /** Pearl counter (items on). */
+  private pearlEl: HTMLElement;
+  private pearlNum: HTMLElement;
   // Seeker lock: reticle over the target, red edge + arrow when this HUD's racer is the target.
   private lockRet: HTMLElement;
   private warnEdge: HTMLElement;
@@ -143,6 +147,9 @@ export class Hud {
     this.itemIc = el('b', 'ic ic-none', this.itemBubble);
     this.itemQty = el('div', 'iqty', this.itemBubble);
     this.itemTxt = el('div', 'it-txt', this.itemSlot);
+    this.pearlEl = el('div', 'pearlctr', tl, `<i></i><b>0</b><span>/${PEARL_MAX}</span>`);
+    this.pearlEl.style.display = session.pearls ? '' : 'none';
+    this.pearlNum = this.pearlEl.querySelector('b')!;
     this.dmg = el('div', 'dmgbar', tl, '<span>HULL</span><div><i></i></div>');
     const tc = el('div', 'tc', root);
     this.timer = el('div', 'timer', tc);
@@ -365,6 +372,20 @@ export class Hud {
       case 'shieldHit':
         this.message('SHIELD BLOCKED IT', 'cyan small', 1.2);
         break;
+      case 'itemBlock':
+        this.callout('BLOCKED!', 'cyan', 3);
+        this.pulse(this.itemBubble, 'fire');
+        break;
+      case 'itemHold':
+        this.pulse(this.itemBubble, 'ready');
+        break;
+      case 'pearl':
+        this.pulse(this.pearlEl, 'bump');
+        break;
+      case 'pearlDrop':
+        this.message(`-${e.value} PEARLS`, 'warn small', 1.1);
+        this.pulse(this.pearlEl, 'lost');
+        break;
       case 'itemUse':
         if (e.racer !== this.me.id) break;
         this.pulse(this.itemBubble, 'fire');
@@ -456,21 +477,29 @@ export class Hud {
       const shown = spinning ? ITEM_IDS[Math.floor(p.itemRoll * 14) % ITEM_IDS.length] : it;
       const surging = it === 'surge' && b.surge > 0;
       const qty = !spinning && it === 'torpedo3' ? p.itemCount : 0;
-      const key = (shown ?? '-') + (spinning ? 'R' : '') + (b.shield > 0 ? 'S' : '') + qty + (surging ? 'G' : '');
+      const held = p.itemHeld && !!it;
+      const key = (shown ?? '-') + (spinning ? 'R' : '') + (b.shield > 0 ? 'S' : '') + qty + (surging ? 'G' : '') + (held ? 'H' : '');
       this.set('item', key, () => {
         this.itemSlot.classList.toggle('spin', spinning);
         this.itemSlot.classList.toggle('has', !!it && !spinning);
         this.itemSlot.classList.toggle('surging', surging);
+        this.itemSlot.classList.toggle('held', held);
         this.itemIc.className = `ic ic-${shown ?? 'none'}`;
         this.itemQty.textContent = qty > 0 ? `×${qty}` : '';
         this.itemQty.style.display = qty > 0 ? '' : 'none';
         const label = spinning ? '???' : it === 'torpedo3' ? `${ITEM_LABEL[it]} ×${qty}` : it ? ITEM_LABEL[it] : 'NO ITEM';
-        const hint = it && !spinning ? `<em>${surging ? 'MASH ' : ''}${keyLabel(this.bindings.item[0])}</em>` : '';
-        this.itemTxt.innerHTML = `<span>${label}</span>${hint}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}`;
+        const hint = held
+          ? `<em>RELEASE ${keyLabel(this.bindings.item[0])}${it === 'torpedo' ? ` · +${keyLabel(this.bindings.brake[0])} BACK` : ''}</em>`
+          : it && !spinning ? `<em>${surging ? 'MASH ' : ''}${keyLabel(this.bindings.item[0])}</em>` : '';
+        this.itemTxt.innerHTML = `<span>${label}</span>${held ? '<span class="held-tag">HELD</span>' : ''}${hint}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}`;
       });
       // Golden Surge: remaining-time ring around the bubble.
       const ring = surging ? Math.ceil((b.surge / SURGE_TIME) * 90) : 0;
       this.set('ring', ring, () => this.itemRing.style.setProperty('--p', (ring / 90).toFixed(3)));
+      if (s.pearls) this.set('pearls', p.pearls, () => {
+        this.pearlNum.textContent = String(p.pearls);
+        this.pearlEl.classList.toggle('max', p.pearls >= PEARL_MAX);
+      });
       if (p.itemHits > this.lastHits) {
         this.lastHits = p.itemHits;
         this.message('DIRECT HIT!', 'gold', 1.2);
@@ -802,6 +831,11 @@ export class Hud {
 
   resize() {
     this.minimap.resize();
+  }
+
+  /** Battle spectate: centre the minimap on the boat being watched (null = me). */
+  setFocus(r: Racer | null) {
+    this.minimap.focus = r;
   }
 
   destroy() {

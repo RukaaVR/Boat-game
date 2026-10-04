@@ -23,6 +23,8 @@ export class ReplayBar {
   private fill: HTMLElement;
   private play: HTMLElement;
   private label: HTMLElement;
+  private info: HTMLElement;
+  private infoText = '';
 
   constructor(
     parent: HTMLElement,
@@ -31,7 +33,7 @@ export class ReplayBar {
   ) {
     const el = (this.el = document.createElement('div'));
     el.className = 'replaybar';
-    el.innerHTML = `<div class="rb-top"><span class="rb-rec">● REPLAY</span><span class="rb-label">${esc(target)}</span><span class="rb-time">0:00</span></div>
+    el.innerHTML = `<div class="rb-top"><span class="rb-rec">● REPLAY</span><span class="rb-label">${esc(target)}</span><span class="rb-info"></span><span class="rb-time">0:00</span></div>
       <div class="rb-track"><div class="rb-fill"></div></div>
       <div class="rb-btns">
         <button data-r="restart" title="Restart">⏮</button>
@@ -47,6 +49,7 @@ export class ReplayBar {
     this.fill = el.querySelector('.rb-fill')!;
     this.play = el.querySelector('[data-r=play]')!;
     this.label = el.querySelector('.rb-label')!;
+    this.info = el.querySelector('.rb-info')!;
     el.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('[data-r]') as HTMLElement | null;
       if (!b) return;
@@ -82,6 +85,13 @@ export class ReplayBar {
 
   setTarget(name: string) {
     this.label.textContent = name;
+  }
+
+  /** Small status next to the followed boat's name (pearls carried, trailed item). */
+  setInfo(text: string) {
+    if (text === this.infoText) return;
+    this.infoText = text;
+    this.info.textContent = text;
   }
 
   update(t: number, duration: number, playing: boolean) {

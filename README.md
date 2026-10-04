@@ -101,6 +101,16 @@ wipeout. `npx tsx harness/wave-trick-probe.ts` measures it.
   shield it), GOLDEN SURGE (mash for repeated boosts for 6 s) and STORM CALL
   (lightning shrinks and slows every rival for 5 s; last places only, with a
   cooldown). Nothing changes a boat's stats permanently.
+- **Hold to trail**: hold the item button with a TORPEDO, OIL SLICK or SHIELD
+  and it trails off the stern, absorbing one torpedo / SEEKER strike from
+  behind. Release to deploy (oil drops, shield goes up, torpedo fires forward —
+  backward if brake is held). A quick tap deploys on release as before. AI
+  leaders trail defensive items.
+- **Pearls** (whenever items are on): strings of glowing pearls; each carried
+  (max 10) is +1 % engine power plus a tiny kick. Hits, mines and wipeouts
+  spill 3 for anyone to grab. Resets every race.
+- **Battle spectate**: knocked out in BALLOONS, you watch the rest of the fight
+  (follows the leader; steer to switch boat; SKIP TO RESULTS).
 - **Callouts**: manga-style banners for overtakes (with the rival's name), first
   place, final lap, incoming missiles, big drifts, perfect landings and the
   career boss closing in. At most one at a time, rate-limited and queued.
@@ -389,10 +399,7 @@ numbers.
 - The admin password check is client-side and is not security (see above).
 - There are no online features: ghosts are shared by copying a text code, and
   the leaderboard only lists this device's times.
-- Battle: when the player is knocked out in BALLOONS the battle ends at once
-  (no spectating). In the direct-homing phase the SEEKER ignores islands.
-- Item effect timers (shrink, surge) are not captured by the replay recorder;
-  replays show the boats' motion but not the shrink.
+- Replays record course pearls but not pearls scattered by a hit.
 - Item and voice sounds play for player 1 only in split-screen (one audio
   output); player 2 still gets every visual warning.
 - On the podium the rider's short arms hold the trophy by its base just above

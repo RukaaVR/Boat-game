@@ -27,6 +27,7 @@ import { oceanHeight } from '../water/waves';
 import { addOutline, cel } from './cel';
 import { GeoBuilder } from './geo';
 import { itemBoxTexture } from './textures';
+import { HeldItemVisuals } from './heldItems';
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -48,6 +49,8 @@ export class BattleVisuals {
   private flames: InstancedMesh;
   private locks: InstancedMesh;
   private disposables: { dispose(): void }[] = [];
+  /** Items trailed behind boats (hold the item button). */
+  private held: HeldItemVisuals;
 
   constructor(
     private session: RaceSession,
@@ -118,6 +121,8 @@ export class BattleVisuals {
     const lg = new RingGeometry(0.78, 1, 4, 1);
     lg.rotateX(-Math.PI / 2);
     this.locks = this.inst(lg, new MeshBasicMaterial({ color: 0xff2040, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }), items.missiles.length);
+    this.held = new HeldItemVisuals(session, items);
+    this.group.add(this.held.group);
   }
 
   private inst(geo: BufferGeometry, mat: MeshBasicMaterial | ShaderMaterial | ReturnType<typeof cel>, n: number) {
@@ -200,10 +205,12 @@ export class BattleVisuals {
     this.missiles.instanceMatrix.needsUpdate = true;
     this.flames.instanceMatrix.needsUpdate = true;
     this.locks.instanceMatrix.needsUpdate = true;
+    this.held.update(time);
   }
 
   dispose() {
     for (const d of this.disposables) d.dispose();
+    this.held.dispose();
     this.group.removeFromParent();
   }
 }

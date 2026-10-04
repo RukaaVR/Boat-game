@@ -29,6 +29,7 @@ import type { RaceSession } from '../race/session';
 import type { Emitter } from '../environment/scenery';
 import type { BoatVisual } from '../boat/boatMesh';
 import { oceanHeight } from '../water/waves';
+import { DriftGlow } from './driftGlow';
 
 const WHITE = new Color(1, 1, 1);
 const MIST = new Color(0.92, 0.96, 1);
@@ -40,7 +41,8 @@ const DUST = new Color(1, 0.9, 0.6);
 const ASH = new Color(0.35, 0.32, 0.33);
 const SNOW = new Color(0.95, 0.97, 1);
 const POLLEN = new Color(0.85, 1, 0.55);
-const TIER = [new Color(1, 1, 1), new Color(0.3, 0.75, 1), new Color(1, 0.55, 0.15), new Color(1, 0.3, 0.85)];
+/** Drift tiers: white, then BLUE → ORANGE → PURPLE (mini-turbo charge). */
+const TIER = [new Color(1, 1, 1), new Color(0.25, 0.7, 1), new Color(1, 0.55, 0.12), new Color(0.72, 0.32, 1)];
 const CONFETTI = [new Color(1, 0.23, 0.36), new Color(0.16, 0.83, 1), new Color(1, 0.88, 0.3), new Color(0.65, 1, 0.24), new Color(0.48, 0.36, 1)];
 const _c = new Color();
 const _nz = new Vector3();
@@ -329,6 +331,7 @@ export class FxDirector {
   private impact = 0;
   private boostColors: Color[];
   private pops = new AnimePops();
+  private glow = new DriftGlow(16);
 
   constructor(
     private session: RaceSession,
@@ -339,11 +342,23 @@ export class FxDirector {
     this.boostColors = session.racers.map((r) => new Color(r.livery.boost));
   }
 
+  /** Energy flares at the stern corners while a drift charges. */
+  private driftGlow(i: number, b: { position: { x: number; z: number }; surfaceY: number; spec: { beam: number } }, tier: number, fx: number, fz: number, rx: number, rz: number, L: number) {
+    void i;
+    const flick = 0.85 + Math.random() * 0.3;
+    const size = (0.5 + tier * 0.35) * flick;
+    for (const side of [-1, 1]) {
+      this.glow.add(b.position.x - fx * L * 0.5 + rx * side * b.spec.beam * 0.5, b.surfaceY + 0.45, b.position.z - fz * L * 0.5 + rz * side * b.spec.beam * 0.5, size, TIER[tier]);
+    }
+  }
+
   update(dt: number, time: number, rig: CameraRig, renderer: Renderer, events: EventQueue, weatherRain: number) {
     const P = this.particles;
     const cam = rig.camera.position;
     // The pops group rides along with the particles (the world owns the scene).
     if (!this.pops.group.parent) this.particles.objects[0].parent?.add(this.pops.group);
+    if (!this.glow.mesh.parent) this.particles.objects[0].parent?.add(this.glow.mesh);
+    this.glow.begin(time);
     this.pops.update(dt, this.session, cam);
     this.rumble.strong = this.rumble.weak = this.rumble.ms = 0;
 
@@ -407,10 +422,19 @@ export class FxDirector {
             P.emit('spray', sx, b.surfaceY + 0.2, sz, b.velocity.x * 0.35 + outX * out, 3 + Math.random() * 4, b.velocity.z * 0.35 + outZ * out, _c, 1, 0.95 + sp * 0.6, floor);
           }
           if (b.driftTier > 0) {
-            n = P.count(28 * lod, dt);
+            // Sparks grow with the tier: small blue → bigger orange → large purple,
+            // thrown from both stern corners and scaled by speed.
+            const tierK = b.driftTier;
+            n = P.count((16 + 18 * tierK) * lod * (0.6 + sp * 0.6), dt);
+            const size = 1.3 + 0.55 * tierK;
             for (let k = 0; k < n; k++) {
-              P.emit('spark', b.position.x - fx * L * 0.5 + outX * 0.6, b.surfaceY + 0.4, b.position.z - fz * L * 0.5 + outZ * 0.6, outX * 4 + (Math.random() - 0.5) * 4, 2 + Math.random() * 3, outZ * 4 + (Math.random() - 0.5) * 4, TIER[b.driftTier], 1, 2.1);
+              const side = k & 1 ? 1 : -1;
+              const cx = b.position.x - fx * L * 0.5 + rx * side * b.spec.beam * 0.45 + outX * 0.3;
+              const cz = b.position.z - fz * L * 0.5 + rz * side * b.spec.beam * 0.45 + outZ * 0.3;
+              const spd = 3 + tierK * 1.6;
+              P.emit('spark', cx, b.surfaceY + 0.35, cz, outX * spd + (Math.random() - 0.5) * spd - fx * 2, 1.5 + Math.random() * (2 + tierK), outZ * spd + (Math.random() - 0.5) * spd - fz * 2, TIER[tierK], 1, size);
             }
+            this.driftGlow(i, b, tierK, fx, fz, rx, rz, L);
           }
         }
       }
@@ -507,6 +531,7 @@ export class FxDirector {
     }
 
     // ── Events ──────────────────────────────────────────────────────────────
+    this.glow.end();
     const list = events.list;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -603,6 +628,25 @@ export class FxDirector {
         case 'nitro':
         case 'boostPad':
         case 'perfectStart':
+          // Mini-turbo release: a burst that scales with the drift tier.
+          if (e.type === 'boostStart' && e.value >= 1 && (mine || near)) {
+            const tc = TIER[Math.min(3, e.value)];
+            const cnt = 18 + e.value * 14;
+            for (let k = 0; k < cnt; k++) {
+              const a = (k / cnt) * Math.PI * 2;
+              const sp2 = 5 + e.value * 2 + Math.random() * 3;
+              P.emit('spark', e.x, e.y + 0.5, e.z, Math.cos(a) * sp2, 1.5 + Math.random() * 3, Math.sin(a) * sp2, tc, 1, 1.4 + e.value * 0.4);
+            }
+            for (let k = 0; k < 10 + e.value * 6; k++) {
+              const a = Math.random() * Math.PI * 2;
+              P.emit('splash', e.x, e.y + 0.2, e.z, Math.cos(a) * 4, 3 + Math.random() * 3, Math.sin(a) * 4, WHITE, 1, 0.8 + e.value * 0.15, e.y - 0.3);
+            }
+            if (mine) {
+              rig.addTrauma(0.08 + 0.05 * e.value);
+              rig.kickFov(2.5 + 2.2 * e.value);
+              this.addRumble(0.25 + 0.15 * e.value, 0.6, 140 + 60 * e.value);
+            }
+          }
           if ((mine || near) && e.racer >= 0) {
             const c = _c.copy(this.boostColors[e.racer] ?? WHITE).lerp(WHITE, 0.35);
             this.pops.sparkles(e.racer, e.x, e.y, e.z, mine ? 8 : 4, mine ? 2.4 : 2, c);

@@ -3,7 +3,7 @@
  * trigger. Pure function of (session, save) → summary, applied to the save.
  */
 
-import { BOATS } from '../boat/specs';
+import { BOATS, type BoatId } from '../boat/specs';
 import { CHAMP_POINTS, CUPS, TRACKS, trackDef } from '../race/trackDefs';
 import type { RaceSession } from '../race/session';
 import { cosmeticUnlocks, levelFromXp, type SaveStore } from './save';
@@ -118,7 +118,7 @@ export function applyRewards(session: RaceSession, store: SaveStore, ctx: Reward
     }
     if (session.newGhost) {
       const prev = d.ghosts[trackId];
-      if (!prev || session.newGhost.time < prev.time) d.ghosts[trackId] = session.newGhost;
+      if (!prev || session.newGhost.time < prev.time) d.ghosts[trackId] = { ...session.newGhost, look: { ...d.rider }, upgrades: { ...store.upgrades(session.newGhost.boatId as BoatId) } };
     }
   }
   if (session.mode === 'stunt') {

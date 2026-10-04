@@ -744,6 +744,36 @@ h1.h { text-shadow: 4px 4px 0 #ff4f8b, 7px 7px 0 #12306e; }
 .screen.rider::before { -webkit-mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); }
 .screen.rider::after { display: none; }
 
+/* Local best-lap board (time trial setup). */
+.lboard { padding: 8px 12px; }
+.lboard .row { gap: 10px; padding: 3px 0; font-family: var(--font2); font-weight: 800; }
+.lboard .row b:first-child { width: 18px; color: var(--yellow); }
+
+/* ── Loading screen ── */
+#boot { background: linear-gradient(180deg, #5fd0ff 0%, #1f86f0 55%, #0b3a9e 100%); overflow: hidden; }
+#boot.gone { opacity: 0; pointer-events: none; }
+#boot .boot-sea { position: absolute; inset: auto 0 0 0; height: 34%; pointer-events: none; }
+#boot .boot-sea i { position: absolute; left: -10%; right: -10%; height: 60px; border-radius: 50%; background: radial-gradient(60px 26px at 60px 0, transparent 98%, rgba(255,255,255,.85) 100%) 0 0 / 120px 60px repeat-x; animation: waves 3.5s linear infinite; }
+#boot .boot-sea i:nth-child(1) { bottom: 58%; opacity: .5; animation-duration: 5s; }
+#boot .boot-sea i:nth-child(2) { bottom: 30%; opacity: .75; animation-duration: 4s; animation-direction: reverse; }
+#boot .boot-sea i:nth-child(3) { bottom: 0; background-color: #2a9cff; }
+#boot::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.7) 0 2px, rgba(255,255,255,.15) 3px 9px, transparent 10px) 0 0 / 190px 230px; animation: bubbles 9s linear infinite; pointer-events: none; }
+#boot .boot-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#boot .boot-art { width: 180px; height: 90px; animation: bob 1.6s ease-in-out infinite; }
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-8px) rotate(2deg); } }
+#boot .boot-logo { font-family: var(--font); font-style: normal; font-size: clamp(56px, 10vw, 104px); letter-spacing: 4px; color: #fff; -webkit-text-stroke: 8px #12306e; paint-order: stroke fill; text-shadow: 6px 6px 0 #ff4f8b, 11px 11px 0 #12306e; }
+#boot .boot-place { font-family: var(--font2); font-weight: 900; color: var(--yellow); letter-spacing: 4px; text-shadow: 0 2px 0 #12306e; min-height: 1.2em; }
+#boot .boot-bar { width: min(360px, 70vw); height: 14px; background: rgba(6,20,70,.55); border: 3px solid #12306e; border-radius: 999px; transform: none; box-shadow: 0 4px 0 #12306e; overflow: hidden; }
+#boot .boot-bar div { height: 100%; width: 0; background: linear-gradient(180deg, #fff6b0, #ffd93a 50%, #ffb21e 52%); border-radius: 999px; transition: width .3s cubic-bezier(.2,.9,.3,1.2); }
+#boot .boot-step { font-family: var(--font2); font-weight: 900; font-size: 13px; letter-spacing: 3px; color: #fff; text-shadow: 0 2px 0 #12306e; }
+#boot .boot-tip { font-family: var(--font2); font-weight: 800; font-size: 14px; color: #fff; max-width: min(560px, 86vw); text-align: center; text-shadow: 0 2px 0 #12306e; min-height: 2.6em; }
+#boot .boot-tip.in { animation: tipIn .4s ease-out; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+#boot.again { transition: opacity .25s; }
+.garage .g-side { touch-action: none; cursor: grab; }
+.garage .g-inspect { position: absolute; right: 0; top: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.garage .r-hint-inline { font-family: var(--font2); font-weight: 900; font-size: 12px; color: #fff; text-shadow: 0 2px 0 #12306e; }
+
 
 /* ── Podium / trophy overlay (over the podium scene, no backdrop) ── */
 .screen.podium { background: none; padding: clamp(14px, 2.6vw, 38px); pointer-events: auto; animation: none; }

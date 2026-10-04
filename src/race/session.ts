@@ -37,6 +37,9 @@ export interface GhostData {
   samples: number[];
   /** Set on ghosts imported from a friend's code. */
   name?: string;
+  /** Rider look and boat upgrades of whoever set the ghost (ghost code v2). */
+  look?: RiderLook;
+  upgrades?: Upgrades;
 }
 export const GHOST_HZ = 10;
 

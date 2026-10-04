@@ -134,6 +134,7 @@ export class World {
   private blendSeconds = 14;
 
   update(dt: number, time: number, rig: CameraRig, events: EventQueue) {
+    this.riderReactions(dt, events);
     const s = this.session;
     for (const e of events.list) if (e.type === 'weatherShift') this.blendTo(e.text as WeatherId);
     const bl = this.blend;
@@ -194,6 +195,69 @@ export class World {
     this.ocean.update(cam);
     this.sky.update(cam.position, time);
     this.atmosphere.followCamera(cam);
+  }
+
+  // ── Rider reactions from game events ────────────────────────────────────
+  private trickPending: number[] = [];
+  private lookCd: number[] = [];
+  private lookClock = 0;
+  private riderReactions(dt: number, events: EventQueue) {
+    const s = this.session;
+    const n = this.visuals.length;
+    for (let i = 0; i < n; i++) {
+      this.trickPending[i] = Math.max(0, (this.trickPending[i] ?? 0) - dt);
+      this.lookCd[i] = Math.max(0, (this.lookCd[i] ?? 0) - dt);
+    }
+    for (const e of events.list) {
+      if (e.racer < 0 || e.racer >= n) continue;
+      const rider = this.visuals[e.racer].rider;
+      const bt = s.racers[e.racer].boat;
+      // Side of the boat the event happened on (+1 = rider's left / +x).
+      const side = Math.sign((e.x - bt.position.x) * Math.cos(bt.heading) - (e.z - bt.position.z) * Math.sin(bt.heading)) || (Math.random() < 0.5 ? -1 : 1);
+      switch (e.type) {
+        case 'itemPickup':
+          rider.react('pickup');
+          break;
+        case 'itemHit':
+          rider.react('hit', side);
+          break;
+        case 'collide':
+          if (e.value > 0.35) rider.react('hit', side);
+          break;
+        case 'trick':
+          this.trickPending[e.racer] = 2.5;
+          break;
+        case 'land':
+          if (this.trickPending[e.racer] > 0 && e.text === 'clean') rider.react('trick');
+          this.trickPending[e.racer] = 0;
+          break;
+      }
+    }
+    // Look-back: a rider sometimes glances over the shoulder at a boat right
+    // on their tail (throttled, with a per-rider cooldown so it never nags).
+    this.lookClock += dt;
+    if (this.lookClock < 0.3 || s.phase !== 'racing') return;
+    this.lookClock = 0;
+    for (let i = 0; i < n; i++) {
+      if (this.lookCd[i] > 0) continue;
+      const a = s.racers[i].boat;
+      const fx = Math.sin(a.heading);
+      const fz = Math.cos(a.heading);
+      for (let j = 0; j < n; j++) {
+        if (j === i) continue;
+        const o = s.racers[j].boat;
+        const dx = o.position.x - a.position.x;
+        const dz = o.position.z - a.position.z;
+        const along = dx * fx + dz * fz;
+        if (along > -2.5 || along < -11 || dx * dx + dz * dz > 120) continue;
+        if (Math.random() < 0.4) {
+          const side = Math.sign(dx * Math.cos(a.heading) - dz * Math.sin(a.heading)) || 1;
+          this.visuals[i].rider.react('lookback', side);
+        }
+        this.lookCd[i] = 6 + Math.random() * 4;
+        break;
+      }
+    }
   }
 
   setShadows(on: boolean) {

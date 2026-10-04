@@ -7,7 +7,7 @@
  * private mode) are reported once to the UI rather than thrown.
  */
 
-import { DEFAULT_LOOK, sanitizeLook, type RiderLook } from '../boat/riderLook';
+import { DEFAULT_LOOK, lookFromLivery, sanitizeLook, type RiderLook } from '../boat/riderLook';
 import { BOATS, type BoatId } from '../boat/specs';
 import { DECALS, defaultLivery, sanitizeLivery, STRIPES, type Livery } from '../boat/livery';
 import { ACTIONS, DEFAULT_BINDINGS, type Bindings } from '../input/input';
@@ -23,6 +23,8 @@ export interface Settings {
   master: number;
   music: number;
   sfx: number;
+  /** Menu / UI sounds. */
+  ui: number;
   shake: number;
   motion: number;
   /** Graphics preset; 'auto' resolves from the device at start-up. */
@@ -52,6 +54,10 @@ export interface Settings {
   dynamicWeather: boolean;
   /** Ambient wildlife and traffic. */
   wildlife: boolean;
+  /** Tone down full-screen flashes (lightning, impact frames). */
+  reduceFlash: boolean;
+  /** Particle amount multiplier (0.25..1). */
+  particles: number;
 }
 
 export interface Medals {
@@ -102,6 +108,8 @@ export interface SaveData {
   career: { stage: number };
   /** The player's rider (character creator). */
   rider: RiderLook;
+  /** Ghosts imported from friends' codes (kept apart from your own best). */
+  rivalGhosts: Record<string, GhostData>;
   /** Bitmask of message bottles found per track. */
   bottles: Record<string, number>;
 }
@@ -111,6 +119,7 @@ export function defaultSettings(): Settings {
     master: 0.8,
     music: 0.6,
     sfx: 0.85,
+    ui: 0.8,
     shake: 1,
     motion: 1,
     quality: 'auto',
@@ -132,6 +141,8 @@ export function defaultSettings(): Settings {
     shadows: true,
     dynamicWeather: false,
     wildlife: true,
+    reduceFlash: false,
+    particles: 1,
   };
 }
 
@@ -162,6 +173,7 @@ export function defaultSave(): SaveData {
     challengesDone: [],
     career: { stage: 0 },
     rider: { ...DEFAULT_LOOK },
+    rivalGhosts: {},
     bottles: {},
   };
 }
@@ -186,6 +198,7 @@ function sanitizeSettings(v: unknown): Settings {
     master: num(o.master, d.master, 0, 1),
     music: num(o.music, d.music, 0, 1),
     sfx: num(o.sfx, d.sfx, 0, 1),
+    ui: num(o.ui, d.ui, 0, 1),
     shake: num(o.shake, d.shake, 0, 1),
     motion: num(o.motion, d.motion, 0, 1),
     quality: oneOf(o.quality, ['auto', 'low', 'medium', 'high'] as const, d.quality),
@@ -207,6 +220,8 @@ function sanitizeSettings(v: unknown): Settings {
     shadows: bool(o.shadows, d.shadows),
     dynamicWeather: bool(o.dynamicWeather, d.dynamicWeather),
     wildlife: bool(o.wildlife, d.wildlife),
+    reduceFlash: bool(o.reduceFlash, d.reduceFlash),
+    particles: num(o.particles, d.particles, 0.25, 1),
   };
 }
 
@@ -215,7 +230,15 @@ function sanitizeGhost(v: unknown): GhostData | null {
   if (typeof o.trackId !== 'string' || typeof o.boatId !== 'string' || typeof o.time !== 'number' || !Array.isArray(o.samples)) return null;
   if (o.samples.length % 6 !== 0 || o.samples.length > 6 * 10 * 600) return null;
   if (!o.samples.every((x) => typeof x === 'number' && Number.isFinite(x))) return null;
-  return { trackId: o.trackId, boatId: o.boatId, time: o.time, samples: o.samples as number[], ...(typeof o.name === 'string' ? { name: o.name.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 12) } : {}) };
+  const out: GhostData = { trackId: o.trackId, boatId: o.boatId, time: o.time, samples: o.samples as number[], ...(typeof o.name === 'string' ? { name: o.name.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 12) } : {}) };
+  if (o.look && typeof o.look === 'object') out.look = sanitizeLook(o.look);
+  if (o.upgrades && typeof o.upgrades === 'object') {
+    const up = emptyUpgrades();
+    const u = obj(o.upgrades);
+    for (const k of UPGRADE_KINDS) up[k] = Math.round(num(u[k], 0, 0, UPGRADE_MAX));
+    out.upgrades = up;
+  }
+  return out;
 }
 
 function sanitizeStats(v: unknown): LifetimeStats {
@@ -245,6 +268,8 @@ export function sanitizeSave(raw: unknown): SaveData {
   const rc = obj(o.records);
   const ghosts: SaveData['ghosts'] = {};
   const gh = obj(o.ghosts);
+  const rivalGhosts: SaveData['ghosts'] = {};
+  const rgh = obj(o.rivalGhosts);
   for (const t of TRACKS) {
     const m = obj(md[t.id]);
     medals[t.id] = { race: Math.round(num(m.race, 0, 0, 3)), tt: Math.round(num(m.tt, 0, 0, 3)), stunt: Math.round(num(m.stunt, 0, 0, 3)) };
@@ -253,7 +278,9 @@ export function sanitizeSave(raw: unknown): SaveData {
     for (const k of ['race', 'lap', 'stunt', 'endless'] as const) if (typeof r[k] === 'number' && Number.isFinite(r[k]) && (r[k] as number) > 0) rec[k] = r[k] as number;
     records[t.id] = rec;
     const g = sanitizeGhost(gh[t.id]);
-    if (g) ghosts[t.id] = g;
+    if (g && g.trackId === t.id) ghosts[t.id] = g;
+    const rg = sanitizeGhost(rgh[t.id]);
+    if (rg && rg.trackId === t.id) rivalGhosts[t.id] = rg;
   }
   const cups: SaveData['cups'] = {};
   const cp = obj(o.cups);
@@ -289,8 +316,39 @@ export function sanitizeSave(raw: unknown): SaveData {
     challengesDone: Array.isArray(o.challengesDone) ? (o.challengesDone.filter((k) => typeof k === 'string' && /^\d{4}-(W\d{2}|\d{2}-\d{2})$/.test(k)) as string[]).slice(-60) : [],
     career: { stage: Math.round(num(obj(o.career).stage, 0, 0, CAREER.length)) },
     rider: sanitizeLook(o.rider),
+    rivalGhosts,
     bottles: sanitizeBottles(o.bottles),
   };
+}
+
+export const SAVE_VERSION = 2;
+
+/** Version stamped in a raw save object (saves before versioning count as 1). */
+export function saveVersion(v: unknown) {
+  const n = obj(v).version;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Step a raw save forward one version at a time. Each step only reshapes data;
+ * sanitizeSave still validates every field afterwards.
+ */
+export function migrateSave(v: unknown): unknown {
+  const o = { ...obj(v) };
+  let ver = saveVersion(o);
+  if (ver < 2) {
+    // v1 → v2: riders gained a customisable look. Seed it from the colours the
+    // player already chose for their selected boat so they keep a familiar rider.
+    if (!o.rider) {
+      const sel = typeof o.selectedBoat === 'string' ? o.selectedBoat : BOATS[0].id;
+      const b = BOATS.find((x) => x.id === sel) ?? BOATS[0];
+      const liv = sanitizeLivery(obj(o.liveries)[b.id], defaultLivery(b.hullColor, b.accentColor, 7));
+      o.rider = lookFromLivery(liv);
+    }
+    ver = 2;
+  }
+  o.version = ver;
+  return o;
 }
 
 function sanitizeUpgrades(v: unknown): SaveData['upgrades'] {
@@ -370,7 +428,16 @@ export class SaveStore {
     }
     if (!raw) return defaultSave();
     try {
-      return sanitizeSave(JSON.parse(raw));
+      const parsed: unknown = JSON.parse(raw);
+      const from = saveVersion(parsed);
+      if (from > SAVE_VERSION) {
+        // Written by a newer build: read what we understand, but keep the original safe.
+        this.backup(raw, `.v${from}`);
+      } else if (from < SAVE_VERSION) {
+        this.backup(raw, `.v${from}`);
+        this.migratedFrom = from;
+      }
+      return sanitizeSave(migrateSave(parsed));
     } catch {
       // Unparseable JSON: keep a copy for debugging, start fresh.
       this.recovered = true;
@@ -380,6 +447,17 @@ export class SaveStore {
         /* the backup is best-effort */
       }
       return defaultSave();
+    }
+  }
+
+  /** Version of the save that was migrated on load (null when none). */
+  migratedFrom: number | null = null;
+
+  private backup(raw: string, suffix: string) {
+    try {
+      if (!localStorage.getItem(SAVE_KEY + suffix)) localStorage.setItem(SAVE_KEY + suffix, raw.slice(0, 400000));
+    } catch {
+      /* best-effort */
     }
   }
 

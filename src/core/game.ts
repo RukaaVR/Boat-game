@@ -19,7 +19,7 @@ import { World } from '../render/world';
 import { CameraRig, type CamMode } from '../camera/cameraRig';
 import { Input } from '../input/input';
 import { AudioEngine, type Listener } from '../audio/audio';
-import { Music } from '../audio/music';
+import { Music, type RaceState } from '../audio/music';
 import { SaveStore } from '../save/save';
 import { applyRewards, finishChampionship, noRewards, type RewardSummary } from '../save/rewards';
 import { CAREER, type Challenge } from '../save/progress';
@@ -29,6 +29,7 @@ import { BoatVisual } from '../boat/boatMesh';
 import { CharacterStage } from '../render/characterStage';
 import { PODIUM_POST, PodiumScene, type PodiumEntry } from '../render/podium';
 import type { Racer } from '../race/racer';
+import { Loader } from '../ui/loading';
 import { applyPreset, AutoDowngrade, PRESETS, resolveQuality } from '../render/graphics';
 import type { Quality } from '../render/renderer';
 import { boatSpec, type BoatId } from '../boat/specs';
@@ -49,7 +50,8 @@ import { ReplayPlayer, ReplayRecorder, type ReplayData } from '../race/replay';
 import { PhotoPanel, ReplayBar, type PhotoHost, type ReplayHost } from '../ui/overlays';
 import { CAM_LABEL, CAM_MODES } from '../camera/cameraRig';
 import { checkAchievements } from '../save/rewards';
-import { decodeGhost, encodeGhost } from '../save/ghostCode';
+import { decodeGhost, encodeGhost, ghostFingerprint } from '../save/ghostCode';
+import { A11Y } from './a11y';
 
 export interface EventRequest {
   mode: ModeId;
@@ -66,6 +68,8 @@ export interface EventRequest {
   p2Boat?: BoatId;
   /** Number of AI rivals (default 5). */
   opponents?: number;
+  /** Time trial: race your own best ghost or an imported friend's ghost. */
+  ghost?: 'mine' | 'rival';
 }
 
 type State = 'boot' | 'title' | 'menu' | 'race';
@@ -73,6 +77,7 @@ type State = 'boot' | 'title' | 'menu' | 'race';
 const _listener: Listener = { x: 0, z: 0, rx: 1, rz: 0 };
 const _right = new Vector3();
 const _nearest: Boat[] = [];
+const _raceState: RaceState = { finalLap: false, close: false, place: 0, racers: 1, boosting: false };
 
 /** Post settings for the character stage when no world exists yet. */
 const STAGE_POST = { bloom: 0.25, exposure: 1, saturation: 1.1, contrast: 1, vignette: 0.15 };
@@ -118,6 +123,8 @@ export class Game implements ReplayHost, PhotoHost {
   cpuMs = 0;
   /** Smoothed music pressure. */
   private pressure = 0;
+  /** Raw 0..1 closeness to the nearest rival in the standings (music CLOSE state). */
+  private closeness = 0;
   /** How tight the fight around the player is: 0 calm … 1 wheel-to-wheel or leading. */
   private racePressure(s: RaceSession) {
     if (!s.isRace || s.phase !== 'racing') return 0;
@@ -127,6 +134,7 @@ export class Game implements ReplayHost, PhotoHost {
     const ahead = i > 0 ? (s.order[i - 1].raceDist - p.raceDist) / pace : Infinity;
     const behind = i < s.order.length - 1 ? (p.raceDist - s.order[i + 1].raceDist) / pace : Infinity;
     const close = Math.max(clamp01(1 - ahead / 2.5), clamp01(1 - behind / 1.8));
+    this.closeness = close;
     const lead = p.place === 1 ? 0.55 : 0;
     const finale = s.hasLaps && p.lap >= s.totalLaps ? 0.25 : 0;
     return clamp01(Math.max(close, lead) + finale);
@@ -190,19 +198,28 @@ export class Game implements ReplayHost, PhotoHost {
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   start() {
-    const bar = document.querySelector('#boot .boot-bar div') as HTMLElement | null;
-    if (bar) bar.style.width = '40%';
-    // Let the boot screen paint before the heavy first build.
-    setTimeout(() => {
-      this.buildBackdrop(this.save.data.champ ? trackDef(CUPS.find((c) => c.id === this.save.data.champ!.cupId)!.tracks[0]).id : 'coral', 'clear');
-      if (bar) bar.style.width = '100%';
-      this.state = 'title';
-      this.screens.title();
-      this.last = performance.now();
-      requestAnimationFrame((t) => this.loop(t));
-      setTimeout(() => document.getElementById('boot')?.classList.add('gone'), 200);
-      if (this.harness) this.installHarness();
-    }, 30);
+    const L = this.loader;
+    const trackId = this.save.data.champ ? trackDef(CUPS.find((c) => c.id === this.save.data.champ!.cupId)!.tracks[0]).id : 'coral';
+    L.begin();
+    L.setPlace(trackDef(trackId).name);
+    L.set(0.15, 'LOADING FONTS');
+    // Real steps only: fonts (capped so a slow font never blocks play), the
+    // course build, then the first rendered frame (shader compile).
+    const fonts = Promise.race([document.fonts?.ready ?? Promise.resolve(), new Promise((r) => setTimeout(r, 2500))]);
+    void fonts.then(() => {
+      L.set(0.4, 'BUILDING ' + trackDef(trackId).name);
+      // Let the boot screen paint before the heavy first build.
+      setTimeout(() => {
+        this.buildBackdrop(trackId, 'clear');
+        L.set(0.85, 'WARMING UP SHADERS');
+        this.state = 'title';
+        this.screens.title();
+        this.last = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
+        requestAnimationFrame(() => requestAnimationFrame(() => L.hide()));
+        if (this.harness) this.installHarness();
+      }, 30);
+    });
   }
 
   get touchEnabled() {
@@ -386,6 +403,7 @@ export class Game implements ReplayHost, PhotoHost {
       if (this.screens.current === 'settings') this.screens.settings(this.screens.settingsReturn);
     }
     this.audio.setVolumes(s.master, s.music, s.sfx);
+    this.audio.uiVolume = s.ui;
     this.renderer.adaptive = s.autoRes;
     // AUTO keeps any runtime step-down until the player picks another setting.
     const q = s.quality === 'auto' && this.autoQuality ? this.autoQuality : resolveQuality(s.quality);
@@ -393,6 +411,8 @@ export class Game implements ReplayHost, PhotoHost {
     this.setGraphics(q);
     this.renderer.assist = s.assist;
     this.renderer.motionFx = s.motion;
+    A11Y.flash = s.reduceFlash ? 0.25 : 1;
+    A11Y.particles = s.particles;
     this.rig.motionScale = 0.35 + 0.65 * s.motion;
     this.rig.shakeScale = s.shake;
     this.input.bindings = structuredClone(s.bindings);
@@ -593,6 +613,34 @@ export class Game implements ReplayHost, PhotoHost {
       this.rig.cut();
     }
   }
+  // ── Garage previews (boost flame, wake, rider) ─────────────────────────
+  private garageFx: { kind: 'boost' | 'wake' | 'rider'; t: number } | null = null;
+  garagePreview(kind: 'boost' | 'wake' | 'rider') {
+    const s = this.session;
+    if (!s || !this.garage) return;
+    this.garageFx = { kind, t: kind === 'wake' ? 3.2 : 2 };
+    if (kind === 'wake') {
+      // Release the parking brake and cruise a few lengths so the wake shows.
+      s.player.boat.holdTime = 0;
+      s.player.controls.throttle = 0.55;
+    }
+    if (kind === 'rider') this.world?.visuals[0].rider.react('trick');
+  }
+  private updateGarageFx(dt: number) {
+    const fx = this.garageFx;
+    const s = this.session;
+    if (!fx || !s) return;
+    fx.t -= dt;
+    const b = s.player.boat;
+    if (fx.kind === 'boost') b.boostLevel = Math.max(b.boostLevel, Math.min(1, fx.t * 1.5));
+    if (fx.kind === 'rider' && this.world) this.world.visuals[0].celebrate = fx.t > 0.4;
+    if (fx.t <= 0) {
+      this.garageFx = null;
+      if (fx.kind === 'wake') this.previewBoat(this.save.data.selectedBoat === b.spec.id ? b.spec.id : (b.spec.id as BoatId));
+      if (this.world) this.world.visuals[0].celebrate = false;
+    }
+  }
+
   previewLivery(l: Livery) {
     const s = this.session;
     if (!s || !this.world) return;
@@ -601,7 +649,29 @@ export class Game implements ReplayHost, PhotoHost {
   }
 
   // ── Events ────────────────────────────────────────────────────────────────
+  /** Start an event behind the loading screen (the course build is synchronous). */
   startEvent(req: EventRequest) {
+    if (this.harness) {
+      this.buildEvent(req);
+      return;
+    }
+    if (this.loadingEvent) return;
+    this.loadingEvent = true;
+    void this.loader.show(trackDef(req.trackId).name).then(() => {
+      this.loader.set(0.35, 'BUILDING ' + trackDef(req.trackId).name);
+      try {
+        this.buildEvent(req);
+      } finally {
+        this.loadingEvent = false;
+      }
+      this.loader.set(0.85, 'WARMING UP SHADERS');
+      requestAnimationFrame(() => requestAnimationFrame(() => this.loader.hide()));
+    });
+  }
+  private loadingEvent = false;
+  private loader = new Loader();
+
+  private buildEvent(req: EventRequest) {
     this.lastReq = { ...req };
     const d = this.save.data;
     const def = trackDef(req.trackId);
@@ -620,7 +690,7 @@ export class Game implements ReplayHost, PhotoHost {
       playerName: req.p2Boat ? 'P1' : d.playerName,
       opponents: req.opponents ?? 5,
       player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
-      ghost: req.mode === 'timetrial' ? (d.ghosts[req.trackId] ?? null) : null,
+      ghost: req.mode === 'timetrial' ? ((req.ghost === 'rival' ? d.rivalGhosts[req.trackId] : d.ghosts[req.trackId]) ?? null) : null,
       champPoints: champ?.points,
       // Split-screen is a fair fight: neither player brings garage upgrades.
       playerUpgrades: req.p2Boat ? undefined : this.save.upgrades(req.boat),
@@ -1056,6 +1126,7 @@ export class Game implements ReplayHost, PhotoHost {
     }
     const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : s.player.boat;
     if (this.rig.scripted === 'free') this.driveFreeCam(dt);
+    if (this.garage) this.updateGarageFx(dt);
     if (simDt > 0 || this.garage || this.rig.scripted === 'free' || rp) this.rig.update(simDt || dt, target, s.track, s.time);
     const r2 = this.rig2;
     if (r2 && racing) {
@@ -1107,6 +1178,13 @@ export class Game implements ReplayHost, PhotoHost {
       const revving = s.phase === 'countdown' ? s.player.controls.throttle * 0.8 : 0;
       this.audio.updateRace(dt, s.player.boat, s.player.boat.engine, _nearest, _listener, w.atmosphere.preset.rain, this.paused, revving);
       const final = s.hasLaps && s.player.lap >= s.totalLaps && s.totalLaps > 1 && s.phase === 'racing';
+      if (!s.isRace || s.phase !== 'racing') this.closeness = 0;
+      _raceState.finalLap = final;
+      _raceState.close = this.closeness > 0.55;
+      _raceState.place = s.isRace ? s.player.place : 0;
+      _raceState.racers = s.racers.length;
+      _raceState.boosting = s.phase === 'racing' && s.player.boat.boostLevel > 0.25;
+      this.music.setRaceState(_raceState);
       if (s.phase === 'results' || s.phase === 'finished') this.music.setMood('results');
       else this.music.setMood(final || (s.mode === 'endless' && s.endlessLevel >= 3) || (s.mode === 'stunt' && s.stuntTimeLeft < 20) ? 'final' : 'race');
       this.music.setIntensity(clamp01(s.player.boat.boostLevel));
@@ -1239,7 +1317,7 @@ export class Game implements ReplayHost, PhotoHost {
       get game() {
         return g;
       },
-      ghostCode: { encode: encodeGhost, decode: decodeGhost },
+      ghostCode: { encode: encodeGhost, decode: decodeGhost, fingerprint: ghostFingerprint },
       tutorialJump(i: number) {
         if (g.tutorial) g.tutorial.index = i;
       },
@@ -1435,6 +1513,17 @@ export class Game implements ReplayHost, PhotoHost {
       },
       musicMood() {
         return g.music.mood;
+      },
+      musicDebug() {
+        return g.music.debug();
+      },
+      /** Test hook: render one voice syllable. */
+      sayVoice(id: import('../audio/voice').Syllable, racer = 0) {
+        g.audio.voice?.say(id, racer);
+      },
+      /** Test hook: end the race now with the player in `place`. */
+      finishRace(place = 1) {
+        g.session?.adminFinish(place);
       },
       gpuMemory() {
         const info = g.renderer.gl.info;

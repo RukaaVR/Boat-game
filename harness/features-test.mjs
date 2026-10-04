@@ -121,14 +121,23 @@ await test('ghost codes round-trip and reject garbage', async () => {
     m.decodeGhost = m.decode;
     const samples = [];
     for (let i = 0; i < 400; i++) samples.push(Math.cos(i * 0.02) * 260, 0.4, Math.sin(i * 0.02) * 220, (i * 0.02) % 3, 0.03, -0.01);
-    const code = await m.encodeGhost({ trackId: 'atoll', boatId: 'aero', time: 55.5, samples }, 'pal');
+    const look = { hair: 'messy', hairColor: '#2f9a74', skin: '#c98d63', eyes: '#3a7bd5', expression: 'determined' };
+    const code = await m.encodeGhost({ trackId: 'atoll', boatId: 'aero', time: 55.5, samples, look, upgrades: { engine: 2, hull: 1, nitro: 0, handling: 3 } }, 'pal');
     const g = await m.decodeGhost(code);
     let err = 0;
     for (let i = 0; i < samples.length; i++) err = Math.max(err, Math.abs(samples[i] - g.samples[i]));
-    return { code, err, name: g.name, track: g.trackId, bad: await m.decodeGhost('RPT1.atoll.aero.5000.X.zzzz'), junk: await m.decodeGhost('hello') };
+    // Flip one payload character: the checksum must reject it.
+    const tampered = code.slice(0, -3) + (code.slice(-3, -2) === 'A' ? 'B' : 'A') + code.slice(-2);
+    // A version-1 code (no look / checksum) must still import.
+    const v1 = 'RPT1.atoll.aero.55500.OLD.' + code.split('.')[8];
+    return { code, err, name: g.name, track: g.trackId, look: g.look, up: g.upgrades, fp: m.fingerprint(code), tampered: await m.decodeGhost(tampered), v1: (await m.decodeGhost(v1))?.name ?? null, bad: await m.decodeGhost('RPT1.atoll.aero.5000.X.zzzz'), junk: await m.decodeGhost('hello') };
   });
-  assert(r.code.startsWith('RPT1.atoll.aero.55500.PAL.'), 'bad header ' + r.code);
+  assert(r.code.startsWith('RPT2.atoll.aero.55500.PAL.m-2f9a74-c98d63-3a7bd5-d.2103.'), 'bad header ' + r.code.slice(0, 80));
   assert(r.err < 0.06, 'lossy beyond quantisation: ' + r.err);
+  assert(r.look && r.look.hair === 'messy' && r.look.expression === 'determined' && r.up.handling === 3, 'look/upgrades lost ' + JSON.stringify([r.look, r.up]));
+  assert(/^RIPTIDE-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(r.fp), 'fingerprint ' + r.fp);
+  assert(r.tampered === null, 'tampered code accepted');
+  assert(r.v1 === 'OLD', 'v1 code rejected');
   assert(r.bad === null && r.junk === null, 'garbage accepted');
 });
 
@@ -301,6 +310,22 @@ await test('hostile values in new save fields are sanitised', async () => {
   assert(d.stats.tricks === 0 && d.stats.weathers.join() === 'storm', 'stats: ' + JSON.stringify(d.stats));
   assert(d.challengesDone.length === 1 && d.career.stage <= 8 && d.bottles.coral === 31 && !d.bottles.nowhere, 'misc: ' + JSON.stringify([d.challengesDone, d.career, d.bottles]));
   assert(d.settings.lang === 'en' && d.settings.touch === 'auto' && d.settings.tilt === false, 'settings: ' + JSON.stringify(d.settings));
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
+await test('v1 save migrates to v2 with a backup and a seeded rider look', async () => {
+  const { page, ctx, errors } = await fresh({
+    init: () => {
+      localStorage.setItem('riptide.save.v1', JSON.stringify({ xp: 1234, selectedBoat: 'speedster', liveries: { speedster: { hull: '#ff0000', accent: '#00ff00', stripe: 'none', decal: 'none', number: 7 } }, settings: { reduceFlash: 'yes', particles: 9 } }));
+    },
+  });
+  const d = await page.evaluate(() => window.__RIPTIDE__.saveData());
+  const backup = await page.evaluate(() => localStorage.getItem('riptide.save.v1.v1'));
+  assert(d.version === 2 && d.xp === 1234, 'migrated: ' + JSON.stringify([d.version, d.xp]));
+  assert(d.rider && /^#[0-9a-f]{6}$/i.test(d.rider.hairColor), 'rider: ' + JSON.stringify(d.rider));
+  assert(backup && JSON.parse(backup).xp === 1234, 'no v1 backup');
+  assert(d.settings.reduceFlash === false && d.settings.particles === 1, 'a11y settings: ' + JSON.stringify([d.settings.reduceFlash, d.settings.particles]));
   assert(errors.length === 0, errors.join(' | '));
   await ctx.close();
 });

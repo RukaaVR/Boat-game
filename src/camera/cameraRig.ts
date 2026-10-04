@@ -132,6 +132,19 @@ export class CameraRig {
     this.freePos.y += up;
   }
 
+  private orbitHold = 0;
+  /** Garage inspection: drag to turn the orbit (pixels). */
+  orbitDrag(dx: number) {
+    this.orbitAngle -= dx * 0.008;
+    this.orbitHold = 3;
+  }
+  /** Garage inspection: zoom in (+) / out (−). Radius clamped, height follows. */
+  orbitZoom(delta: number) {
+    this.orbitRadius = Math.max(4, Math.min(14, this.orbitRadius * (1 - delta * 0.12)));
+    this.orbitHeight = 0.9 + this.orbitRadius * 0.18;
+    this.orbitHold = 3;
+  }
+
   endScripted() {
     if (this.scripted !== 'none') this.snap = true;
     this.scripted = 'none';
@@ -189,7 +202,9 @@ export class CameraRig {
     }
     if (this.scripted === 'finish' || this.scripted === 'orbit') {
       const target = this.scripted === 'finish' ? b.position : this.orbitTarget;
-      this.orbitAngle += dt * (this.scripted === 'finish' ? 0.35 : 0.18);
+      // Auto-orbit, paused for a moment after the player steers the view.
+      this.orbitHold = Math.max(0, this.orbitHold - dt);
+      if (this.orbitHold <= 0) this.orbitAngle += dt * (this.scripted === 'finish' ? 0.35 : 0.18);
       const R = this.scripted === 'finish' ? 9 : this.orbitRadius;
       const H = this.scripted === 'finish' ? 3.2 : this.orbitHeight;
       const a = this.orbitAngle + (this.scripted === 'finish' ? b.heading + Math.PI * 0.75 : 0);
@@ -328,10 +343,21 @@ export class CameraRig {
     cam.position.copy(this.pos);
     cam.lookAt(this.look);
     cam.rotateZ(this.roll);
-    if (Math.abs(cam.fov - this.fov) > 0.01) {
-      cam.fov = this.fov;
+    // FOV kick (mini-turbo, golden turbo…): a quick widen that eases back.
+    this.kick *= Math.exp(-this.kickDecay * Math.max(0.001, time - this.kickT));
+    this.kickT = time;
+    const fov = this.fov + this.kick * this.motionScale;
+    if (Math.abs(cam.fov - fov) > 0.01) {
+      cam.fov = fov;
       cam.updateProjectionMatrix();
     }
+  }
+  private kick = 0;
+  private kickT = 0;
+  private kickDecay = 3.5;
+  /** Widen the lens by `deg` degrees, easing back (scaled by the motion setting). */
+  kickFov(deg: number) {
+    this.kick = Math.max(this.kick, deg);
   }
 
   private applyShake(dt: number, time: number) {

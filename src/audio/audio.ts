@@ -14,6 +14,7 @@ import { clamp, clamp01 } from '../core/mathx';
 import type { GameEvent } from '../core/events';
 import type { Boat } from '../boat/boat';
 import type { ThemeId } from '../core/types';
+import { VoiceBank } from './voice';
 
 interface EngineVoice {
   a: OscillatorNode;
@@ -48,6 +49,13 @@ export class AudioEngine {
   musicBus!: GainNode;
   musicFilter!: BiquadFilterNode;
   private comp!: DynamicsCompressorNode;
+  /** Mix-polish chain: glue compressor → limiter → soft clipper. */
+  private limiter!: DynamicsCompressorNode;
+  private clipper!: WaveShaperNode;
+  /** Music ducking under big impacts (between the music filter and master). */
+  private musicDuck!: GainNode;
+  /** Character voice chirps (created with the context). */
+  voice: VoiceBank | null = null;
   private noiseBuf!: AudioBuffer;
   private engine: EngineVoice | null = null;
   private rivals: EngineVoice[] = [];
@@ -70,26 +78,28 @@ export class AudioEngine {
   /** Must be called from a user gesture (browser autoplay policy). */
   unlock() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      this.resume();
       return;
     }
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = (this.ctx = new Ctx());
     this.comp = ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -14;
+    this.comp.threshold.value = -16;
+    this.comp.knee.value = 8;
     this.comp.ratio.value = 3;
-    this.comp.attack.value = 0.005;
-    this.comp.release.value = 0.2;
+    this.comp.attack.value = 0.006;
+    this.comp.release.value = 0.25;
     this.master = ctx.createGain();
     this.sfx = ctx.createGain();
     this.musicBus = ctx.createGain();
     this.musicFilter = ctx.createBiquadFilter();
     this.musicFilter.type = 'lowpass';
     this.musicFilter.frequency.value = 18000;
-    this.musicBus.connect(this.musicFilter).connect(this.master);
+    this.musicDuck = ctx.createGain();
+    this.musicBus.connect(this.musicFilter).connect(this.musicDuck).connect(this.master);
     this.sfx.connect(this.master);
-    this.master.connect(this.comp).connect(ctx.destination);
+    this.buildOutput(ctx);
     // Two seconds of white noise, shared by every noise voice.
     const len = ctx.sampleRate * 2;
     this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -101,6 +111,8 @@ export class AudioEngine {
       d[i] = w * 0.7 + b * 1.6;
     }
     this.setVolumes(this.volumes.master, this.volumes.music, this.volumes.sfx);
+    this.voice = new VoiceBank(ctx, this.sfx, this.noiseBuf);
+    this.watchResume();
   }
 
   private analyser: AnalyserNode | null = null;
@@ -112,7 +124,7 @@ export class AudioEngine {
     if (!this.analyser) {
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 2048;
-      this.comp.connect(this.analyser);
+      this.clipper.connect(this.analyser);
       this.meterBuf = new Float32Array(this.analyser.fftSize);
     }
     this.analyser.getFloatTimeDomainData(this.meterBuf!);
@@ -122,7 +134,7 @@ export class AudioEngine {
       s += v * v;
       p = Math.max(p, Math.abs(v));
     }
-    return { rms: Math.sqrt(s / this.meterBuf!.length), peak: p, state: this.ctx.state };
+    return { rms: Math.sqrt(s / this.meterBuf!.length), peak: p, state: this.ctx.state, reduction: this.comp.reduction + this.limiter.reduction };
   }
 
   get ready() {
@@ -377,21 +389,26 @@ export class AudioEngine {
     this.burst(1.2, 'lowpass', 900, 0.25 * s, 0.3, 0.05, 120, 0.5);
   }
 
+  /** Menu / UI sound level (0..1), separate from gameplay SFX. */
+  uiVolume = 1;
+
   click(kind: 'move' | 'select' | 'back' | 'deny' = 'move') {
-    if (!this.ctx) return;
+    if (!this.ctx || this.uiVolume <= 0) return;
+    const u = this.uiVolume;
     const now = performance.now();
     if (kind === 'move' && now - this.lastClick < 40) return;
     this.lastClick = now;
-    if (kind === 'move') this.tone(1800, 0.04, 'square', 0.025);
+    if (kind === 'move') this.tone(1800, 0.04, 'square', 0.025 * u);
     else if (kind === 'select') {
-      this.tone(880, 0.06, 'square', 0.05);
-      this.tone(1320, 0.1, 'square', 0.04, 0.05);
-    } else if (kind === 'back') this.tone(600, 0.08, 'triangle', 0.06, 0, 0, 380);
-    else this.tone(160, 0.18, 'sawtooth', 0.06);
+      this.tone(880, 0.06, 'square', 0.05 * u);
+      this.tone(1320, 0.1, 'square', 0.04 * u, 0.05);
+      this.voice?.confirm(0.45 * u);
+    } else if (kind === 'back') this.tone(600, 0.08, 'triangle', 0.06 * u, 0, 0, 380);
+    else this.tone(160, 0.18, 'sawtooth', 0.06 * u);
   }
 
   unlockSting() {
-    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.07, i * 0.07));
+    [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.07 * this.uiVolume, i * 0.07));
   }
 
   /** Podium / trophy: a short brass-ish fanfare (bigger for the cup trophy). */
@@ -454,6 +471,7 @@ export class AudioEngine {
     const pan = d > 0.5 ? clamp((dx * L.rx + dz * L.rz) / d, -0.85, 0.85) : 0;
     const att = isPlayer ? 1 : clamp01(1 - d / 120);
     if (att <= 0.01 && e.racer >= 0) return;
+    this.reactExtras(e, isPlayer, att, pan);
     switch (e.type) {
       case 'splash':
         this.burst(0.5 + e.value * 0.4, 'bandpass', 1200, (0.08 + e.value * 0.2) * att, pan, 0, 300);
@@ -576,6 +594,119 @@ export class AudioEngine {
         break;
       case 'weatherShift':
         this.tone(80, 2.5, 'sine', 0.12, 0, 0, 55);
+        break;
+    }
+  }
+
+  // ── Mix polish, ducking and character voices ──────────────────────────────
+  // Kept apart from the SFX switch above so item/SFX edits there don't collide.
+
+  /** master → glue compressor → limiter → soft clipper → destination. */
+  private buildOutput(ctx: AudioContext) {
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -3;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.001;
+    this.limiter.release.value = 0.12;
+    // Linear to 0.7, then a tanh knee that never exceeds 0.98: no hard clipping.
+    this.clipper = ctx.createWaveShaper();
+    const n = 2048;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1;
+      const a = Math.abs(x);
+      const y = a <= 0.7 ? a : 0.7 + 0.28 * Math.tanh((a - 0.7) / 0.28);
+      curve[i] = Math.sign(x) * y;
+    }
+    this.clipper.curve = curve;
+    this.clipper.oversample = '2x';
+    this.master.connect(this.comp).connect(this.limiter).connect(this.clipper).connect(ctx.destination);
+  }
+
+  /** Resume the context whenever it is suspended/interrupted and the user interacts again. */
+  private watchResume() {
+    const again = () => this.resume();
+    window.addEventListener('pointerdown', again, true);
+    window.addEventListener('keydown', again, true);
+    window.addEventListener('touchend', again, true);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) again();
+    });
+  }
+
+  private resume() {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    ctx.resume().catch(() => {});
+  }
+
+  /** Dip the music by `depth` (0..1) for `hold` seconds, then recover smoothly. */
+  duck(depth: number, hold: number) {
+    if (!this.ctx) return;
+    const g = this.musicDuck.gain;
+    const t = this.ctx.currentTime;
+    const target = 1 - clamp01(depth);
+    const cur = g.value;
+    if (cur <= target + 0.02) return; // already ducked at least this far
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(cur, t);
+    g.setTargetAtTime(target, t, 0.015);
+    g.setTargetAtTime(1, t + hold, 0.3);
+  }
+
+  /** Voice chirps and ducking for simulation events. */
+  private reactExtras(e: GameEvent, isPlayer: boolean, att: number, pan: number) {
+    const v = this.voice;
+    switch (e.type) {
+      case 'itemPickup':
+        if (isPlayer) v?.pickup(e.racer);
+        break;
+      case 'itemHit':
+        if (e.racer >= 0) v?.hit(e.racer, isPlayer ? 1 : att * 0.7, isPlayer ? 0 : pan);
+        if (isPlayer || att > 0.6) this.duck(0.4 * (isPlayer ? 1 : att), 0.45);
+        break;
+      case 'collide':
+        if (e.text === 'mine') {
+          this.duck(0.55, 0.7);
+          if (isPlayer) v?.hit(e.racer);
+        } else if (isPlayer && e.value > 0.6) {
+          this.duck(0.3 * e.value, 0.3);
+          if (e.value > 0.85) v?.hit(e.racer, 0.8);
+        }
+        break;
+      case 'wipeout':
+        if (isPlayer) {
+          v?.hit(e.racer);
+          this.duck(0.35, 0.6);
+        }
+        break;
+      case 'itemUse':
+        if (e.text === 'wave' && att > 0.4) this.duck(0.35 * att, 0.6);
+        break;
+      case 'trick':
+        if (isPlayer) v?.excited(e.racer);
+        break;
+      case 'overtake':
+        v?.excited(0, e.value === 1);
+        break;
+      case 'perfectStart':
+        v?.hup(0);
+        break;
+      case 'countdown':
+        if (e.value === 0) v?.go(0);
+        break;
+      case 'finalLap':
+        if (isPlayer) v?.callout(0);
+        break;
+      case 'wrongWay':
+      case 'falseStart':
+        if (isPlayer) v?.warn(0);
+        break;
+      case 'finish':
+        if (isPlayer) v?.finish(e.racer, e.value);
+        break;
+      default:
         break;
     }
   }

@@ -63,7 +63,8 @@ uniform vec3 uColor;
 varying vec2 vUv;
 void main() {
   // Chevrons scrolling forward.
-  float y = vUv.y * 4.0 - uTime * 2.2 - abs(vUv.x - 0.5) * 2.0;
+  // Centre leads, edges trail: the chevron tip points the way to go.
+  float y = vUv.y * 4.0 - uTime * 2.2 + abs(vUv.x - 0.5) * 2.0;
   float chev = smoothstep(0.45, 0.55, fract(y)) * (1.0 - smoothstep(0.75, 0.85, fract(y)));
   float edge = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x) * smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.95, vUv.y);
   float border = 1.0 - smoothstep(0.0, 0.07, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
@@ -98,7 +99,8 @@ varying float vEdge;
 varying float vDist;
 void main() {
   // Chevrons flowing along the line, with a dark rim so they read on any water.
-  float arrow = fract(vS / 7.0 - uTime * 0.6 - abs(vEdge) * 0.35);
+  // Centre leads, edges trail: the chevron tip points along the race direction.
+  float arrow = fract(vS / 7.0 - uTime * 0.6 + abs(vEdge) * 0.35);
   float body = smoothstep(0.02, 0.1, arrow) * (1.0 - smoothstep(0.32, 0.4, arrow));
   float rim = smoothstep(0.0, 0.04, arrow) * (1.0 - smoothstep(0.4, 0.46, arrow));
   float side = 1.0 - smoothstep(0.75, 1.0, abs(vEdge));

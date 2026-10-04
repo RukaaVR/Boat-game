@@ -111,6 +111,112 @@ void main() {
 }
 `;
 
+const swirlVert = /* glsl */ `
+${WAVE_GLSL}
+attribute vec2 aLocal;
+varying vec2 vL;
+void main() {
+  vL = aLocal;
+  vec3 p = oceanAtWorld(position.xz, uTime);
+  // Dish the surface toward the eye.
+  p.y += 0.14 - (1.0 - smoothstep(0.0, 1.0, length(aLocal))) * 1.1;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}
+`;
+const swirlFrag = /* glsl */ `
+uniform float uTime;
+varying vec2 vL;
+void main() {
+  float r = length(vL);
+  float a = atan(vL.y, vL.x);
+  // Four spiral arms winding in, turning counter-clockwise.
+  float arm = sin(a * 4.0 + log(r + 0.05) * 7.0 + uTime * 3.2);
+  float foam = smoothstep(0.55, 0.95, arm) * (1.0 - smoothstep(0.75, 1.0, r));
+  vec3 deep = vec3(0.02, 0.18, 0.38);
+  vec3 col = mix(deep, vec3(0.75, 0.95, 1.0), foam);
+  col = mix(vec3(0.0, 0.05, 0.14), col, smoothstep(0.0, 0.25, r));
+  float edge = 1.0 - smoothstep(0.8, 1.0, r);
+  gl_FragColor = vec4(col, edge * (0.55 + 0.4 * foam));
+  #include <colorspace_fragment>
+}
+`;
+
+const railVert = /* glsl */ `
+${WAVE_GLSL}
+attribute float aS;
+attribute float aH;
+attribute float aSide;
+varying float vS;
+varying float vH;
+varying float vSide;
+varying float vDist;
+void main() {
+  vS = aS;
+  vH = aH;
+  vSide = aSide;
+  vec3 p = oceanAtWorld(position.xz, uTime);
+  vDist = length(p.xz - cameraPosition.xz);
+  p.y += 0.25 + aH * 1.3;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}
+`;
+const railFrag = /* glsl */ `
+uniform float uTime;
+uniform vec3 uColA;
+uniform vec3 uColB;
+varying float vS;
+varying float vH;
+varying float vSide;
+varying float vDist;
+void main() {
+  vec3 base = mix(uColA, uColB, vSide);
+  // A bright core line with soft fringes, and light pulses racing along it.
+  float core = exp(-pow((vH - 0.55) * 7.0, 2.0));
+  float fringe = exp(-pow((vH - 0.55) * 2.6, 2.0)) * 0.35;
+  float pulse = pow(0.5 + 0.5 * sin(vS * 0.12 - uTime * 9.0), 8.0);
+  float seg = step(0.12, fract(vS / 6.0));
+  float fade = 1.0 - smoothstep(260.0, 520.0, vDist);
+  vec3 col = base * (core * (1.4 + pulse * 2.0) * seg + fringe) + vec3(1.0) * core * pulse * 0.6;
+  gl_FragColor = vec4(col * fade, 1.0);
+}
+`;
+const sheenVert = /* glsl */ `
+${WAVE_GLSL}
+attribute float aS;
+attribute float aU;
+attribute float aSide;
+varying float vS;
+varying float vU;
+varying float vSide;
+varying float vDist;
+void main() {
+  vS = aS;
+  vU = aU;
+  vSide = aSide;
+  vec3 p = oceanAtWorld(position.xz, uTime);
+  vDist = length(p.xz - cameraPosition.xz);
+  p.y += 0.1 + vDist * 0.006;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}
+`;
+const sheenFrag = /* glsl */ `
+uniform float uTime;
+uniform vec3 uColA;
+uniform vec3 uColB;
+varying float vS;
+varying float vU;
+varying float vSide;
+varying float vDist;
+void main() {
+  // Rail light reflected in the water: a glow band that shimmers with the swell.
+  vec3 base = mix(uColA, uColB, vSide);
+  float glow = exp(-vU * vU * 3.0);
+  float shimmer = 0.55 + 0.45 * sin(vS * 0.9 + vU * 6.0 - uTime * 2.4) * sin(vS * 0.37 + uTime * 1.3);
+  float fade = 1.0 - smoothstep(200.0, 420.0, vDist);
+  gl_FragColor = vec4(base * glow * shimmer * 0.55 * fade, 1.0);
+}
+`;
+
 export class CourseVisuals {
   readonly group = new Group();
   private buoyLod: LodInstances;
@@ -128,6 +234,9 @@ export class CourseVisuals {
   private lineMesh: Mesh | null = null;
   private disposables: { dispose(): void }[] = [];
   private frame = 0;
+  private swirlMat: ShaderMaterial | null = null;
+  private railMats: ShaderMaterial[] = [];
+  private hoopMat: MeshBasicMaterial | null = null;
 
   /** Colour-blind mode: a shape on top of each buoy (▲ left, ■ right, ◆ shortcut). */
   private marks: { mesh: InstancedMesh; slot: Int32Array }[] = [];
@@ -166,9 +275,13 @@ export class CourseVisuals {
     this.buoyX = new Float32Array(buoys.length);
     this.buoyZ = new Float32Array(buoys.length);
     const col = new Color();
+    const arena = track.arena;
+    const neonNight = track.def.look === 'neonnight';
+    const ARENA_BUOYS = [0xff3b5c, 0xffd21e, 0x26c6ff, 0x5cd24a, 0xff8a1e, 0xb36bff];
+    const buoyHex = (i: number, side: number) => (arena ? ARENA_BUOYS[i % ARENA_BUOYS.length] : side === 0 ? style.buoyLeft : side === 1 ? style.buoyRight : 0xffd21e);
     for (let i = 0; i < buoys.length; i++) {
       const side = buoys[i].side;
-      col.setHex(side === 0 ? style.buoyLeft : side === 1 ? style.buoyRight : 0xffd21e);
+      col.setHex(buoyHex(i, side));
       this.buoyLod.setColorAt(i, col);
       this.buoyX[i] = buoys[i].x;
       this.buoyZ[i] = buoys[i].z;
@@ -179,7 +292,7 @@ export class CourseVisuals {
     this.buoyLights = new InstancedMesh(lg, new MeshBasicMaterial({ color: 0xffffff, fog: true }), buoys.length);
     for (let i = 0; i < buoys.length; i++) {
       const side = buoys[i].side;
-      col.setHex(side === 0 ? style.buoyLeft : side === 1 ? style.buoyRight : 0xffd21e).multiplyScalar(1.6);
+      col.setHex(buoyHex(i, side)).multiplyScalar(1.6);
       this.buoyLights.setColorAt(i, col);
     }
     this.buoyLights.frustumCulled = false;
@@ -211,7 +324,9 @@ export class CourseVisuals {
     const half = track.width * 0.5 + 2.5;
     const lastGate = track.gates.length - 1;
     const gateKind = (i: number) => (i === 0 ? (track.sprint ? 'start' : 'startfinish') : track.sprint && i === lastGate ? 'finish' : 'cp');
-    for (const g of track.gates) {
+    // Arenas have no gates; the neon night course swaps checkpoint pylons for light hoops.
+    const gateList = arena ? [] : neonNight ? track.gates.filter((g) => gateKind(g.index) !== 'cp') : track.gates;
+    for (const g of gateList) {
       const start = gateKind(g.index) !== 'cp';
       for (const s of [-1, 1]) {
         const x = g.x - Math.cos(g.heading) * half * s;
@@ -227,17 +342,19 @@ export class CourseVisuals {
         gp.torus(2.45, 0.28, 0xffffff, { x, y: -0.2, z, rx: Math.PI / 2 });
       }
     }
-    const gGeo = gp.build();
-    const gates = new Mesh(gGeo, cel('gates', { vertexColors: true, gloss: 0.4 }));
-    gates.name = 'gates';
-    addOutline(gates, 1.8);
-    this.add(gates, gGeo);
+    if (!gp.empty) {
+      const gGeo = gp.build();
+      const gates = new Mesh(gGeo, cel('gates', { vertexColors: true, gloss: 0.4 }));
+      gates.name = 'gates';
+      addOutline(gates, 1.8);
+      this.add(gates, gGeo);
+    }
     for (const kind of ['startfinish', 'start', 'finish', 'cp'] as const) {
       const startOnly = kind !== 'cp';
       const pos: number[] = [];
       const uv: number[] = [];
       const idx: number[] = [];
-      for (const g of track.gates) {
+      for (const g of gateList) {
         if (gateKind(g.index) !== kind) continue;
         const base = pos.length / 3;
         const h0 = 10.2;
@@ -291,6 +408,9 @@ export class CourseVisuals {
     const hGeo = hg.build();
     this.gateHighlight = new Mesh(hGeo, new MeshBasicMaterial({ color: 0x26e8ff, transparent: true, opacity: 0.6, blending: AdditiveBlending, depthWrite: false, fog: false }));
     this.add(this.gateHighlight, hGeo);
+
+    if (track.whirlpools.length) this.buildWhirlpools();
+    if (neonNight) this.buildNeon();
 
     // ── Ramps ────────────────────────────────────────────────────────────────
     if (track.ramps.length) this.addRamps(track.ramps);
@@ -448,6 +568,129 @@ export class CourseVisuals {
       this.add(this.mineMesh, geo);
     }
     this.buildBottles();
+  }
+
+  /** Arena whirlpools: a dished, spiralling disc riding the waves. */
+  private buildWhirlpools() {
+    const pos: number[] = [];
+    const loc: number[] = [];
+    const idx: number[] = [];
+    const NR = 10;
+    const NA = 48;
+    for (const w of this.session.track.whirlpools) {
+      const base = pos.length / 3;
+      for (let i = 0; i <= NR; i++)
+        for (let j = 0; j <= NA; j++) {
+          const r = (i / NR) * 1.15;
+          const a = (j / NA) * Math.PI * 2;
+          const lx = Math.cos(a) * r;
+          const lz = Math.sin(a) * r;
+          pos.push(w.x + lx * w.r, 0, w.z + lz * w.r);
+          loc.push(lx, lz);
+        }
+      for (let i = 0; i < NR; i++)
+        for (let j = 0; j < NA; j++) {
+          const a = base + i * (NA + 1) + j;
+          const b = a + NA + 1;
+          idx.push(a, a + 1, b, a + 1, b + 1, b);
+        }
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+    geo.setAttribute('aLocal', new BufferAttribute(new Float32Array(loc), 2));
+    geo.setIndex(idx);
+    this.swirlMat = new ShaderMaterial({ uniforms: { ...waveUniforms }, vertexShader: swirlVert, fragmentShader: swirlFrag, transparent: true, depthWrite: false, side: DoubleSide });
+    const m = new Mesh(geo, this.swirlMat);
+    m.frustumCulled = false;
+    m.renderOrder = 2;
+    m.name = 'whirlpools';
+    this.add(m, geo, this.swirlMat);
+  }
+
+  /**
+   * Neon night: glowing light rails just outside both buoy lines (with their
+   * reflection shimmering on the water) and a floating light hoop at every
+   * checkpoint.
+   */
+  private buildNeon() {
+    const track = this.session.track;
+    const W = track.width;
+    const shortcutMouths: { x: number; z: number }[] = [];
+    for (const sc of track.shortcuts) shortcutMouths.push({ x: sc.pts[0], z: sc.pts[1] }, { x: sc.pts[sc.pts.length - 2], z: sc.pts[sc.pts.length - 1] });
+    const rail = { pos: [] as number[], s: [] as number[], h: [] as number[], side: [] as number[], idx: [] as number[] };
+    const sheen = { pos: [] as number[], s: [] as number[], u: [] as number[], side: [] as number[], idx: [] as number[] };
+    const step = 3;
+    for (const side of [-1, 1]) {
+      let run = -1;
+      for (let s = 0; s <= track.length; s += step) {
+        track.sample(s, _tp);
+        const lat = side * (W * 0.5 + 3);
+        const x = _tp.x - _tp.tz * lat;
+        const z = _tp.z + _tp.tx * lat;
+        const gap = shortcutMouths.some((m) => Math.hypot(m.x - x, m.z - z) < 26) || this.session.statics.blocked(x, z, 0.5);
+        if (gap) {
+          run = -1;
+          continue;
+        }
+        const sideF = side < 0 ? 0 : 1;
+        const rb = rail.pos.length / 3;
+        for (const hh of [0, 1]) {
+          rail.pos.push(x, 0, z);
+          rail.s.push(s);
+          rail.h.push(hh);
+          rail.side.push(sideF);
+        }
+        const sb = sheen.pos.length / 3;
+        for (const u of [-1, 1]) {
+          const l = lat + u * 5;
+          sheen.pos.push(_tp.x - _tp.tz * l, 0, _tp.z + _tp.tx * l);
+          sheen.s.push(s);
+          sheen.u.push(u);
+          sheen.side.push(sideF);
+        }
+        if (run >= 0) {
+          rail.idx.push(rb - 2, rb, rb - 1, rb - 1, rb, rb + 1);
+          sheen.idx.push(sb - 2, sb - 1, sb, sb - 1, sb + 1, sb);
+        }
+        run = rb;
+      }
+    }
+    const uniforms = () => ({ ...waveUniforms, uColA: { value: new Color(0xff2fa8) }, uColB: { value: new Color(0x26e8ff) } });
+    const mk = (d: typeof rail | typeof sheen, vs: string, fs: string, name: string, extra: [string, number[]][]) => {
+      const geo = new BufferGeometry();
+      geo.setAttribute('position', new BufferAttribute(new Float32Array(d.pos), 3));
+      geo.setAttribute('aS', new BufferAttribute(new Float32Array(d.s), 1));
+      geo.setAttribute('aSide', new BufferAttribute(new Float32Array(d.side), 1));
+      for (const [k, v] of extra) geo.setAttribute(k, new BufferAttribute(new Float32Array(v), 1));
+      geo.setIndex(d.idx);
+      const mat = new ShaderMaterial({ uniforms: uniforms(), vertexShader: vs, fragmentShader: fs, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide });
+      const m = new Mesh(geo, mat);
+      m.frustumCulled = false;
+      m.renderOrder = 3;
+      m.name = name;
+      this.railMats.push(mat);
+      this.add(m, geo, mat);
+    };
+    mk(rail, railVert, railFrag, 'neonRails', [['aH', rail.h]]);
+    mk(sheen, sheenVert, sheenFrag, 'neonSheen', [['aU', sheen.u]]);
+
+    // Checkpoint hoops: a bright tube ring with a soft halo, half above the sea.
+    const hb = new GeoBuilder();
+    const R = W * 0.5 + 2;
+    const HOOP = [0xff2fa8, 0x26e8ff, 0xb36bff, 0xffd21e];
+    for (const g of track.gates) {
+      if (g.index === 0) continue;
+      const c = HOOP[g.index % HOOP.length];
+      hb.add(new TorusGeometry(R, 0.55, 8, 112), c, { x: g.x, y: -R * 0.25, z: g.z, ry: g.heading });
+      hb.add(new TorusGeometry(R + 1.6, 0.2, 6, 112), 0xffffff, { x: g.x, y: -R * 0.25, z: g.z, ry: g.heading });
+    }
+    if (!hb.empty) {
+      const geo = hb.build();
+      this.hoopMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, blending: AdditiveBlending, depthWrite: false, fog: false });
+      const m = new Mesh(geo, this.hoopMat);
+      m.name = 'neonHoops';
+      this.add(m, geo, this.hoopMat);
+    }
   }
 
   private buildBottles() {
@@ -625,6 +868,8 @@ export class CourseVisuals {
       this.gateHighlight.rotation.y = g.heading;
       (this.gateHighlight.material as MeshBasicMaterial).opacity = 0.35 + 0.25 * Math.sin(time * 6);
     }
+
+    if (this.hoopMat) this.hoopMat.opacity = 0.75 + 0.25 * Math.sin(time * 3.1);
 
     if (this.ringMesh) {
       const rings = s.rings;

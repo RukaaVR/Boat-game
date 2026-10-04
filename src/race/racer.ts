@@ -51,6 +51,15 @@ export class Racer {
   /** Seconds before the held item can be pressed again (golden surge spam guard). */
   itemCooldown = 0;
   itemHits = 0;
+  /** Battle rules: lives left (balloons), points (hits landed), hits taken, out of the fight. */
+  lives = 0;
+  battleScore = 0;
+  timesHit = 0;
+  eliminated = false;
+  /** Order of elimination (1 = first out). */
+  outOrder = 0;
+  /** Seconds of grace after losing a life. */
+  hitCooldown = 0;
   /** Checkpoint respawn location. */
   respawnS = 0;
 

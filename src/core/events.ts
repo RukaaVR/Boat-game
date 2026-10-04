@@ -40,7 +40,8 @@ export type GameEventType =
   | 'itemLock' // seeker lock beep on racer; value = urgency 0..1, text = 'start' on first lock
   | 'itemMiss' // text = 'dodge' (target evaded a seeker) or 'miss' (owner's shot expired)
   | 'collectible' // hidden bottle found; value = index
-  | 'weatherShift'; // mid-race weather change; text = new weather id
+  | 'weatherShift' // mid-race weather change; text = new weather id
+  | 'eliminated'; // battle: racer lost their last life
 
 export interface GameEvent {
   type: GameEventType;

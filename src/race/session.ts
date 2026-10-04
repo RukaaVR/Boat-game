@@ -29,6 +29,25 @@ import type { Boat } from '../boat/boat';
 
 export type Phase = 'intro' | 'countdown' | 'racing' | 'finished' | 'results';
 
+/** Battle-mode rule sets. */
+export type BattleRule = 'timed' | 'balloons' | 'score';
+export interface BattleRuleDef {
+  name: string;
+  blurb: string;
+  /** Time limit (s). */
+  time: number;
+  /** Lives per boat (0 = unlimited). */
+  lives: number;
+  /** Points to win (0 = none). */
+  target: number;
+}
+export const BATTLE_RULES: Record<BattleRule, BattleRuleDef> = {
+  timed: { name: 'TIMED', blurb: 'Most hits in 3:00 wins', time: 180, lives: 0, target: 0 },
+  balloons: { name: 'BALLOONS', blurb: '3 lives each, lose one per hit. Last boat floating wins', time: 240, lives: 3, target: 0 },
+  score: { name: 'SCORE', blurb: 'First to 5 hits wins', time: 240, lives: 0, target: 5 },
+};
+export const BATTLE_RULE_IDS: BattleRule[] = ['balloons', 'timed', 'score'];
+
 export interface GhostData {
   trackId: string;
   boatId: string;
@@ -75,6 +94,8 @@ export interface SessionConfig {
   player2?: { name: string; boat: BoatId; livery: Livery; look?: RiderLook };
   /** The player's chosen rider look. */
   playerLook?: RiderLook;
+  /** Battle mode rule set (default TIMED). */
+  battleRule?: BattleRule;
 }
 
 /** Per-event player counters (achievements, challenges). */
@@ -118,6 +139,8 @@ export interface ResultRow {
   bestLap: number;
   finished: boolean;
   isPlayer: boolean;
+  /** Battle: the score line for this boat (hits, lives...). */
+  battle?: string;
 }
 
 const INTRO_TIME = 3.2;
@@ -131,6 +154,7 @@ const COUNT_TIME = 3.0;
 
 const _proj: Projection = { s: 0, index: -1, lateral: 0, dist: 0, shortcut: -1 };
 const _tp: TrackPoint = { x: 0, z: 0, tx: 0, tz: 1, heading: 0 };
+const _seek = { x: 0, z: 0 };
 
 export class RaceSession {
   readonly cfg: SessionConfig;
@@ -176,6 +200,17 @@ export class RaceSession {
   results: ResultRow[] = [];
   /** Item boxes and power-ups (battle mode, or races with items on). */
   readonly items: BattleItems | null;
+  /** Battle rule set (battle mode only). */
+  readonly battleRule: BattleRule | null;
+  battleTimeLeft = 0;
+  /** Boats still in the fight (battle); everyone otherwise. */
+  private fighters: Racer[] = [];
+  private eliminations = 0;
+  private prevHits: number[] = [];
+  /** Static obstacles the arena AI steers round (platforms, rocks, whirlpools). */
+  private arenaObstacles: { x: number; z: number; r: number }[] = [];
+  /** Sea-state multiplier of this course. */
+  private seaMul: number;
   readonly traffic: Traffic | null;
   /** Obstacles the AI steers around (rebuilt each step, no allocation). */
   private obstacles: { x: number; z: number; r: number }[] = [];
@@ -212,7 +247,8 @@ export class RaceSession {
     for (const c of this.layout.colliders) this.statics.add(c);
     // Gate pylons are solid.
     const half = this.track.width * 0.5 + 2.5;
-    for (const g of this.track.gates)
+    if (!this.track.arena)
+      for (const g of this.track.gates)
       for (const side of [-1, 1]) this.statics.add({ x: g.x - Math.cos(g.heading) * half * side, z: g.z + Math.sin(g.heading) * half * side, r: 1.8, kind: 'pile' });
     this.buoys = this.layout.buoys;
     this.bottles = this.layout.bottles.map((b, i) => ({ ...b, found: !!((cfg.bottlesFound ?? 0) & (1 << i)) }));
@@ -220,12 +256,14 @@ export class RaceSession {
     this.rng = new Rng(def.seed + 99);
 
     const racing = cfg.mode === 'quick' || cfg.mode === 'championship' || cfg.mode === 'battle' || cfg.mode === 'career';
-    this.totalLaps = cfg.mode === 'timetrial' ? cfg.laps : cfg.mode === 'freeride' || cfg.mode === 'stunt' || cfg.mode === 'endless' || cfg.mode === 'tutorial' ? 0 : cfg.laps;
+    this.totalLaps = cfg.mode === 'timetrial' ? cfg.laps : cfg.mode === 'freeride' || cfg.mode === 'stunt' || cfg.mode === 'endless' || cfg.mode === 'tutorial' || cfg.mode === 'battle' ? 0 : cfg.laps;
+    this.battleRule = cfg.mode === 'battle' ? (cfg.battleRule ?? 'timed') : null;
 
     // Weather → sea.
     const w = WEATHER[cfg.weather];
-    this.baseSea = w.sea;
-    setSeaState(w.sea, w.chop);
+    this.seaMul = def.sea ?? 1;
+    this.baseSea = w.sea * this.seaMul;
+    setSeaState(this.baseSea, w.chop);
     // A point-to-point sprint is always exactly one run.
     if (this.track.sprint && this.totalLaps > 0) (this as { totalLaps: number }).totalLaps = 1;
     const zones: SwellZone[] = this.track.swells.map((z) => ({ ...z, gain: z.gain * (cfg.weather === 'storm' ? 1.0 : 0.85) }));
@@ -267,7 +305,17 @@ export class RaceSession {
     this.player.points = cfg.champPoints?.[0] ?? 0;
     this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
     this.items = cfg.mode === 'battle' || (cfg.items && racing) ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
-    this.traffic = cfg.traffic ? new Traffic(this.track, this.statics, events, def.seed + 3, 2) : null;
+    this.fighters = this.racers.slice();
+    if (this.battleRule) {
+      const rule = BATTLE_RULES[this.battleRule];
+      this.battleTimeLeft = rule.time;
+      for (const r of this.racers) r.lives = rule.lives;
+    }
+    if (this.track.arena) {
+      for (const c of this.layout.colliders) if (c.kind !== 'island' && c.r < 10 && Math.hypot(c.x, c.z) < 200) this.arenaObstacles.push({ x: c.x, z: c.z, r: c.r + 1 });
+      for (const w of this.track.whirlpools) this.arenaObstacles.push({ x: w.x, z: w.z, r: w.r * 0.6 });
+    }
+    this.traffic = cfg.traffic && !this.track.arena ? new Traffic(this.track, this.statics, events, def.seed + 3, 2) : null;
     if (cfg.dynamicWeather) {
       const next: Record<WeatherId, WeatherId[]> = { clear: ['storm', 'sunset'], sunset: ['night', 'storm'], storm: ['clear', 'sunset'], night: ['storm', 'clear'] };
       const opts = next[cfg.weather];
@@ -365,6 +413,7 @@ export class RaceSession {
     };
     if (this.traffic) for (const t of this.traffic.boats) put(t.x, t.z, t.r + 1.5);
     for (const m of this.mines) if (m.active) put(m.x, m.z, 2.4);
+    for (const o of this.arenaObstacles) put(o.x, o.z, o.r);
     if (this.items) for (const sl of this.items.slicks) if (sl.alive) put(sl.x, sl.z, sl.r);
     ob.length = no;
 
@@ -375,6 +424,12 @@ export class RaceSession {
     this.view.totalLaps = this.totalLaps;
     for (const r of this.racers) {
       const b = r.boat;
+      if (r.eliminated) {
+        r.controls.throttle = 0;
+        r.controls.boost = false;
+        r.controls.item = false;
+        continue;
+      }
       if (!moving) {
         b.holdTime = Math.max(b.holdTime, 0.05);
         if (r.ai) {
@@ -386,7 +441,10 @@ export class RaceSession {
       if (drive && !(r.ai && this.raceTime < r.reaction && this.phase === 'racing')) {
         this.view.myDistance = r.raceDist;
         this.view.lap = r.lap;
+        this.view.seek = r.ai && this.battleRule && this.phase === 'racing' ? this.battleSeek(r) : null;
+        this.view.free = this.track.arena;
         drive.update(b, r.controls, this.track, this.view, dt);
+        this.view.seek = null;
         if (r.finished && r.ai) r.controls.boost = false;
         if (r.finished && this.track.sprint) {
           // Past a sprint finish: coast to a stop before the barrier.
@@ -395,7 +453,7 @@ export class RaceSession {
           r.controls.boost = false;
           r.controls.drift = false;
         }
-        if (r.ai && this.items) this.items.aiDecide(r, this.racers, dt);
+        if (r.ai && this.items) this.items.aiDecide(r, this.fighters, dt);
         if (r.ai && this.aiFrozen) {
           r.controls.throttle = 0;
           r.controls.boost = false;
@@ -417,7 +475,13 @@ export class RaceSession {
       resolveCollisions(this.collHost, h);
     }
 
-    if (this.items) this.items.update(dt, this.racers, this.phase === 'racing');
+    if (this.items) {
+      const mark = this.events.list.length;
+      for (let i = 0; i < this.racers.length; i++) this.prevHits[i] = this.racers[i].itemHits;
+      this.items.update(dt, this.fighters, this.phase === 'racing');
+      if (this.battleRule) this.battleHits(mark);
+    }
+    if (this.track.whirlpools.length) this.applyWhirlpools(dt);
     if (this.traffic) this.traffic.update(dt, this.racers);
     for (const r of this.racers) {
       const b = r.boat;
@@ -494,6 +558,7 @@ export class RaceSession {
     const counting = this.phase === 'racing' || this.phase === 'finished' || this.phase === 'results';
     for (const r of this.racers) {
       const b = r.boat;
+      if (r.eliminated) continue;
       this.track.project(b.position.x, b.position.z, r.hint, _proj);
       let ds = _proj.s - r.s;
       if (ds > L / 2) ds -= L;
@@ -567,7 +632,8 @@ export class RaceSession {
       const fx = Math.sin(b.heading);
       const fz = Math.cos(b.heading);
       const facing = fx * _tp.tx + fz * _tp.tz;
-      const against = (facing < -0.35 && b.speed > 3) || r.maxRaceDist - r.raceDist > 25;
+      // An arena has no wrong way.
+      const against = !this.track.arena && ((facing < -0.35 && b.speed > 3) || r.maxRaceDist - r.raceDist > 25);
       r.wrongT = against ? r.wrongT + dt : Math.max(0, r.wrongT - dt * 2);
       const wasWrong = r.wrongWay;
       r.wrongWay = r.wrongT > 0.9 && _proj.shortcut < 0;
@@ -586,7 +652,7 @@ export class RaceSession {
 
     // Standings.
     const order = this.order;
-    order.sort(byStanding);
+    order.sort(this.battleRule ? this.byBattle : byStanding);
     for (let i = 0; i < order.length; i++) order[i].place = i + 1;
     const pp = this.player.place;
     if (this.isRace && this.phase === 'racing' && this.lastPlace > 0 && pp < this.lastPlace) this.events.push('overtake', 0, 0, 0, 0, pp);
@@ -692,6 +758,7 @@ export class RaceSession {
       }
     }
     if (this.phase !== 'racing') return;
+    if (this.battleRule) this.updateBattle(dt);
     if (this.mode === 'stunt') {
       this.stuntTimeLeft -= dt;
       if (this.stuntTimeLeft <= 0) {
@@ -727,8 +794,8 @@ export class RaceSession {
   /** Re-derive the sea from a weather preset (mid-race weather change). */
   applyWeatherSea(w: WeatherId) {
     const p = WEATHER[w];
-    this.baseSea = p.sea;
-    setSeaState(p.sea, p.chop);
+    this.baseSea = p.sea * this.seaMul;
+    setSeaState(this.baseSea, p.chop);
     const zones: SwellZone[] = this.track.swells.map((z) => ({ ...z, gain: z.gain * (w === 'storm' ? 1.0 : 0.85) }));
     setSwellZones(zones);
   }
@@ -854,7 +921,7 @@ export class RaceSession {
       wp.done = true;
       const from = WEATHER[this.cfg.weather];
       const to = WEATHER[wp.to];
-      this.seaBlend = { from: from.sea, fromChop: from.chop, to: to.sea, toChop: to.chop, t: 0 };
+      this.seaBlend = { from: from.sea * this.seaMul, fromChop: from.chop, to: to.sea * this.seaMul, toChop: to.chop, t: 0 };
       this.cfg.weather = wp.to;
       this.events.push('weatherShift', -1, 0, 0, 0, 0, wp.to);
     }
@@ -900,6 +967,21 @@ export class RaceSession {
   }
 
   buildResults() {
+    if (this.battleRule) {
+      const rule = BATTLE_RULES[this.battleRule];
+      this.results = this.order.map((r) => ({
+        id: r.id,
+        name: r.name,
+        boat: r.boat.spec.name,
+        place: r.place,
+        time: r.eliminated ? r.finishTime : this.raceTime,
+        bestLap: Infinity,
+        finished: true,
+        isPlayer: r.isPlayer,
+        battle: rule.lives ? (r.eliminated ? `OUT · ${r.battleScore} HITS` : `${'\u2665'.repeat(Math.max(0, r.lives))} · ${r.battleScore} HITS`) : rule.target ? `${r.battleScore} / ${rule.target} PTS` : `${r.battleScore} HITS · HIT ${r.timesHit}\u00d7`,
+      }));
+      return;
+    }
     // Unfinished racers are ranked by distance and given an estimated time.
     const avgSpeed = (r: Racer) => Math.max(8, r.raceDist / Math.max(1, this.raceTime));
     const totalDist = this.totalLaps * this.track.lapLength;
@@ -913,6 +995,167 @@ export class RaceSession {
       finished: r.finished,
       isPlayer: r.isPlayer,
     }));
+  }
+
+  // ── Battle rules ───────────────────────────────────────────────────────────
+  /** Battle standings for the current rule. */
+  private byBattle = (a: Racer, b: Racer) => {
+    if (this.battleRule === 'balloons') {
+      if (a.eliminated !== b.eliminated) return a.eliminated ? 1 : -1;
+      if (a.eliminated) return b.outOrder - a.outOrder;
+      if (a.lives !== b.lives) return b.lives - a.lives;
+    }
+    if (a.battleScore !== b.battleScore) return b.battleScore - a.battleScore;
+    if (a.timesHit !== b.timesHit) return a.timesHit - b.timesHit;
+    return a.id - b.id;
+  };
+
+  /** Credit hits landed and charge hits taken (lives) from this frame's item events. */
+  private battleHits(mark: number) {
+    const racing = this.phase === 'racing';
+    for (let i = 0; i < this.racers.length; i++) {
+      const r = this.racers[i];
+      const d = r.itemHits - (this.prevHits[i] ?? r.itemHits);
+      if (d > 0 && racing) r.battleScore += d;
+    }
+    if (!racing) return;
+    const lives = BATTLE_RULES[this.battleRule!].lives;
+    const list = this.events.list;
+    for (let i = mark; i < list.length; i++) {
+      const e = list[i];
+      if (e.type !== 'itemHit' || e.racer < 0) continue;
+      const v = this.racers[e.racer];
+      if (!v || v.eliminated || v.hitCooldown > 0) continue;
+      v.hitCooldown = 1.2;
+      v.timesHit++;
+      if (lives) {
+        v.lives--;
+        if (v.lives <= 0) this.eliminate(v);
+      }
+    }
+  }
+
+  private eliminate(r: Racer) {
+    const b = r.boat;
+    r.eliminated = true;
+    r.outOrder = ++this.eliminations;
+    r.finished = true;
+    r.finishTime = this.raceTime;
+    r.item = null;
+    this.events.push('eliminated', r.id, b.position.x, b.position.y, b.position.z, this.fighters.length - 1);
+    // Out of the fight: parked far outside the arena, hidden by the renderer.
+    b.place(20000 + r.id * 60, 20000, 0);
+    settleBoat(b, this.time);
+    b.velocity.set(0, 0, 0);
+    b.holdTime = 1e9;
+    b.boostTime = 0;
+    const i = this.fighters.indexOf(r);
+    if (i >= 0) this.fighters.splice(i, 1);
+  }
+
+  private updateBattle(dt: number) {
+    const rule = BATTLE_RULES[this.battleRule!];
+    for (const r of this.racers) r.hitCooldown = Math.max(0, r.hitCooldown - dt);
+    this.battleTimeLeft = Math.max(0, this.battleTimeLeft - dt);
+    let over = this.battleTimeLeft <= 0;
+    if (rule.target && this.fighters.some((r) => r.battleScore >= rule.target)) over = true;
+    if (rule.lives && (this.fighters.length <= 1 || this.humans.some((h) => h.eliminated))) over = true;
+    if (!over) return;
+    this.order.sort(this.byBattle);
+    for (let i = 0; i < this.order.length; i++) this.order[i].place = i + 1;
+    for (const r of this.racers) {
+      if (r.finished) continue;
+      r.finished = true;
+      r.finishTime = this.raceTime;
+    }
+    const p = this.player;
+    this.events.push('finish', p.id, p.boat.position.x, p.boat.position.y, p.boat.position.z, p.place);
+    this.onPlayerFinish();
+  }
+
+  /** Arena whirlpools: swirl boats round and drag them in; the eye spins them out. */
+  private applyWhirlpools(dt: number) {
+    for (const w of this.track.whirlpools) {
+      for (const r of this.racers) {
+        const b = r.boat;
+        if (r.eliminated || b.airborne) continue;
+        const dx = b.position.x - w.x;
+        const dz = b.position.z - w.z;
+        const d = Math.hypot(dx, dz);
+        if (d > w.r || d < 1e-3) continue;
+        const k = 1 - d / w.r;
+        const nx = dx / d;
+        const nz = dz / d;
+        // Counter-clockwise swirl + inward pull, strongest near the eye.
+        b.velocity.x += (-nz * 14 * k - nx * 9 * k) * dt;
+        b.velocity.z += (nx * 14 * k - nz * 9 * k) * dt;
+        b.yawRate += 1.6 * k * dt;
+        if (d < w.r * 0.22 && b.wipeout <= 0 && b.ghostTime <= 0) {
+          b.wipeout = 0.8;
+          b.yawRate += 6;
+          b.velocity.x += nx * 10 - nz * 8;
+          b.velocity.z += nz * 10 + nx * 8;
+          this.events.push('splash', r.id, b.position.x, b.position.y, b.position.z, 1);
+        }
+      }
+    }
+  }
+
+  /** Where a battle AI wants to go: an item box when empty-handed, a rival when armed. */
+  private battleSeek(r: Racer): { x: number; z: number } | null {
+    const items = this.items;
+    if (!items) return null;
+    const b = r.boat;
+    const fx = Math.sin(b.heading);
+    const fz = Math.cos(b.heading);
+    const free = this.track.arena;
+    let best = Infinity;
+    let found = false;
+    if (!r.item) {
+      for (const box of items.boxes) {
+        if (box.respawn > 0.8) continue;
+        const dx = box.x - b.position.x;
+        const dz = box.z - b.position.z;
+        const d = Math.hypot(dx, dz);
+        const ahead = (dx * fx + dz * fz) / (d || 1);
+        if (!free && (d > 90 || ahead < 0.5)) continue;
+        if (free && d > 260) continue;
+        const cost = d + (ahead < 0 ? 45 : ahead < 0.5 ? 15 : 0) + (box.respawn > 0 ? 25 : 0);
+        if (cost < best) {
+          best = cost;
+          _seek.x = box.x;
+          _seek.z = box.z;
+          found = true;
+        }
+      }
+      return found ? _seek : null;
+    }
+    if (r.item === 'oil' || r.item === 'turbo') return null;
+    for (const o of this.fighters) {
+      if (o === r) continue;
+      const ob = o.boat;
+      const dx = ob.position.x - b.position.x;
+      const dz = ob.position.z - b.position.z;
+      const d = Math.hypot(dx, dz);
+      const ahead = (dx * fx + dz * fz) / (d || 1);
+      if (!free && (d > 70 || ahead < 0.6)) continue;
+      if (free && d > 230) continue;
+      const cost = d + (ahead < 0 ? 40 : 0) - (o.isPlayer ? 10 * (r.ai?.p.aggression ?? 0) : 0);
+      if (cost < best) {
+        best = cost;
+        // Lead the target a little.
+        const lead = Math.min(1, d / 55);
+        _seek.x = ob.position.x + ob.velocity.x * lead;
+        _seek.z = ob.position.z + ob.velocity.z * lead;
+        found = true;
+      }
+    }
+    return found ? _seek : null;
+  }
+
+  /** Boats still in the fight (battle). */
+  get activeFighters(): readonly Racer[] {
+    return this.fighters;
   }
 
   /** Ghost pose at race-lap time t (for time trial). Returns false if out of range. */

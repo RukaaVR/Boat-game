@@ -128,9 +128,10 @@ export class BattleItems {
     seed: number,
   ) {
     this.rng = new Rng(seed);
-    // Four rows of boxes per lap, staggered across the course.
+    // Four rows of boxes per lap, staggered across the course (arenas scatter them instead).
     const L = track.length;
-    for (let k = 0; k < 4; k++) {
+    if (track.arena) placeArenaBoxes(track, statics, this.boxes);
+    else for (let k = 0; k < 4; k++) {
       const s = L * ((k + 0.3) / 4);
       track.sample(s, _tp);
       const w = track.width * 0.7;
@@ -655,5 +656,28 @@ export class BattleItems {
     // Item is edge-triggered: release between presses.
     if (fire && this.prevItem.get(r.id)) fire = false;
     r.controls.item = fire;
+  }
+}
+
+/** Battle arena: concentric rings of boxes across the whole lagoon, plus a ring out in the moat. */
+function placeArenaBoxes(track: Track, statics: StaticWorld, out: ItemBox[]) {
+  const rings: [number, number][] = [
+    [0, 1],
+    [30, 6],
+    [70, 10],
+    [116, 14],
+    [160, 16],
+    [284, 14],
+  ];
+  for (const [R, n] of rings) {
+    for (let j = 0; j < n; j++) {
+      const a = (j / n) * Math.PI * 2 + R * 0.013;
+      const x = Math.cos(a) * R;
+      const z = Math.sin(a) * R;
+      if (statics.blocked(x, z, 3)) continue;
+      if (track.ramps.some((r) => Math.hypot(r.x - x, r.z - z) < 20)) continue;
+      if (track.whirlpools.some((w) => Math.hypot(w.x - x, w.z - z) < w.r + 3)) continue;
+      out.push({ x, z, respawn: 0 });
+    }
   }
 }

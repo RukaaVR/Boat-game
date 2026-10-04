@@ -8,6 +8,7 @@ import { Vector3, type Camera } from 'three';
 import type { GameEvent } from '../core/events';
 import type { RaceSession } from '../race/session';
 import { Minimap } from './minimap';
+import { BATTLE_RULES } from '../race/session';
 import { CAM_LABEL, type CamMode } from '../camera/cameraRig';
 import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
@@ -60,6 +61,7 @@ export class Hud {
   private center: HTMLElement;
   private count: HTMLElement;
   private modebox: HTMLElement;
+  private battleLives = 99;
   private itemSlot: HTMLElement;
   private itemBubble: HTMLElement;
   private itemRing: HTMLElement;
@@ -489,6 +491,19 @@ export class Hud {
     else if (s.mode === 'endless') mode = `TIME <b>${s.endlessTimeLeft.toFixed(1)}</b> · ${Math.max(0, Math.round(s.endlessDistance))} m · LVL ${s.endlessLevel}`;
     else if (s.mode === 'freeride') mode = `TOP <b>${Math.round(p.topSpeed * (this.units === 'kmh' ? 3.6 : 2.237))}</b> · AIR <b>${p.bestAir.toFixed(1)}s</b> · TRICKS <b>${p.tricks}</b> · RINGS <b>${s.ringsTaken}</b>`;
     else if (s.mode === 'timetrial' && s.ghost) mode = `GHOST <b>${formatTime(s.ghost.time)}</b>`;
+    else if (s.battleRule) {
+      // Battle box: rule, clock, my lives / points, and who leads.
+      const rule = BATTLE_RULES[s.battleRule];
+      const clock = formatTime(s.battleTimeLeft, false);
+      const lead = s.order[0];
+      const leadTxt = lead && lead !== p ? ` · LEAD <i style="color:${lead.livery.hull}">${lead.name}</i> ${rule.lives ? lead.lives + '\u2665' : lead.battleScore}` : lead === p ? ' · <b>LEADING</b>' : '';
+      if (rule.lives) mode = `${p.eliminated ? '<b>OUT</b>' : `<b style="color:#ff3b5c;letter-spacing:2px">${'\u2665'.repeat(Math.max(0, p.lives))}</b><span style="opacity:.3">${'\u2665'.repeat(Math.max(0, rule.lives - p.lives))}</span>`} · HITS <b>${p.battleScore}</b> · ${s.activeFighters.length} LEFT · ${clock}`;
+      else if (rule.target) mode = `SCORE <b>${p.battleScore}</b> / ${rule.target}${leadTxt} · ${clock}`;
+      else mode = `<b>${clock}</b> · HITS <b>${p.battleScore}</b>${leadTxt}`;
+      if (p.lives < this.battleLives && rule.lives && s.phase === 'racing') this.message(p.lives > 0 ? `-1 \u2665  ${p.lives} LEFT` : 'ELIMINATED!', 'warn', 1.3);
+      this.battleLives = p.lives;
+      this.cpdir.style.display = 'none';
+    }
     this.set('mode', mode, () => {
       this.modebox.innerHTML = mode;
       this.modebox.style.display = mode ? 'block' : 'none';

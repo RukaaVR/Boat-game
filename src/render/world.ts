@@ -71,6 +71,7 @@ export class World {
     this.sky = new Sky(session.track.def.seed);
     scene.add(this.sky.group);
     this.atmosphere = new Atmosphere(scene, this.sky, events, quality);
+    this.atmosphere.look = session.track.def.look ?? null;
     this.scenery = new Scenery(session.layout, session.track, quality);
     scene.add(this.scenery.group);
     this.course = new CourseVisuals(session, !!opts.symbols);
@@ -185,7 +186,7 @@ export class World {
         this.wake.setTrailColor(i, gold ? '#ffcc22' : r.livery.trail);
       }
       // Ghosting after respawn: blink.
-      this.visuals[i].root.visible = !this.hideBoats && (r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0);
+      this.visuals[i].root.visible = !this.hideBoats && !r.eliminated && (r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0);
     }
     if (this.ghost && s.mode === 'timetrial') {
       const ok = s.phase === 'racing' && s.player.lap >= 1 && s.ghostPose(s.playerLapTime(), _ghost);

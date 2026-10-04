@@ -11,6 +11,7 @@
 import { Rng } from '../core/rng';
 import type { Buoy, Collider, StuntRing, ThemeId } from '../core/types';
 import type { Track, TrackPoint } from '../race/track';
+import { buildArenaLayout } from './arenaLayout';
 
 export type PropKind =
   | 'island'
@@ -40,7 +41,10 @@ export type PropKind =
   | 'townhouse'
   | 'canalwall'
   | 'gondola'
-  | 'lamp';
+  | 'lamp'
+  | 'arch'
+  | 'platform'
+  | 'neonpylon';
 
 export interface Prop {
   kind: PropKind;
@@ -80,6 +84,7 @@ export interface Layout {
 const _p: TrackPoint = { x: 0, z: 0, tx: 0, tz: 0, heading: 0 };
 
 export function buildLayout(track: Track): Layout {
+  if (track.arena) return buildArenaLayout(track);
   const theme = track.def.theme;
   const rng = new Rng(track.def.seed * 7 + 13);
   const W = track.width;
@@ -221,7 +226,8 @@ export function buildLayout(track: Track): Layout {
   }
 
   // ── Course-side features: docks, rocks, lighthouses, quays ─────────────────
-  const sideFeatures = theme === 'neon' ? 16 : theme === 'canal' || theme === 'jungle' ? 0 : 12;
+  const neonNight = track.def.look === 'neonnight';
+  const sideFeatures = neonNight ? 26 : theme === 'neon' ? 16 : theme === 'canal' || theme === 'jungle' ? 0 : 12;
   for (let tries = 0, n = 0; tries < 1200 && n < sideFeatures; tries++) {
     const s = rng.range(0, track.length);
     if (!track.inPlay(s)) continue;
@@ -239,6 +245,10 @@ export function buildLayout(track: Track): Layout {
     } else if (theme === 'storm') {
       kind = rng.chance(0.25) ? 'lighthouse' : rng.chance(0.3) ? 'wreck' : 'seastack';
       r = kind === 'lighthouse' ? 9 : kind === 'wreck' ? 10 : rng.range(5, 10);
+    } else if (neonNight) {
+      // Open night ocean: light pylons instead of harbour clutter.
+      kind = 'neonpylon';
+      r = 3.5;
     } else if (theme === 'neon') {
       kind = rng.chance(0.55) ? 'container' : rng.chance(0.5) ? 'crane' : 'quay';
       r = kind === 'quay' ? 14 : kind === 'crane' ? 8 : 7;
@@ -251,7 +261,7 @@ export function buildLayout(track: Track): Layout {
     }
     if (!clear(x, z, r, 6)) continue;
     const rot = _p.heading + (kind === 'dock' || kind === 'quay' || kind === 'crane' ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : rng.range(0, 6.28));
-    const colKind = kind === 'dock' || kind === 'quay' || kind === 'crane' || kind === 'container' || kind === 'lighthouse' ? 'pile' : 'rock';
+    const colKind = kind === 'dock' || kind === 'quay' || kind === 'crane' || kind === 'container' || kind === 'lighthouse' || kind === 'neonpylon' ? 'pile' : 'rock';
     place({ kind, x, z, y: 0, rot, scale: rng.range(0.85, 1.25), size: r, variant: rng.int(0, 3) }, kind === 'dock' ? 0 : r * 0.85, colKind, r);
     if (kind === 'dock') {
       // Piles along the dock's length instead of one big circle.
@@ -273,7 +283,7 @@ export function buildLayout(track: Track): Layout {
     const pt = randomPoint(0, Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.8);
     const r = rng.range(2, 6.5);
     if (!clear(pt.x, pt.z, r, 3)) continue;
-    const kind: PropKind = theme === 'volcanic' ? (rng.chance(0.5) ? 'lavarock' : 'rock') : theme === 'storm' ? (rng.chance(0.4) ? 'seastack' : 'rock') : theme === 'neon' ? 'container' : theme === 'arctic' ? (rng.chance(0.3) ? 'iceberg' : 'floe') : 'rock';
+    const kind: PropKind = theme === 'volcanic' ? (rng.chance(0.5) ? 'lavarock' : 'rock') : theme === 'storm' ? (rng.chance(0.4) ? 'seastack' : 'rock') : neonNight ? 'rock' : theme === 'neon' ? 'container' : theme === 'arctic' ? (rng.chance(0.3) ? 'iceberg' : 'floe') : 'rock';
     place({ kind, x: pt.x, z: pt.z, y: 0, rot: rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) }, r * 0.8, kind === 'container' ? 'pile' : 'rock', r);
     n++;
   }
@@ -296,9 +306,9 @@ export function buildLayout(track: Track): Layout {
         const z = az + nz * off * side;
         if (track.distToCentre(x, z) < W * 0.5 + 6) continue;
         const r = rng.range(2.2, 4);
-        const kind: PropKind = theme === 'neon' ? 'container' : theme === 'volcanic' ? 'lavarock' : theme === 'arctic' ? 'floe' : theme === 'canal' ? 'canalwall' : 'rock';
-        props.push({ kind, x, z, y: 0, rot: kind === 'canalwall' ? Math.atan2(bx - ax, bz - az) : rng.range(0, 6.28), scale: 1, size: r, variant: rng.int(0, 3) });
-        colliders.push({ x, z, r: r * 0.85, kind: kind === 'container' ? 'pile' : 'rock' });
+        const kind: PropKind = neonNight ? 'neonpylon' : theme === 'neon' ? 'container' : theme === 'volcanic' ? 'lavarock' : theme === 'arctic' ? 'floe' : theme === 'canal' ? 'canalwall' : 'rock';
+        props.push({ kind, x, z, y: 0, rot: kind === 'canalwall' ? Math.atan2(bx - ax, bz - az) : rng.range(0, 6.28), scale: kind === 'neonpylon' ? 0.7 : 1, size: r, variant: rng.int(0, 3) });
+        colliders.push({ x, z, r: kind === 'neonpylon' ? 1.6 : r * 0.85, kind: kind === 'container' || kind === 'neonpylon' ? 'pile' : 'rock' });
         occupied.push({ x, z, r });
       }
     }
@@ -380,7 +390,17 @@ export function buildLayout(track: Track): Layout {
     const R = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5 + 520;
     props.push({ kind: 'volcano', x: cx + Math.cos(a) * R, z: cz + Math.sin(a) * R, y: 0, rot: 0, scale: 1, size: 260, variant: 0 });
   }
-  if (theme === 'neon') {
+  if (theme === 'neon' && neonNight) {
+    // A far-off city all the way round the horizon: a dense downtown on one
+    // side, lower sprawl elsewhere, read only as lit windows and neon crowns.
+    const R0 = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5 + 620;
+    for (let i = 0; i < 150; i++) {
+      const a = (i / 150) * Math.PI * 2 + rng.range(-0.015, 0.015);
+      const downtown = Math.cos(a - 2.6) > 0.55;
+      const R = R0 + rng.range(0, 260) + (downtown ? 0 : 120);
+      props.push({ kind: 'tower', x: cx + Math.cos(a) * R, z: cz + Math.sin(a) * R, y: 0, rot: a, scale: 1, size: downtown ? rng.range(110, 300) : rng.range(35, 120), variant: rng.int(0, 3) });
+    }
+  } else if (theme === 'neon') {
     // Skyline towers on the far shore.
     const R0 = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5 + 330;
     for (let i = 0; i < 70; i++) {

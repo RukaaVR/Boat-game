@@ -141,6 +141,40 @@ void main() {
 }
 `;
 
+// Neon night motes: glowing specks drifting in a box that wraps round the camera.
+const moteVert = /* glsl */ `
+attribute vec3 aColor;
+attribute float aSeed;
+uniform float uTime;
+uniform vec3 uCam;
+uniform float uScale;
+varying vec3 vC;
+varying float vA;
+void main() {
+  vec3 box = vec3(160.0, 26.0, 160.0);
+  vec3 p = position;
+  p.x += sin(uTime * 0.31 + aSeed * 6.0) * 4.0 + uTime * 0.8;
+  p.y += sin(uTime * 0.53 + aSeed * 11.0) * 1.6;
+  p.z += cos(uTime * 0.27 + aSeed * 9.0) * 4.0;
+  p.xz = mod(p.xz - uCam.xz + box.xz * 0.5, box.xz) - box.xz * 0.5 + uCam.xz;
+  vec4 mv = viewMatrix * vec4(p, 1.0);
+  gl_Position = projectionMatrix * mv;
+  float tw = 0.55 + 0.45 * sin(uTime * (1.5 + aSeed * 2.0) + aSeed * 40.0);
+  vA = tw * (1.0 - smoothstep(50.0, 80.0, length(p.xz - uCam.xz)));
+  vC = aColor;
+  gl_PointSize = clamp(1.6 * uScale / -mv.z, 1.0, 14.0);
+}
+`;
+const moteFrag = /* glsl */ `
+varying vec3 vC;
+varying float vA;
+void main() {
+  float r = length(gl_PointCoord - 0.5) * 2.0;
+  float a = (1.0 - smoothstep(0.0, 1.0, r));
+  gl_FragColor = vec4(vC * a * a * vA * 1.4, 1.0);
+}
+`;
+
 const fallVert = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
@@ -186,6 +220,7 @@ export class Scenery {
   private towerMat: ShaderMaterial | null = null;
   private fallMat: ShaderMaterial | null = null;
   private glow: Points | null = null;
+  private moteMat: ShaderMaterial | null = null;
   private glowMat: ShaderMaterial | null = null;
   private disposables: { dispose(): void }[] = [];
   private islandH: { x: number; z: number; r: number; rot: number; h: (lx: number, lz: number) => number }[] = [];
@@ -239,7 +274,7 @@ export class Scenery {
     // ── Instanced props ──────────────────────────────────────────────────────
     const byKind = new Map<string, Prop[]>();
     for (const p of layout.props) {
-      if (p.kind === 'island' || p.kind === 'bridge' || p.kind === 'volcano' || p.kind === 'waterfall' || p.kind === 'vent' || p.kind === 'ruin' || p.kind === 'barrier') continue;
+      if (p.kind === 'island' || p.kind === 'bridge' || p.kind === 'volcano' || p.kind === 'waterfall' || p.kind === 'vent' || p.kind === 'ruin' || p.kind === 'barrier' || p.kind === 'arch') continue;
       const variants = VARIANTS[p.kind] ?? 1;
       const key = `${p.kind}:${p.variant % variants}`;
       if (!byKind.has(key)) byKind.set(key, []);
@@ -324,6 +359,13 @@ export class Scenery {
             glowPts.push({ x: lx, y: 9.2, z: lz, c: 0xffd27a, s: 40, blink: false });
           }
         }
+        if (kind === 'neonpylon') {
+          const c = p.variant % 2 ? 0xff2fa8 : 0x26e8ff;
+          glowPts.push({ x: p.x, y: 13.6 * p.scale, z: p.z, c, s: 75, blink: false });
+          glowPts.push({ x: p.x, y: 0.8, z: p.z, c, s: 50, blink: false });
+          if (this.waterLights.length < 6 && list.indexOf(p) % 4 === 0) this.waterLights.push({ x: p.x, y: 10, z: p.z, color: c, intensity: 1.3 });
+        }
+        if (kind === 'platform') glowPts.push({ x: p.x, y: 7.6, z: p.z, c: 0xffe08a, s: 30, blink: false });
         if (kind === 'dock') glowPts.push({ x: p.x + Math.sin(p.rot) * 8.5, y: 4.5, z: p.z + Math.cos(p.rot) * 8.5, c: 0xffd27a, s: 40, blink: false });
         if (kind === 'lavarock') this.emitters.push({ kind: 'embers', x: p.x, y: 0.5, z: p.z, rate: 1.5, radius: p.size });
         if (kind === 'lamp') {
@@ -347,6 +389,16 @@ export class Scenery {
         glowPts.push({ x: p.x, y: p.size * 0.78, z: p.z, c: style.glow, s: 3000, blink: false });
         this.emitters.push({ kind: 'smoke', x: p.x, y: p.size * 0.8, z: p.z, rate: 6, radius: p.size * 0.25 });
         this.waterLights.push({ x: p.x, y: p.size * 0.8, z: p.z, color: style.glow, intensity: 2.0 });
+      }
+      if (p.kind === 'arch') {
+        const g = P.archGeometry(style);
+        const m = new Mesh(g, cel('arch', { vertexColors: true, rim: 0.3 }));
+        m.position.set(p.x, -1.2, p.z);
+        m.rotation.y = p.rot;
+        m.scale.setScalar(p.size);
+        m.name = 'arch';
+        addOutline(m, 1.6);
+        this.add(m, g);
       }
       if (p.kind === 'vent') this.emitters.push({ kind: 'steam', x: p.x, y: 2, z: p.z, rate: 5, radius: p.size * 0.3 });
       if (p.kind === 'waterfall') this.buildWaterfall(p);
@@ -429,6 +481,39 @@ export class Scenery {
       }
     }
 
+    // ── Neon night: drifting light motes ────────────────────────────────────
+    if (track.def.look === 'neonnight') {
+      const n = quality === 'low' ? 250 : quality === 'medium' ? 500 : 800;
+      const pos = new Float32Array(n * 3);
+      const col = new Float32Array(n * 3);
+      const seed = new Float32Array(n);
+      const pal = [0xff2fa8, 0x26e8ff, 0xb36bff, 0xffe14d, 0x7dffb0];
+      const c = new Color();
+      for (let i = 0; i < n; i++) {
+        pos.set([rng.range(0, 160), rng.range(1.5, 22), rng.range(0, 160)], i * 3);
+        c.setHex(pal[i % pal.length]);
+        col.set([c.r, c.g, c.b], i * 3);
+        seed[i] = rng.next();
+      }
+      const geo = new BufferGeometry();
+      geo.setAttribute('position', new BufferAttribute(pos, 3));
+      geo.setAttribute('aColor', new BufferAttribute(col, 3));
+      geo.setAttribute('aSeed', new BufferAttribute(seed, 1));
+      this.moteMat = new ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uCam: { value: new Vector3() }, uScale: { value: 400 } },
+        vertexShader: moteVert,
+        fragmentShader: moteFrag,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      });
+      const pts = new Points(geo, this.moteMat);
+      pts.frustumCulled = false;
+      pts.renderOrder = 6;
+      pts.name = 'motes';
+      this.add(pts, geo, this.moteMat);
+    }
+
     // ── Glow sprites ───────────────────────────────────────────────────────
     const gp = glowPts.filter((g) => g.s > 0);
     if (gp.length) {
@@ -495,6 +580,7 @@ export class Scenery {
 
   /** Re-split LOD props around the camera (throttled internally). */
   updateLod(camX: number, camZ: number, dt: number) {
+    if (this.moteMat) this.moteMat.uniforms.uCam.value.set(camX, 0, camZ);
     if (!this.lodClock.due(camX, camZ, dt)) return;
     let hi = 0;
     let lo = 0;
@@ -702,6 +788,7 @@ export class Scenery {
 
   setPixelScale(heightPx: number) {
     if (this.glowMat) this.glowMat.uniforms.uScale.value = heightPx * 0.5;
+    if (this.moteMat) this.moteMat.uniforms.uScale.value = heightPx * 0.5;
   }
 
   update(time: number, dt: number) {
@@ -710,6 +797,7 @@ export class Scenery {
     if (this.towerMat) this.towerMat.uniforms.uTime.value = time;
     if (this.fallMat) this.fallMat.uniforms.uTime.value = time;
     if (this.glowMat) this.glowMat.uniforms.uTime.value = time;
+    if (this.moteMat) this.moteMat.uniforms.uTime.value = time;
     if (this.birds) {
       const im = this.birds;
       for (let i = 0; i < this.birdState.length; i++) {
@@ -748,7 +836,7 @@ export class Scenery {
   }
 }
 
-const VARIANTS: Partial<Record<PropKind, number>> = { rock: 4, lavarock: 3, seastack: 3, palm: 3, container: 4, iceberg: 3, floe: 3, jungletree: 3, townhouse: 6 };
+const VARIANTS: Partial<Record<PropKind, number>> = { platform: 3, neonpylon: 2, rock: 4, lavarock: 3, seastack: 3, palm: 3, container: 4, iceberg: 3, floe: 3, jungletree: 3, townhouse: 6 };
 
 function buildProp(kind: PropKind, v: number, style: ThemeStyle): BufferGeometry | null {
   switch (kind) {
@@ -790,6 +878,10 @@ function buildProp(kind: PropKind, v: number, style: ThemeStyle): BufferGeometry
       return P.gondolaGeometry();
     case 'lamp':
       return P.lampGeometry();
+    case 'platform':
+      return P.platformGeometry(v);
+    case 'neonpylon':
+      return P.neonPylonGeometry(v);
     default:
       return null;
   }

@@ -35,6 +35,13 @@ export interface Hazard {
   kind: 'rock' | 'mine';
 }
 
+/** Battle-arena whirlpool: drags boats round and in, spins them at the core. */
+export interface Whirlpool {
+  x: number;
+  z: number;
+  r: number;
+}
+
 export interface TrackPoint {
   x: number;
   z: number;
@@ -80,6 +87,9 @@ export class Track {
   readonly swells: SwellZone[] = [];
   readonly hazards: Hazard[] = [];
   readonly shortcuts: Shortcut[] = [];
+  readonly whirlpools: Whirlpool[] = [];
+  /** Battle arena (open lagoon; the loop is a navigation aid only). */
+  readonly arena: boolean;
   readonly bounds = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
   readonly rng: Rng;
 
@@ -87,6 +97,7 @@ export class Track {
     this.def = def;
     this.width = def.width;
     this.rng = new Rng(def.seed);
+    this.arena = !!def.arena;
 
     // ── Centreline from the harmonic radius profile ───────────────────────────
     let ampScale = 1;
@@ -146,6 +157,12 @@ export class Track {
     this.computeRacingLine();
     this.computeSpeedProfile();
     this.placeGates();
+    if (this.arena) {
+      // No racing line in an arena: the navigation ring is the centreline itself.
+      this.line.fill(0);
+      this.placeArenaFeatures();
+      return;
+    }
     this.findShortcuts();
     this.placeFeatures();
   }
@@ -290,6 +307,17 @@ export class Track {
 
   /** Start grid slot: 2 columns, rows every 9 m behind the line. */
   gridSlot(slot: number, out: TrackPoint) {
+    if (this.arena) {
+      // Spread round the lagoon, every boat facing the centre.
+      const a = (slot / 8) * Math.PI * 2 + 0.2;
+      const R = this.def.radius + 12;
+      out.x = Math.cos(a) * R;
+      out.z = Math.sin(a) * R;
+      out.tx = -Math.cos(a);
+      out.tz = -Math.sin(a);
+      out.heading = Math.atan2(out.tx, out.tz);
+      return out;
+    }
     const row = Math.floor(slot / 2);
     const col = slot % 2;
     const s = -14 - row * 10 - col * 4;
@@ -475,6 +503,40 @@ export class Track {
     return k;
   }
 
+  /**
+   * Battle arena furniture, in polar coordinates round the lagoon centre:
+   * tangential ramps on an inner ring, boost pads between them, two
+   * whirlpools and a scatter of drifting mines near the edge channels.
+   */
+  private placeArenaFeatures() {
+    const rng = this.rng;
+    const ramps = this.def.ramps;
+    for (let i = 0; i < ramps; i++) {
+      const a = ((i + 0.5) / ramps) * Math.PI * 2;
+      const R = 92;
+      const dir = i % 2 ? 1 : -1;
+      // Tangential, alternating direction, so every approach has a ramp ahead somewhere.
+      const tx = -Math.sin(a) * dir;
+      const tz = Math.cos(a) * dir;
+      this.ramps.push({ x: Math.cos(a) * R - tx * 8, z: Math.sin(a) * R - tz * 8, heading: Math.atan2(tx, tz), length: 14, width: 10, height: 3.2 });
+    }
+    const pads = this.def.pads;
+    for (let i = 0; i < pads; i++) {
+      const a = (i / pads) * Math.PI * 2 + 0.25;
+      const R = i % 2 ? 140 : 55;
+      const dir = i % 2 ? 1 : -1;
+      const tx = -Math.sin(a) * dir;
+      const tz = Math.cos(a) * dir;
+      this.pads.push({ x: Math.cos(a) * R, z: Math.sin(a) * R, heading: Math.atan2(tx, tz), length: 10, width: 7 });
+    }
+    for (const a of [Math.PI * 0.5, Math.PI * 1.5]) this.whirlpools.push({ x: Math.cos(a) * 128, z: Math.sin(a) * 128, r: 17 });
+    for (let i = 0; i < this.def.hazards; i++) {
+      const a = ((i + 0.25) / this.def.hazards) * Math.PI * 2 + rng.range(-0.08, 0.08);
+      const R = rng.range(160, 178);
+      this.hazards.push({ x: Math.cos(a) * R, z: Math.sin(a) * R, r: 1.3, kind: 'mine' });
+    }
+  }
+
   private placeFeatures() {
     const rng = this.rng;
     const L = this.length;
@@ -501,6 +563,31 @@ export class Track {
       this.ramps.push({ x: p.x - p.tz * lat, z: p.z + p.tx * lat, heading: p.heading, length: 15, width: 10, height: 3.4 });
       used.push(c.s);
       placed++;
+    }
+
+    // A ramp run: consecutive kickers down the straightest stretch, gently
+    // weaving so a clean line links them (the beginner trick lesson).
+    if (this.def.rampRun) {
+      let best = -1;
+      let bestK = Infinity;
+      const runLen = (this.def.rampRun - 1) * 62;
+      for (let s = 120; s < end - runLen - 120; s += 15) {
+        if (this.crowded(s, used, 70) || this.crowded(s + runLen, used, 70)) continue;
+        const k = this.straightness(s + runLen / 2, runLen / 2 + 30);
+        if (k < bestK) {
+          bestK = k;
+          best = s;
+        }
+      }
+      if (best >= 0) {
+        for (let i = 0; i < this.def.rampRun; i++) {
+          const s = best + i * 62;
+          this.sample(s, p);
+          const lat = (i % 2 ? 1 : -1) * W * 0.12;
+          this.ramps.push({ x: p.x - p.tz * lat, z: p.z + p.tx * lat, heading: p.heading, length: 13, width: 11, height: 2.6 });
+          used.push(s);
+        }
+      }
     }
 
     // Swell zones: long open sections where the sea is allowed to build.

@@ -78,13 +78,30 @@ export class Minimap {
     c.rotate(p.heading - Math.PI);
     c.translate(-p.position.x, -p.position.z);
     const lw = 1 / scale;
+    const arena = s.track.arena;
     c.lineJoin = 'round';
-    c.strokeStyle = 'rgba(255,255,255,0.18)';
-    c.lineWidth = s.track.width;
-    c.stroke(this.course);
-    c.strokeStyle = 'rgba(38,232,255,0.9)';
-    c.lineWidth = 3 * lw * this.dpr;
-    c.stroke(this.course);
+    if (arena) {
+      // Lagoon: a pale disc with a cyan rim; item boxes as little gold squares.
+      c.beginPath();
+      c.arc(0, 0, 182, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(120,230,255,0.16)';
+      c.fill();
+      c.strokeStyle = 'rgba(38,232,255,0.8)';
+      c.lineWidth = 3 * lw * this.dpr;
+      c.stroke();
+      if (s.items) {
+        c.fillStyle = 'rgba(255,210,30,0.9)';
+        const q = 3 * lw * this.dpr;
+        for (const bx of s.items.boxes) if (bx.respawn <= 0) c.fillRect(bx.x - q, bx.z - q, q * 2, q * 2);
+      }
+    } else {
+      c.strokeStyle = 'rgba(255,255,255,0.18)';
+      c.lineWidth = s.track.width;
+      c.stroke(this.course);
+      c.strokeStyle = 'rgba(38,232,255,0.9)';
+      c.lineWidth = 3 * lw * this.dpr;
+      c.stroke(this.course);
+    }
     if (s.track.shortcuts.length) {
       c.setLineDash([6 * lw * this.dpr, 5 * lw * this.dpr]);
       c.strokeStyle = 'rgba(255,210,30,0.9)';
@@ -102,7 +119,7 @@ export class Minimap {
     // Finish line + next checkpoint.
     const gates = s.track.gates;
     const half = s.track.width * 0.6;
-    for (const g of gates) {
+    for (const g of arena ? [] : gates) {
       const isNext = s.hasLaps && g.index === s.track.gateIndexFor(nextGate);
       const isFinish = s.track.sprint && g.index === gates.length - 1;
       if (g.index !== 0 && !isNext && !isFinish) continue;
@@ -117,7 +134,7 @@ export class Minimap {
     }
     // Rivals.
     for (let i = s.racers.length - 1; i >= 0; i--) {
-      if (s.racers[i] === this.me) continue;
+      if (s.racers[i] === this.me || s.racers[i].eliminated) continue;
       const b = s.racers[i].boat;
       c.beginPath();
       c.arc(b.position.x, b.position.z, 5.5 * lw * this.dpr, 0, Math.PI * 2);

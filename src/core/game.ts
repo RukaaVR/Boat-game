@@ -23,7 +23,7 @@ import { Music, type RaceState } from '../audio/music';
 import { SaveStore } from '../save/save';
 import { applyRewards, finishChampionship, noRewards, type RewardSummary } from '../save/rewards';
 import { CAREER, type Challenge } from '../save/progress';
-import { RaceSession, type SessionConfig } from '../race/session';
+import { RaceSession, type BattleRule, type SessionConfig } from '../race/session';
 import { CUPS, trackDef } from '../race/trackDefs';
 import { BoatVisual } from '../boat/boatMesh';
 import { CharacterStage } from '../render/characterStage';
@@ -70,6 +70,8 @@ export interface EventRequest {
   opponents?: number;
   /** Time trial: race your own best ghost or an imported friend's ghost. */
   ghost?: 'mine' | 'rival';
+  /** Battle mode rule set. */
+  battleRule?: BattleRule;
 }
 
 type State = 'boot' | 'title' | 'menu' | 'race';
@@ -702,6 +704,7 @@ export class Game implements ReplayHost, PhotoHost {
       dynamicWeather: d.settings.dynamicWeather && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'battle' || req.mode === 'freeride'),
       traffic: d.settings.wildlife && req.mode !== 'timetrial' && req.mode !== 'tutorial' && req.mode !== 'stunt',
       items: d.settings.items && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'career'),
+      battleRule: req.mode === 'battle' ? req.battleRule : undefined,
     };
     this.screens.loading();
     this.state = 'race';
@@ -1481,6 +1484,14 @@ export class Game implements ReplayHost, PhotoHost {
         const tz = pr.z + Math.sin(pr.rot) * off;
         const ty = kind === 'volcano' ? 120 : (g.world?.scenery.ground(tx, tz) ?? 0) + 6;
         g.rig.startOrbit(new Vector3(tx, ty, tz), radius, height);
+        g.rig.cut();
+        return true;
+      },
+      /** Orbit the camera round a world point (overview shots). */
+      orbitPoint(x: number, y: number, z: number, radius = 200, height = 120) {
+        if (!g.session) return false;
+        g.garage = true;
+        g.rig.startOrbit(new Vector3(x, y, z), radius, height);
         g.rig.cut();
         return true;
       },

@@ -65,6 +65,40 @@ void main() {
 }
 `;
 
+/**
+ * Neon night ocean (the STARFALL look): a violet-indigo sky with a magenta
+ * horizon, a huge low moon, dense colourful stars, purple haze and a sea
+ * that glows ultramarine with cyan crests. Layered over the NIGHT preset.
+ */
+const NEON_NIGHT: Partial<WeatherPreset> = {
+  skyTop: 0x0a0630,
+  skyHorizon: 0x7a2a8e,
+  skyBottom: 0x2a0e4a,
+  sunColor: 0xeae4ff,
+  sunElev: 0.2,
+  sunAzim: 2.4,
+  sunSize: 5.5,
+  sunIntensity: 1.1,
+  hemiSky: 0x8a6ae0,
+  hemiGround: 0x2a1060,
+  hemiIntensity: 1.15,
+  fogColor: 0x3a1460,
+  fogDensity: 0.0021,
+  waterDeep: 0x0c0a3e,
+  waterMid: 0x2a1a8a,
+  waterShallow: 0x6a3aff,
+  waterFoam: 0xa8ecff,
+  waterCrest: 0x26c8ff,
+  cloudCover: 0.18,
+  cloudColor: 0x5a2a8a,
+  cloudShade: 0x24104a,
+  stars: 1.6,
+  bloom: 0.85,
+  exposure: 1.08,
+  saturation: 1.3,
+  vignette: 0.2,
+};
+
 export interface PostSettings {
   bloom: number;
   exposure: number;
@@ -84,6 +118,8 @@ export class Atmosphere {
   readonly post: PostSettings = { bloom: 0.4, exposure: 1, saturation: 1.1, contrast: 1.05, vignette: 0.3 };
   preset: WeatherPreset = WEATHER.clear;
   theme: ThemeId = 'tropical';
+  /** Course visual style layered over theme + weather (e.g. 'neonnight'). */
+  look: string | null = null;
   /** 0..1 lightning flash for this frame. */
   flash = 0;
   night = 0;
@@ -150,7 +186,9 @@ export class Atmosphere {
   }
 
   apply(weather: WeatherId, theme: ThemeId, ocean: Ocean | null, wake: WakeSystem | null, lights: WaterLight[], override?: WeatherPreset) {
-    const w = (this.preset = override ?? WEATHER[weather]);
+    const base = override ?? WEATHER[weather];
+    const neon = this.look === 'neonnight' && weather === 'night';
+    const w = (this.preset = neon ? { ...base, ...NEON_NIGHT } : base);
     this.theme = theme;
     const ts = THEME_STYLE[theme];
     this.night = weather === 'night' ? 1 : weather === 'storm' ? 0.35 : weather === 'sunset' ? 0.3 : 0;
@@ -178,7 +216,8 @@ export class Atmosphere {
     su.uCloudShade.value.setHex(w.cloudShade);
     su.uStars.value = w.stars;
     su.uGlow.value.setHex(ts.horizonGlow);
-    su.uGlowAmt.value = ts.horizonGlowAmt * (0.5 + this.night);
+    su.uGlowAmt.value = neon ? 0.9 : ts.horizonGlowAmt * (0.5 + this.night);
+    su.uStarHue.value = neon ? 1 : 0;
     su.uMoon.value = weather === 'night' ? 1 : 0;
     this.sky.setCloudColor(_c.setHex(w.cloudColor), w.cloudCover);
 
@@ -204,14 +243,14 @@ export class Atmosphere {
       ou.uSkyHorizon.value.setHex(w.skyHorizon);
       ou.uSunDir.value.copy(_sunDir);
       ou.uSunColor.value.setHex(w.sunColor);
-      ou.uSunGlint.value = weather === 'storm' ? 0.15 : weather === 'night' ? 0.6 : 1;
+      ou.uSunGlint.value = weather === 'storm' ? 0.15 : neon ? 1.1 : weather === 'night' ? 0.6 : 1;
       ou.uFogColor.value.setHex(w.fogColor);
       ou.uFogDensity.value = w.fogDensity;
       ou.uAmp.value = maxWaveHeight() * 0.45;
       ou.uFoamAmount.value = weather === 'storm' ? 1.6 : 1;
       ou.uMicro.value = weather === 'storm' ? 0.5 : 0.32;
       // Toon cell-line web: full in fair weather, quieter in storms and at night.
-      ou.uCells.value = weather === 'storm' ? 0.55 : weather === 'night' ? 0.35 : 1;
+      ou.uCells.value = weather === 'storm' ? 0.55 : neon ? 0.4 : weather === 'night' ? 0.35 : 1;
       const lp = ou.uLightPos.value as import('three').Vector4[];
       const lc = ou.uLightCol.value as Color[];
       for (let i = 0; i < MAX_WATER_LIGHTS; i++) {

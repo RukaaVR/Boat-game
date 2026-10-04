@@ -808,3 +808,92 @@ export function lampGeometry(): BufferGeometry {
   return gb.build();
 }
 
+
+// ── Battle arena ─────────────────────────────────────────────────────────────
+/**
+ * A huge banded rock arch for the arena (local X spans ±1, so scale by the
+ * half-span). Stone voussoirs in two tones, a mossy crown with flowers and a
+ * string of festival bunting underneath.
+ */
+export function archGeometry(style: ThemeStyle): BufferGeometry {
+  const gb = new GeoBuilder();
+  const rise = 0.78;
+  const N = 15;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const a = Math.PI * t;
+    const x = -Math.cos(a);
+    const y = Math.sin(a) * rise;
+    const thick = 0.17 - Math.sin(a) * 0.05;
+    const col = i % 2 ? mixHex(style.rock, 0xe0a466, 0.7) : mixHex(style.rock, 0xfff2d8, 0.55);
+    gb.rock(thick, col, { x, y, z: 0, sz: 1.15, ry: i * 0.7 });
+    // Moss crown on top of each stone.
+    gb.sphere(thick * 0.75, i % 2 ? style.grass : mixHex(style.grass, 0xffffff, 0.15), { x, y: y + thick * 0.75, z: 0, sy: 0.45, sx: 1.2 }, 8, 5);
+    if (i % 3 === 1) gb.sphere(0.03, i % 2 ? 0xff6fae : 0xffe14d, { x: x + 0.04, y: y + thick * 1.08, z: 0.06 }, 6, 4);
+  }
+  // Feet: chunky boulders.
+  for (const s of [-1, 1]) {
+    gb.rock(0.26, style.rockDark, { x: s * 1.02, y: -0.05, sy: 1.4, ry: s });
+    gb.rock(0.18, style.rock, { x: s * 0.9, y: 0.22, z: 0.12, ry: s * 2 });
+  }
+  // Bunting: little flags on a sagging line under the crown.
+  const flags = [0xff3b5c, 0xffd21e, 0x26c6ff, 0x5cd24a, 0xff8a1e, 0xb36bff];
+  const M = 22;
+  for (let i = 1; i < M; i++) {
+    const x = -0.72 + (1.44 * i) / M;
+    const y = rise * 0.86 - (1 - (x / 0.72) ** 2) * 0.1;
+    gb.cone(0.022, 0.05, flags[i % flags.length], { x, y: y - 0.03, rx: Math.PI }, 3);
+  }
+  gb.box(1.46, 0.004, 0.004, 0xffffff, { y: rise * 0.86 - 0.05 });
+  return gb.build();
+}
+
+const AWNING = [0xff3b5c, 0x26a0ff, 0xffb21e];
+/** Floating battle platform: a raft deck on yellow floats with a striped awning. */
+export function platformGeometry(variant: number): BufferGeometry {
+  const gb = new GeoBuilder();
+  for (const [x, z] of [
+    [-4.2, -4.2],
+    [4.2, -4.2],
+    [-4.2, 4.2],
+    [4.2, 4.2],
+  ])
+    gb.cyl(1.5, 1.5, 1.6, 0xffd21e, { x, y: -0.2, z }, 12);
+  gb.box(12, 0.9, 12, 0x9a6a44, { y: 0.9 });
+  for (let i = -2; i <= 2; i++) gb.box(12.05, 0.08, 0.15, 0x7a4e30, { y: 1.37, z: i * 2.4 });
+  gb.box(12.2, 0.3, 12.2, 0xffffff, { y: 0.45 });
+  // Railing posts and a rope rail.
+  for (let i = -2; i <= 2; i++)
+    for (const s of [-1, 1]) {
+      gb.cyl(0.14, 0.16, 1.4, 0xfff8ec, { x: i * 2.8, y: 2.0, z: s * 5.8 }, 6);
+      gb.cyl(0.14, 0.16, 1.4, 0xfff8ec, { x: s * 5.8, y: 2.0, z: i * 2.8 }, 6);
+    }
+  for (const s of [-1, 1]) {
+    gb.box(11.6, 0.12, 0.12, 0xd8302a, { y: 2.6, z: s * 5.8 });
+    gb.box(0.12, 0.12, 11.6, 0xd8302a, { y: 2.6, x: s * 5.8 });
+  }
+  // Striped umbrella awning.
+  const col = AWNING[variant % AWNING.length];
+  gb.cyl(0.18, 0.18, 5, 0xfff8ec, { y: 3.8 }, 8);
+  for (let k = 0; k < 8; k++) gb.add(new ConeGeometry(4.6, 1.6, 2, 1, true, (k * Math.PI) / 4, Math.PI / 4), k % 2 ? col : 0xffffff, { y: 6.6 });
+  gb.sphere(0.35, col, { y: 7.5 }, 8, 6);
+  // Crates.
+  gb.box(1.6, 1.4, 1.6, 0xc08850, { x: 3.4, y: 2.0, z: -3.2, ry: 0.3 });
+  gb.box(1.2, 1.1, 1.2, 0xe0a466, { x: 3.0, y: 3.2, z: -3.0, ry: 0.8 });
+  gb.cyl(0.7, 0.7, 1.5, 0x3a8fe0, { x: -3.6, y: 2.05, z: 3.4 }, 10);
+  return gb.build();
+}
+
+/** Neon night: a floating light pylon (glowing bands; the glow sprites sit at the crystal). */
+export function neonPylonGeometry(variant: number): BufferGeometry {
+  const gb = new GeoBuilder();
+  const a = variant % 2 ? 0xff2fa8 : 0x26e8ff;
+  const b = variant % 2 ? 0x26e8ff : 0xb36bff;
+  gb.cyl(2.2, 2.6, 1.2, 0x1a1c2e, { y: 0 }, 12);
+  gb.torus(2.4, 0.18, a, { y: 0.55, rx: Math.PI / 2 });
+  gb.cyl(0.38, 0.55, 12, 0x24263a, { y: 6.5 }, 8);
+  for (let i = 0; i < 4; i++) gb.cyl(0.62, 0.62, 0.35, i % 2 ? b : a, { y: 3 + i * 2.4 }, 10);
+  gb.ico(1.1, a, { y: 13.6, sy: 1.6 }, 0);
+  gb.torus(1.7, 0.1, b, { y: 13.6, rx: Math.PI / 2 + 0.3 });
+  return gb.build();
+}

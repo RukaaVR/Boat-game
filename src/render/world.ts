@@ -22,6 +22,7 @@ import { FxDirector } from './fx';
 import type { Quality, Renderer } from './renderer';
 import { boatSpec } from '../boat/specs';
 import { BattleVisuals } from './battle';
+import { PearlVisuals } from './pearls';
 import { Wildlife } from './wildlife';
 import { BoatShadows } from './shadows';
 import { LOD } from './lod';
@@ -44,6 +45,8 @@ export class World {
   readonly fx: FxDirector;
   readonly ghost: BoatVisual | null;
   readonly battle: BattleVisuals | null;
+  /** Pearls on the water (whenever items are on). */
+  readonly pearlVis: PearlVisuals | null;
   readonly wildlife: Wildlife;
   readonly shadows: BoatShadows;
   readonly aurora: Aurora | null;
@@ -97,6 +100,8 @@ export class World {
     this.fx = new FxDirector(session, this.particles, this.visuals, this.scenery.emitters);
     this.battle = session.items ? new BattleVisuals(session, session.items) : null;
     if (this.battle) scene.add(this.battle.group);
+    this.pearlVis = session.pearls ? new PearlVisuals(session.pearls, this.particles) : null;
+    if (this.pearlVis) scene.add(this.pearlVis.group);
     this.wildlife = new Wildlife(session, this.particles, opts.wildlife !== false);
     this.aurora = session.track.def.theme === 'arctic' ? new Aurora() : null;
     if (this.aurora) scene.add(this.aurora.mesh);
@@ -206,6 +211,7 @@ export class World {
     this.course.update(time, cam.position.x, cam.position.z, s.track.gateIndexFor(pr.checkpoints), s.hasLaps && (s.phase === 'racing' || s.phase === 'countdown'));
     this.wake.update(time);
     this.battle?.update(time);
+    this.pearlVis?.update(time, events);
     this.wildlife.update(dt, time, cam.position);
     this.aurora?.update(cam.position, time, this.atmosphere.night);
     if (this.shadows.mesh.visible) this.shadows.update(time, this.atmosphere.sunDir, this.weather === 'storm' ? 1 : this.weather === 'night' ? 0.7 : 0);
@@ -300,6 +306,7 @@ export class World {
     for (const v of this.visuals) v.dispose();
     this.ghost?.dispose();
     this.battle?.dispose();
+    this.pearlVis?.dispose();
     this.wildlife.dispose();
     this.shadows.dispose();
     this.aurora?.dispose();

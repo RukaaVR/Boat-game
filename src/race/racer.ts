@@ -51,6 +51,14 @@ export class Racer {
   /** Seconds before the held item can be pressed again (golden surge spam guard). */
   itemCooldown = 0;
   itemHits = 0;
+  /** Hold-to-trail: the held item is dragging behind the stern as a blocker. */
+  itemHeld = false;
+  /** Item button is down on a holdable item, not yet long enough to trail it. */
+  itemPending = false;
+  /** Seconds the item button has been down while pending. */
+  itemHoldT = 0;
+  /** Pearls carried this event (0..PEARL_MAX): +1 % engine power each. */
+  pearls = 0;
   /** Battle rules: lives left (balloons), points (hits landed), hits taken, out of the fight. */
   lives = 0;
   battleScore = 0;

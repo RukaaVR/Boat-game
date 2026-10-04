@@ -1074,3 +1074,34 @@ table.res td.boatcol { font-size: 12px; }
   .footer .btn { padding-top: 6px; padding-bottom: 6px; font-size: 16px; }
   .label { margin: 8px 0 4px; }
 }
+
+/* ── Held items · pearls · battle spectate ─────────────────────────────── */
+/* Item bubble while an item trails behind the boat (hold the item button). */
+.itemslot.held .bubble { box-shadow: 0 0 0 4px #12306e, 0 6px 0 4px #12306e, 0 0 0 9px #a6ff3d; animation: heldBob .9s ease-in-out infinite alternate; }
+.itemslot.held .bubble .ic { transform: rotate(180deg) scale(.86); }
+@keyframes heldBob { from { transform: translateY(0); } to { transform: translateY(3px); } }
+.itemslot .it-txt span.held-tag { font-family: var(--font2); font-weight: 900; font-size: 13px; letter-spacing: 2px; color: #12306e; -webkit-text-stroke: 0; background: #a6ff3d; border: 2px solid #12306e; border-radius: 6px; padding: 0 8px; align-self: flex-start; }
+/* Pearl counter under the item bubble. */
+.hud .pearlctr { margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font); font-size: 24px; color: #fff; -webkit-text-stroke: 5px #12306e; paint-order: stroke fill; }
+.hud .pearlctr i { width: 24px; height: 24px; border-radius: 50%; border: 3px solid #12306e; background: radial-gradient(circle at 34% 30%, #fff 0 22%, #ffe9f6 38%, #c9e9ff 70%, #9fb8ff 100%); box-shadow: 0 0 10px rgba(191,243,255,.9); }
+.hud .pearlctr span { font-size: 14px; opacity: .75; }
+.hud .pearlctr.max b { color: #ffe14d; }
+.hud .pearlctr.max i { box-shadow: 0 0 16px #ffe14d; }
+.hud .pearlctr.bump { animation: pearlBump .3s cubic-bezier(.2,.9,.3,1.6); }
+.hud .pearlctr.lost { animation: pearlLost .45s ease-out; }
+@keyframes pearlBump { from { transform: scale(1.35); } to { transform: scale(1); } }
+@keyframes pearlLost { 0% { transform: translateX(-6px); color: #ff3b5c; } 30% { transform: translateX(6px); } 60% { transform: translateX(-3px); } 100% { transform: none; } }
+/* Battle spectate banner (per viewport). */
+.hud .spectate { position: absolute; left: 50%; bottom: calc(110px * var(--hud)); transform: translateX(-50%) scale(var(--hud)); transform-origin: bottom center; display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: var(--font); text-align: center; }
+.hud .spectate .sp-title { font-size: 30px; color: #ff3b5c; -webkit-text-stroke: 6px #12306e; paint-order: stroke fill; letter-spacing: 2px; background: rgba(5,10,30,.55); padding: 2px 18px; transform: skewX(-10deg); white-space: nowrap; }
+.hud .spectate .sp-row { display: flex; align-items: center; gap: 10px; }
+.hud .spectate .sp-name { display: inline-flex; align-items: center; gap: 8px; min-width: 190px; justify-content: center; font-size: 22px; color: #fff; -webkit-text-stroke: 4px #12306e; paint-order: stroke fill; }
+.hud .spectate .sp-name i { width: 12px; height: 22px; display: inline-block; border: 2px solid #12306e; }
+.hud .spectate .sp-name b { color: #ff3b5c; letter-spacing: 2px; }
+.hud .spectate .sp-name small { font-family: var(--font2); font-size: 11px; -webkit-text-stroke: 0; color: #12306e; background: #ffe14d; border-radius: 4px; padding: 0 5px; }
+#ui .hud .spectate button { pointer-events: auto !important; cursor: pointer; font-family: var(--font); font-size: 18px; color: #12306e; background: #fff; border: 3px solid #12306e; border-radius: 10px; padding: 4px 12px; }
+#ui .hud .spectate button:hover { background: var(--cyan); }
+#ui .hud .spectate .sp-skip { font-size: 16px; letter-spacing: 1px; background: #ffe14d; }
+#ui .hud .spectate .sp-skip.off { background: rgba(255,255,255,.5); pointer-events: none !important; }
+.hud .spectate .sp-hint { font-family: var(--font2); font-weight: 800; font-size: 11px; letter-spacing: 1.5px; color: #fff; text-shadow: 0 1px 2px #000; opacity: .85; }
+.rb-info { color: #ffe9f6; font-size: 13px; }

@@ -25,6 +25,7 @@ import { trackDef } from './trackDefs';
 import { Racer } from './racer';
 import { BattleItems, SHRINK_POWER, SLOW_POWER } from './items';
 import { Traffic } from './traffic';
+import { Pearls } from './pearls';
 import type { Boat } from '../boat/boat';
 
 export type Phase = 'intro' | 'countdown' | 'racing' | 'finished' | 'results';
@@ -200,6 +201,8 @@ export class RaceSession {
   results: ResultRow[] = [];
   /** Item boxes and power-ups (battle mode, or races with items on). */
   readonly items: BattleItems | null;
+  /** Pearls strung across the course (whenever items are on). */
+  readonly pearls: Pearls | null;
   /** Battle rule set (battle mode only). */
   readonly battleRule: BattleRule | null;
   battleTimeLeft = 0;
@@ -305,6 +308,7 @@ export class RaceSession {
     this.player.points = cfg.champPoints?.[0] ?? 0;
     this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
     this.items = cfg.mode === 'battle' || (cfg.items && racing) ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
+    this.pearls = this.items ? new Pearls(this.track, this.statics, events, this.racers.length, def.seed + 11) : null;
     this.fighters = this.racers.slice();
     if (this.battleRule) {
       const rule = BATTLE_RULES[this.battleRule];
@@ -382,6 +386,7 @@ export class RaceSession {
   /** Advance the simulation by dt seconds of real time. */
   step(dtReal: number) {
     const dt = dtReal * this.timeScale;
+    const evMark = this.events.list.length;
     this.time += dt;
     this.phaseT += dtReal;
     this.physEnv.time = this.time;
@@ -486,13 +491,14 @@ export class RaceSession {
     for (const r of this.racers) {
       const b = r.boat;
       // Item effects are multipliers on top of the healthy engine, never stored stats.
-      b.powerScale = b.basePower * (1 - 0.12 * b.damage) * (b.shrink > 0 ? SHRINK_POWER : 1) * (b.itemSlow > 0 ? SLOW_POWER : 1);
+      b.powerScale = b.basePower * (1 - 0.12 * b.damage) * (b.shrink > 0 ? SHRINK_POWER : 1) * (b.itemSlow > 0 ? SLOW_POWER : 1) * (r.pearls > 0 ? Pearls.power(r.pearls) : 1);
     }
     this.stats.itemHits = this.player.itemHits;
     this.updateWeather(dt);
     this.updateDrafting(dt);
     this.updateProgress(dt);
     this.updateModes(dt);
+    this.pearls?.update(dt, this.racers, evMark, this.phase === 'racing');
     this.scoreEvents();
   }
 
@@ -1059,8 +1065,11 @@ export class RaceSession {
     this.battleTimeLeft = Math.max(0, this.battleTimeLeft - dt);
     let over = this.battleTimeLeft <= 0;
     if (rule.target && this.fighters.some((r) => r.battleScore >= rule.target)) over = true;
-    if (rule.lives && (this.fighters.length <= 1 || this.humans.some((h) => h.eliminated))) over = true;
+    // A knocked-out human spectates; the fight runs on until one boat is left (or time).
+    if (rule.lives && this.fighters.length <= 1) over = true;
+    if (this.skipRequested) over = true;
     if (!over) return;
+    this.skipRequested = false;
     this.order.sort(this.byBattle);
     for (let i = 0; i < this.order.length; i++) this.order[i].place = i + 1;
     for (const r of this.racers) {
@@ -1156,6 +1165,21 @@ export class RaceSession {
   /** Boats still in the fight (battle). */
   get activeFighters(): readonly Racer[] {
     return this.fighters;
+  }
+
+  private skipRequested = false;
+  /** Is racer `r` knocked out of a battle that is still running (spectating)? */
+  spectating(r: Racer) {
+    return !!this.battleRule && r.eliminated && this.phase === 'racing';
+  }
+  /**
+   * SKIP TO RESULTS while spectating: the battle is settled right now from the
+   * standings (survivors by lives, then hits). Only once every human is out.
+   */
+  skipBattle() {
+    if (!this.battleRule || this.phase !== 'racing' || !this.humans.every((h) => h.eliminated)) return false;
+    this.skipRequested = true;
+    return true;
   }
 
   /** Ghost pose at race-lap time t (for time trial). Returns false if out of range. */

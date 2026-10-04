@@ -2,8 +2,9 @@
  * REPLAYS — record the whole race, play it back from any camera.
  *
  * Recording samples every boat's pose and the few state flags the visuals
- * read (boost, drift, air, wipeout, damage, shield) at 20 Hz, plus the global
- * clock and sea state, plus the events that make sound and spray. Playback
+ * read (boost, drift, air, wipeout, damage, shield, and the item effects:
+ * shrink, golden surge, a trailed item, pearls carried) at 20 Hz, plus the
+ * global clock, sea state and which course pearls are up, plus the events that make sound and spray. Playback
  * interpolates those samples back into the live Boat objects and re-emits the
  * events, so the existing world, wakes, particles and audio redraw the race
  * exactly as it happened, at any speed. Pose playback (rather than re-running
@@ -16,10 +17,14 @@ import { getChop, getSeaState, setSeaState, setWaveTime } from '../water/waves';
 import type { RaceSession } from './session';
 
 export const REPLAY_HZ = 20;
-/** Floats per racer per sample. */
-const RF = 15;
-/** Global floats per sample: session time, race time, sea, chop. */
-const GF = 4;
+/** Floats per racer per sample (v1 layout had 15: no item-effect state). */
+const RF = 19;
+const RF_V1 = 15;
+/** Global floats per sample: session time, race time, sea, chop, 3 × 24-bit course-pearl masks (v1 had 4). */
+const GF = 7;
+const GF_V1 = 4;
+/** Trailed-item codes in a sample (0 = nothing trailing). */
+const HELD_CODES = ['', 'torpedo', 'oil', 'shield'] as const;
 
 const RECORDED: ReadonlySet<GameEventType> = new Set<GameEventType>(['land', 'splash', 'collide', 'trick', 'wipeout', 'boostStart', 'nitro', 'finish', 'lap', 'itemUse', 'itemHit', 'shieldHit', 'driftTier', 'buoyHit', 'checkpoint', 'collectible', 'lightning']);
 
@@ -79,6 +84,8 @@ export class ReplayRecorder {
     d[o++] = s.raceTime;
     d[o++] = getSeaState();
     d[o++] = getChop();
+    const pe = s.pearls;
+    for (let w = 0; w < 3; w++) d[o++] = pe ? pe.mask(w) : 0;
     for (const r of s.racers) {
       const b = r.boat;
       d[o++] = b.position.x;
@@ -96,13 +103,17 @@ export class ReplayRecorder {
       d[o++] = b.damage;
       d[o++] = b.shield;
       d[o++] = r.controls.steer;
+      d[o++] = b.shrink;
+      d[o++] = b.surge;
+      d[o++] = r.itemHeld && r.item ? Math.max(0, HELD_CODES.indexOf(r.item as (typeof HELD_CODES)[number])) : 0;
+      d[o++] = r.pearls;
     }
     this.n++;
   }
 
   /** Snapshot for playback. */
   finish(): ReplayData {
-    return { data: this.data.slice(0, this.n * this.stride), samples: this.n, racers: this.racers, events: this.events.slice() };
+    return { data: this.data.slice(0, this.n * this.stride), samples: this.n, racers: this.racers, events: this.events.slice(), rf: RF, gf: GF };
   }
 }
 
@@ -111,6 +122,9 @@ export interface ReplayData {
   samples: number;
   racers: number;
   events: RecEvent[];
+  /** Floats per racer / global floats per sample. Absent on v1 data (15 / 4: no item-effect state). */
+  rf?: number;
+  gf?: number;
 }
 
 const lerpAng = (a: number, b: number, k: number) => {
@@ -155,7 +169,9 @@ export class ReplayPlayer {
 
   private apply(t: number, dt: number) {
     const r = this.rep;
-    const st = GF + r.racers * RF;
+    const rf = r.rf ?? RF_V1;
+    const gf = r.gf ?? GF_V1;
+    const st = gf + r.racers * rf;
     const f = Math.min(r.samples - 1, t * REPLAY_HZ);
     const i = Math.min(r.samples - 2, Math.floor(f));
     const k = Math.max(0, Math.min(1, f - i));
@@ -170,11 +186,14 @@ export class ReplayPlayer {
     const sea = L(2);
     const ch = L(3);
     if (Math.abs(sea - getSeaState()) > 1e-3 || Math.abs(ch - getChop()) > 1e-3) setSeaState(sea, ch);
+    // Course pearls: which are up (nearest sample; scattered pearls are not recorded).
+    const near = k < 0.5 ? a : bOff;
+    if (gf >= GF && s.pearls) for (let w = 0; w < 3; w++) s.pearls.applyMask(w, d[near + 4 + w]);
     for (let ri = 0; ri < r.racers; ri++) {
       const racer = s.racers[ri];
       if (!racer) continue;
       const b = racer.boat;
-      const o = GF + ri * RF;
+      const o = gf + ri * rf;
       const px = b.position.x;
       const pz = b.position.z;
       const py = b.position.y;
@@ -198,6 +217,16 @@ export class ReplayPlayer {
       b.damage = d[a + o + 12];
       b.shield = d[a + o + 13];
       racer.controls.steer = L(o + 14);
+      if (rf >= RF) {
+        // Item effects: shrink and surge timers drive the scale pop and gold FX.
+        b.shrink = L(o + 15);
+        b.surge = L(o + 16);
+        const held = HELD_CODES[d[near + o + 17] | 0] ?? '';
+        racer.itemHeld = held !== '';
+        if (held) racer.item = held;
+        else if (racer.item === 'torpedo' || racer.item === 'oil' || racer.item === 'shield') racer.item = null;
+        racer.pearls = d[near + o + 18];
+      }
       const fx = Math.sin(b.heading);
       const fz = Math.cos(b.heading);
       b.forwardSpeed = b.velocity.x * fx + b.velocity.z * fz;

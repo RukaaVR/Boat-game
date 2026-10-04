@@ -39,6 +39,10 @@ export type GameEventType =
   | 'itemDenied' // item pressed with nothing usable (empty, rolling, wiped out)
   | 'itemLock' // seeker lock beep on racer; value = urgency 0..1, text = 'start' on first lock
   | 'itemMiss' // text = 'dodge' (target evaded a seeker) or 'miss' (owner's shot expired)
+  | 'itemHold' // racer started trailing a held item behind the boat; text = item id
+  | 'itemBlock' // a trailed item absorbed a shot from behind; value = strength, text = the item that was spent
+  | 'pearl' // racer collected a pearl; value = pearls now carried
+  | 'pearlDrop' // racer lost pearls (hit / mine / wipeout); value = how many
   | 'collectible' // hidden bottle found; value = index
   | 'weatherShift' // mid-race weather change; text = new weather id
   | 'eliminated'; // battle: racer lost their last life

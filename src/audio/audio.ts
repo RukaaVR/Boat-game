@@ -677,6 +677,27 @@ export class AudioEngine {
       case 'collectible':
         [1046, 1318, 1568, 2093, 2637].forEach((f, i) => this.tone(f, 0.35, 'sine', 0.07, i * 0.07));
         break;
+      case 'itemHold':
+        // Item clipped onto the tow: a short latch click.
+        if (isPlayer) {
+          this.tone(520, 0.05, 'square', 0.04);
+          this.tone(780, 0.07, 'triangle', 0.04, 0.05);
+        }
+        break;
+      case 'itemBlock':
+        // A trailed item ate a shot: a metallic clang and a bright deflect.
+        this.burst(0.5, 'bandpass', 1600, 0.3 * att, pan, 0, 400, 0.8);
+        this.tone(330, 0.35, 'square', 0.06 * att, 0, pan, 180);
+        [1175, 1568].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.06 * att, 0.04 + i * 0.05, pan));
+        break;
+      case 'pearl':
+        // Pearl pickup: a glassy ping that climbs with the pearls carried.
+        if (isPlayer) this.tone(1320 + Math.min(10, e.value) * 70, 0.16, 'sine', 0.06);
+        else if (att > 0.4) this.tone(1320, 0.1, 'sine', 0.02 * att, 0, pan);
+        break;
+      case 'pearlDrop':
+        if (isPlayer) [1760, 1320, 990].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.05, i * 0.06));
+        break;
       case 'weatherShift':
         this.tone(80, 2.5, 'sine', 0.12, 0, 0, 55);
         break;

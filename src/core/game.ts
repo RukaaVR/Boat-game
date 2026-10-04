@@ -12,7 +12,7 @@
 
 import { Vector3 } from 'three';
 import { EventQueue } from './events';
-import type { Difficulty, ModeId, WeatherId } from './types';
+import { makeControls, type Difficulty, type ModeId, type WeatherId } from './types';
 import { clamp, clamp01 } from './mathx';
 import { Renderer } from '../render/renderer';
 import { World } from '../render/world';
@@ -35,6 +35,7 @@ import type { Quality } from '../render/renderer';
 import { boatSpec, type BoatId } from '../boat/specs';
 import type { Livery } from '../boat/livery';
 import { Hud } from '../ui/hud';
+import { Spectator } from '../ui/spectate';
 import { Nav } from '../ui/nav';
 import { Screens } from '../ui/screens';
 import { DebugOverlay } from '../debug/debug';
@@ -453,6 +454,7 @@ export class Game implements ReplayHost, PhotoHost {
   // ── Session/world lifetime ────────────────────────────────────────────────
   private teardown() {
     this.closePodium();
+    this.endSpectate();
     this.tutorial = null;
     this.hud2?.destroy();
     this.hud2 = null;
@@ -778,6 +780,7 @@ export class Game implements ReplayHost, PhotoHost {
   replay: ReplayPlayer | null = null;
   private replayBar: ReplayBar | null = null;
   private replayTargetIdx = 0;
+  private replayInfoKey = -1;
   private photo: PhotoPanel | null = null;
   private photoFrom: 'pause' | 'replay' = 'pause';
   get replayAvailable() {
@@ -1083,6 +1086,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.photoExit();
       return;
     }
+    if (racing && !this.paused && !this.replay && s.battleRule) this.updateSpectate(dt);
     const rp = this.replay;
     const simDt = rp ? (rp.playing ? dt * rp.speed : 0) : racing && this.paused ? 0 : dt * this.timeScale;
     if (rp) {
@@ -1099,6 +1103,12 @@ export class Game implements ReplayHost, PhotoHost {
       }
       rp.update(dt, this.events);
       this.replayBar?.update(rp.t, rp.duration, rp.playing);
+      const fr = s.racers[this.replayTargetIdx];
+      const ik = fr && s.pearls ? this.replayTargetIdx * 1000 + fr.pearls * 10 + (fr.itemHeld ? (fr.item === 'torpedo' ? 1 : fr.item === 'oil' ? 2 : 3) : 0) : -1;
+      if (fr && ik !== this.replayInfoKey) {
+        this.replayInfoKey = ik;
+        this.replayBar?.setInfo(ik < 0 ? '' : `◉ ${fr.pearls} PEARLS${fr.itemHeld && fr.item ? ' · ' + fr.item.toUpperCase() + ' HELD' : ''}`);
+      }
     } else if (simDt > 0) {
       s.step(simDt);
       if (this.recorder && racing) this.recorder.record(simDt, this.events);
@@ -1128,7 +1138,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.rig.endScripted();
       this.rig.mode = 'cinematic';
     }
-    const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : s.player.boat;
+    const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : (this.spect[0]?.target ?? s.player).boat;
     if (this.rig.scripted === 'free') this.driveFreeCam(dt);
     if (this.garage) this.updateGarageFx(dt);
     if (simDt > 0 || this.garage || this.rig.scripted === 'free' || rp) this.rig.update(simDt || dt, target, s.track, s.time);
@@ -1136,7 +1146,7 @@ export class Game implements ReplayHost, PhotoHost {
     if (r2 && racing) {
       if (s.phase !== 'intro' && r2.scripted === 'intro') r2.endScripted();
       if ((s.phase === 'finished' || s.phase === 'results') && r2.scripted !== 'finish') r2.startFinish();
-      if (simDt > 0) r2.update(simDt, s.racers[1].boat, s.track, s.time);
+      if (simDt > 0) r2.update(simDt, (this.spect[1]?.target ?? s.racers[1]).boat, s.track, s.time);
     }
 
     w.update(simDt, s.time, this.rig, this.events);
@@ -1175,12 +1185,14 @@ export class Game implements ReplayHost, PhotoHost {
     // Continuous audio.
     if (racing) {
       _nearest.length = 0;
-      for (let i = 1; i < s.racers.length; i++) _nearest.push(s.racers[i].boat);
-      const px = s.player.boat.position.x;
-      const pz = s.player.boat.position.z;
+      // Spectating a battle: the watched boat stands in for the player's engine.
+      const ear = (this.replay ? null : this.spect[0]?.target)?.boat ?? s.player.boat;
+      for (let i = 1; i < s.racers.length; i++) if (s.racers[i].boat !== ear) _nearest.push(s.racers[i].boat);
+      const px = ear.position.x;
+      const pz = ear.position.z;
       _nearest.sort((a, b) => (a.position.x - px) ** 2 + (a.position.z - pz) ** 2 - ((b.position.x - px) ** 2 + (b.position.z - pz) ** 2));
       const revving = s.phase === 'countdown' ? s.player.controls.throttle * 0.8 : 0;
-      this.audio.updateRace(dt, s.player.boat, s.player.boat.engine, _nearest, _listener, w.atmosphere.preset.rain, this.paused, revving);
+      this.audio.updateRace(dt, ear, ear.engine, _nearest, _listener, w.atmosphere.preset.rain, this.paused, revving);
       const final = s.hasLaps && s.player.lap >= s.totalLaps && s.totalLaps > 1 && s.phase === 'racing';
       if (!s.isRace || s.phase !== 'racing') this.closeness = 0;
       _raceState.finalLap = final;
@@ -1232,6 +1244,32 @@ export class Game implements ReplayHost, PhotoHost {
       return;
     }
     this.renderer.render(w.scene, this.rig.camera, w.atmosphere.post, dt);
+  }
+
+  // ── Battle spectate ───────────────────────────────────────────────────────
+  /** One per human (split-screen: one per viewport), made when they are knocked out. */
+  private spect: (Spectator | null)[] = [null, null];
+  private specCtl = [makeControls(), makeControls()];
+  private updateSpectate(dt: number) {
+    const s = this.session!;
+    for (let i = 0; i < s.humans.length && i < 2; i++) {
+      const h = s.humans[i];
+      const hud = i === 0 ? this.hud : this.hud2;
+      if (!hud || !h.eliminated) continue;
+      const sp = (this.spect[i] ??= new Spectator(s, h, hud.root, () => this.hud?.message('SKIPPING TO RESULTS', 'cyan', 1.5)));
+      const c = this.specCtl[i];
+      if (this.split) this.input.readSplit(i, c, dt);
+      else this.input.read(c, dt);
+      sp.update(dt, c, !this.split && this.input.pressed('confirm'));
+      hud.setFocus(sp.target);
+      if (sp.changed) (i === 0 ? this.rig : this.rig2)?.cut();
+    }
+  }
+  private endSpectate() {
+    for (let i = 0; i < 2; i++) {
+      this.spect[i]?.dispose();
+      this.spect[i] = null;
+    }
   }
 
   // ── Harness ───────────────────────────────────────────────────────────────

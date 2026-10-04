@@ -16,6 +16,8 @@ export class Minimap {
   private dpr = 1;
   /** Visible radius in metres. */
   range = 330;
+  /** Centre the map on this racer instead (battle spectate). */
+  focus: import('../race/racer').Racer | null = null;
 
   constructor(
     private session: RaceSession,
@@ -57,7 +59,7 @@ export class Minimap {
   draw(nextGate: number) {
     const c = this.ctx;
     const s = this.session;
-    const p = this.me.boat;
+    const p = (this.focus ?? this.me).boat;
     const S = this.size * this.dpr;
     const R = S / 2;
     const scale = (R * 0.92) / this.range;
@@ -134,7 +136,7 @@ export class Minimap {
     }
     // Rivals.
     for (let i = s.racers.length - 1; i >= 0; i--) {
-      if (s.racers[i] === this.me || s.racers[i].eliminated) continue;
+      if (s.racers[i] === this.me || s.racers[i] === this.focus || s.racers[i].eliminated) continue;
       const b = s.racers[i].boat;
       c.beginPath();
       c.arc(b.position.x, b.position.z, 5.5 * lw * this.dpr, 0, Math.PI * 2);

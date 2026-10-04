@@ -455,14 +455,16 @@ export class Renderer {
     u.uSat.value = post.saturation;
     u.uContrast.value = post.contrast;
     u.uVignette.value = post.vignette;
-    u.uChroma.value = fx.chroma * m;
+    // Anime look: colour fringing and lens droplets are photographic effects,
+    // so keep only a trace of each (speed lines carry the sense of speed).
+    u.uChroma.value = fx.chroma * m * 0.15;
     u.uRadial.value = fx.radial * m;
     u.uSpeed.value = fx.speed * m;
     u.uFlash.value = fx.flash;
     // Reduced-motion setting also tones down the strobe-like impact frame.
     u.uImpact.value = fx.impact * m;
     u.uFlashColor.value.copy(fx.flashColor);
-    u.uDrops.value = fx.drops * m;
+    u.uDrops.value = fx.drops * m * 0.25;
     u.uDamage.value = fx.damage;
     u.uAssist.value = this.assist;
     gl.setRenderTarget(null);

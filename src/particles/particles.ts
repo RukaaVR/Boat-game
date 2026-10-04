@@ -170,8 +170,17 @@ class Pool {
       this.pos[p] += this.vel[p] * dt;
       this.pos[p + 1] += this.vel[p + 1] * dt;
       this.pos[p + 2] += this.vel[p + 2] * dt;
-      this.size[i] = (d.size[0] + (d.size[1] - d.size[0]) * t) * this.smul[i];
-      this.alpha[i] = d.alpha * (t < 0.1 ? t / 0.1 : 1 - Math.pow((t - 0.1) / 0.9, 1.5));
+      const sz = (d.size[0] + (d.size[1] - d.size[0]) * t) * this.smul[i];
+      if (d.water) {
+        // Cartoon water stays solid white and shrinks away instead of fading
+        // (overlapping translucent discs read as soap bubbles).
+        const k = t > 0.55 ? 1 - (t - 0.55) / 0.45 : 1;
+        this.size[i] = sz * k * k;
+        this.alpha[i] = 1;
+      } else {
+        this.size[i] = sz;
+        this.alpha[i] = d.alpha * (t < 0.1 ? t / 0.1 : 1 - Math.pow((t - 0.1) / 0.9, 1.5));
+      }
       i++;
     }
     const g = this.geo;

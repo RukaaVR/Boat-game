@@ -127,14 +127,25 @@ function buildTorso(liv: Livery) {
 /** Build-time switch: coarse hair for the distant-rider LOD (same silhouette, far fewer triangles). */
 let hairLite = false;
 
-function buildHead(liv: Livery, look: RiderLook, lite = false) {
+function buildHead(look: RiderLook) {
   const gb = new GeoBuilder();
-  const skin = look.skin;
-  gb.add(cut(part('head'), ALL, NECK_M, FWD, UP), skin);
+  gb.add(cut(part('head'), ALL, NECK_M, FWD, UP), look.skin);
+  return gb.build();
+}
+
+/**
+ * Hair as its own mesh, re-centred on the head centre so it can sway on a
+ * spring (secondary motion) without moving the face.
+ */
+function buildHair(liv: Livery, look: RiderLook, lite = false) {
+  const gb = new GeoBuilder();
   hairLite = lite;
   addHair(gb, liv, look);
   hairLite = false;
-  return gb.build();
+  const g = gb.build();
+  const c = HEAD_C.clone().sub(NECK_M);
+  g.translate(-c.x, -c.y, -c.z);
+  return g;
 }
 
 // ── Hair ──────────────────────────────────────────────────────────────────
@@ -560,6 +571,7 @@ const _a = new Vector3();
 const _b = new Vector3();
 const _end = new Vector3();
 const _tm = new Matrix4();
+const _c2 = new Vector3();
 
 /** Place segment meshes `m1` (a→joint) and `m2` (joint→b) by two-bone IK. */
 function solve(m1: Mesh, m2: Mesh, a: Vector3, b: Vector3, l1: number, l2: number, pole: Vector3) {
@@ -598,9 +610,9 @@ export interface RiderAnchors {
 
 export class Rider {
   readonly look: RiderLook;
-  private headMesh!: Mesh;
-  private headFull!: BufferGeometry;
-  private headLite!: BufferGeometry;
+  private hairMesh!: Mesh;
+  private hairFull!: BufferGeometry;
+  private hairLite!: BufferGeometry;
   readonly root = new Group();
   readonly pelvis = new Group();
   readonly head = new Group();
@@ -629,18 +641,21 @@ export class Rider {
     const mat = ghostMat ?? cel('riderBody', { vertexColors: true, gloss: 0.25 });
     this.torso = new Mesh(buildTorso(liv), mat);
     this.pelvis.add(this.torso);
-    const headMesh = new Mesh(buildHead(liv, lk), ghostMat ?? cel('riderHead', { vertexColors: true, gloss: 0.2 }));
-    this.headMesh = headMesh;
-    this.headFull = headMesh.geometry;
-    this.headLite = buildHead(liv, lk, true);
-    addSmoothNormals(this.headLite);
-    this.head.add(headMesh);
+    const headMat = ghostMat ?? cel('riderHead', { vertexColors: true, gloss: 0.2 });
+    const headMesh = new Mesh(buildHead(lk), headMat);
+    this.hairFull = buildHair(liv, lk);
+    this.hairLite = buildHair(liv, lk, true);
+    addSmoothNormals(this.hairLite);
+    this.hairMesh = new Mesh(this.hairFull, headMat);
+    this.hairMesh.position.copy(HEAD_C).sub(NECK_M);
+    this.hairMesh.name = 'riderHair';
+    this.head.add(headMesh, this.hairMesh);
     if (!ghostMat) this.head.add(buildFace(lk));
     this.head.position.copy(NECK);
     this.torso.add(this.head);
     this.arms = [0, 1].map((i) => [new Mesh(buildUpperArm(i, liv, lk), mat), new Mesh(buildForearm(i, lk), mat)] as [Mesh, Mesh]);
     this.legs = [0, 1].map((i) => [new Mesh(buildThigh(i, liv), mat), new Mesh(buildShin(i, liv), mat)] as [Mesh, Mesh]);
-    this.meshes.push(this.torso, headMesh, ...this.arms.flat(), ...this.legs.flat());
+    this.meshes.push(this.torso, headMesh, this.hairMesh, ...this.arms.flat(), ...this.legs.flat());
     this.torso.name = 'riderTorso';
     headMesh.name = 'riderHead';
     for (const [u, f] of this.arms) (u.name = 'riderArm'), (f.name = 'riderArm');
@@ -654,13 +669,81 @@ export class Rider {
   /** LOD: 0 full, 1 no limb outlines, 2 torso + head only. */
   setLod(level: number) {
     // Distant riders swap to the coarse-hair head (mesh and its ink shell).
-    const g = level >= 1 ? this.headLite : this.headFull;
-    if (this.headMesh.geometry !== g) {
-      this.headMesh.geometry = g;
-      for (const c of this.headMesh.children) if (c.userData.isOutline) (c as Mesh).geometry = g;
+    const g = level >= 1 ? this.hairLite : this.hairFull;
+    if (this.hairMesh.geometry !== g) {
+      this.hairMesh.geometry = g;
+      for (const c of this.hairMesh.children) if (c.userData.isOutline) (c as Mesh).geometry = g;
     }
     for (const m of [...this.arms.flat(), ...this.legs.flat()]) m.visible = level < 2;
     for (const m of this.meshes) for (const c of m.children) if (c.userData.isOutline) c.visible = level < 1 || m === this.torso;
+  }
+
+  private eHit = 0;
+  private ePick = 0;
+  private eTrick = 0;
+  // ── Contextual reactions ──────────────────────────────────────────────────
+  // Short layered animations on top of the driving pose. Each has a timer
+  // counting down and an envelope (rise, hold, ease back), so they blend in
+  // and out without interrupting the physics-driven pose.
+  private pickupT = 0;
+  private hitT = 0;
+  private hitDir = 0;
+  private trickT = 0;
+  private lookT = 0;
+  private lookDir = 0;
+  /**
+   * Play a reaction. `dir` is the side (−1 left / +1 right): the impact side
+   * for hits, the side to glance over for look-backs.
+   */
+  react(kind: 'pickup' | 'hit' | 'trick' | 'lookback', dir = 0) {
+    if (kind === 'pickup') this.pickupT = 0.9;
+    else if (kind === 'hit') {
+      this.hitT = 0.65;
+      this.hitDir = dir || 1;
+      this.hairVel.x += 2.5;
+    } else if (kind === 'trick') this.trickT = 1.1;
+    else if (kind === 'lookback' && this.hitT <= 0 && this.pickupT <= 0) {
+      this.lookT = 1.15;
+      this.lookDir = dir || 1;
+    }
+  }
+  /** Reaction envelope: quick rise, hold, ease back over `len` seconds. */
+  private static env(t: number, len: number) {
+    if (t <= 0) return 0;
+    const u = 1 - t / len;
+    return Math.min(1, u / 0.18) * Math.min(1, (1 - u) / 0.35);
+  }
+
+  // ── Hair secondary motion (cheap springs, no cloth sim) ───────────────────
+  private hairRot = new Vector3();
+  private hairVel = new Vector3();
+  private squash = 0;
+  private squashVel = 0;
+  private lastSpeed = 0;
+  private accel = 0;
+
+  private updateHair(b: Boat, dt: number, landK: number) {
+    const h = Math.min(dt, 1 / 30);
+    const speed = (b as unknown as { speed?: number }).speed ?? 0;
+    this.accel = damp(this.accel, (speed - this.lastSpeed) / Math.max(1e-3, dt), 6, dt);
+    this.lastSpeed = speed;
+    // Swept back with speed, pushed further by acceleration, flips forward
+    // on braking, floats up in the air, swings out of turns.
+    const tx = -0.04 - Math.min(0.16, speed * 0.004) - clamp(this.accel * 0.006, -0.08, 0.1) + (b.airborne ? 0.1 : 0);
+    const tz = clamp(-b.yawRate * 0.1, -0.16, 0.16);
+    const K = 70;
+    const C = 7;
+    this.hairVel.x += ((tx - this.hairRot.x) * K - this.hairVel.x * C) * h;
+    this.hairVel.z += ((tz - this.hairRot.z) * K - this.hairVel.z * C) * h;
+    this.hairRot.x = clamp(this.hairRot.x + this.hairVel.x * h, -0.22, 0.18);
+    this.hairRot.z = clamp(this.hairRot.z + this.hairVel.z * h, -0.2, 0.2);
+    // Landing bounce: squash then spring back.
+    if (landK > 0.6 && this.squash > -0.02) this.squashVel -= landK * 2.2;
+    this.squashVel += (-this.squash * 140 - this.squashVel * 10) * h;
+    this.squash = clamp(this.squash + this.squashVel * h, -0.14, 0.12);
+    const m = this.hairMesh;
+    m.rotation.set(this.hairRot.x, 0, this.hairRot.z);
+    m.scale.set(1 - this.squash * 0.4, 1 + this.squash, 1 - this.squash * 0.4);
   }
 
   update(b: Boat, steer: number, dt: number, time: number, celebrate: boolean) {
@@ -708,12 +791,41 @@ export class Rider {
       yawT = Math.sin(time * 1.3) * 0.4;
       waveT = 1;
     }
+    // Reactions (suppressed while wiping out or celebrating).
+    this.pickupT = Math.max(0, this.pickupT - dt);
+    this.hitT = Math.max(0, this.hitT - dt);
+    this.trickT = Math.max(0, this.trickT - dt);
+    this.lookT = Math.max(0, this.lookT - dt);
+    const free = b.wipeout <= 0 && !celebrate;
+    const eHit = free ? Rider.env(this.hitT, 0.65) : 0;
+    const ePick = free ? Rider.env(this.pickupT, 0.9) : 0;
+    const eTrick = free && !b.airborne ? Rider.env(this.trickT, 1.1) : 0;
+    const eLook = free && !b.airborne ? Rider.env(this.lookT, 1.15) * (1 - eHit) : 0;
+    if (eHit > 0) {
+      // Flinch away from the impact: body twists and leans, head snaps.
+      twistT += this.hitDir * 0.55 * eHit;
+      leanT += this.hitDir * 0.35 * eHit;
+      crouchT += 0.25 * eHit;
+      yawT -= this.hitDir * 0.7 * eHit;
+    }
+    if (ePick > 0) {
+      crouchT -= 0.2 * ePick;
+      yawT = yawT * (1 - ePick) - 0.35 * ePick;
+    }
+    if (eTrick > 0) crouchT -= 0.25 * eTrick;
+    if (eLook > 0) {
+      yawT = yawT * (1 - eLook) + this.lookDir * 1.45 * eLook;
+      twistT += this.lookDir * 0.35 * eLook;
+    }
+    this.eHit = eHit;
+    this.ePick = ePick;
+    this.eTrick = eTrick;
     this.lean = damp(this.lean, leanT, 8, dt);
     this.crouch = damp(this.crouch, crouchT, 7, dt);
     this.drop = damp(this.drop, dropT, b.sinceLand < 0.15 ? 22 : 8, dt);
     this.shift = damp(this.shift, shiftT, 5, dt);
     this.twist = damp(this.twist, twistT, 6, dt);
-    this.headYaw = damp(this.headYaw, yawT, 5, dt);
+    this.headYaw = damp(this.headYaw, yawT, eLook > 0 || eHit > 0 ? 12 : 5, dt);
     this.wave = damp(this.wave, waveT, 4, dt);
     // Head counter-pitches against the crouch so the eyes stay on the horizon.
     this.headPitch = damp(this.headPitch, -this.crouch * 0.75 + 0.05, 9, dt);
@@ -740,9 +852,23 @@ export class Rider {
         grip.lerp(this.at.gripR, 1 - this.wave);
       } else if (b.wipeout > 0) {
         grip.set(sg * 0.85, sh.y + 0.3 + Math.sin(time * 13 + side) * 0.35, sh.z - 0.15);
-      } else grip.copy(side === 0 ? this.at.gripL : this.at.gripR);
+      } else {
+        grip.copy(side === 0 ? this.at.gripL : this.at.gripR);
+        // Item pickup: right fist raised; trick: right-arm fist pump; hit: arms fly out.
+        if (side === 1 && (this.ePick > 0 || this.eTrick > 0)) {
+          const pump = this.eTrick > 0 ? Math.sin(time * 16) * 0.09 * this.eTrick : 0;
+          const k = Math.max(this.ePick, this.eTrick);
+          _c2.set(sh.x - 0.12, sh.y + 0.55 + pump, sh.z + 0.12);
+          grip.lerp(_c2, k);
+        }
+        if (this.eHit > 0) {
+          _c2.set(sh.x + sg * 0.45, sh.y + 0.25, sh.z - 0.1);
+          grip.lerp(_c2, this.eHit * 0.75);
+        }
+      }
       solve(this.arms[side][0], this.arms[side][1], sh, grip, UPPER_ARM, FOREARM + GRIP, _pole.set(sg, -0.75, -0.45));
     }
+    this.updateHair(b, dt, landK);
     // Legs: hip → foothold, knees forward and slightly out.
     for (let side = 0; side < 2; side++) {
       const sg = side === 0 ? 1 : -1;
@@ -752,8 +878,8 @@ export class Rider {
   }
 
   dispose() {
-    this.headLite.dispose();
-    this.headFull.dispose();
+    this.hairLite.dispose();
+    this.hairFull.dispose();
     const seen = new Set<unknown>();
     for (const m of this.meshes)
       if (!seen.has(m.geometry)) {

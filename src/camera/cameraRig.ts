@@ -328,10 +328,21 @@ export class CameraRig {
     cam.position.copy(this.pos);
     cam.lookAt(this.look);
     cam.rotateZ(this.roll);
-    if (Math.abs(cam.fov - this.fov) > 0.01) {
-      cam.fov = this.fov;
+    // FOV kick (mini-turbo, golden turbo…): a quick widen that eases back.
+    this.kick *= Math.exp(-this.kickDecay * Math.max(0.001, time - this.kickT));
+    this.kickT = time;
+    const fov = this.fov + this.kick * this.motionScale;
+    if (Math.abs(cam.fov - fov) > 0.01) {
+      cam.fov = fov;
       cam.updateProjectionMatrix();
     }
+  }
+  private kick = 0;
+  private kickT = 0;
+  private kickDecay = 3.5;
+  /** Widen the lens by `deg` degrees, easing back (scaled by the motion setting). */
+  kickFov(deg: number) {
+    this.kick = Math.max(this.kick, deg);
   }
 
   private applyShake(dt: number, time: number) {

@@ -16,6 +16,10 @@ const poses = {
   land: { sinceLand: 0.05, landStrength: 1 },
   flip: { airborne: true, trick: 'frontflip' },
   wave: { celebrate: true },
+  pickup: { react: 'pickup', frames: 10 },
+  hit: { react: 'hit', dir: 1, frames: 8 },
+  trickpump: { react: 'trick', frames: 14 },
+  lookback: { react: 'lookback', dir: -1, frames: 18 },
 };
 for (const [name, p] of Object.entries(poses)) {
   await page.evaluate(({ p }) => {
@@ -35,7 +39,11 @@ for (const [name, p] of Object.entries(poses)) {
     const v = g.world.visuals[0];
     const saved = { airborne: bt.airborne, trick: bt.trick, sinceLand: bt.sinceLand, landStrength: bt.landStrength, yawRate: bt.yawRate };
     v.celebrate = !!p.celebrate;
-    for (let i = 0; i < 40; i++) {
+    if (p.react) {
+      for (let i = 0; i < 30; i++) v.update(bt, 0, 1 / 30, 9 + i / 30);
+      v.rider.react(p.react, p.dir ?? 0);
+    }
+    for (let i = 0; i < (p.frames ?? 40); i++) {
       Object.assign(bt, { airborne: !!p.airborne, trick: p.trick ?? 'none', sinceLand: p.sinceLand ?? 5, landStrength: p.landStrength ?? 0, yawRate: p.yawRate ?? 0 });
       v.update(bt, p.steer ?? 0, 1 / 30, 10 + i / 30);
     }

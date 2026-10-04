@@ -166,21 +166,122 @@ export function foamTexture(): Texture {
   return t;
 }
 
-/** Soft round sprite with a hard-ish core, used by all particles. */
+/**
+ * Toon particle blob: a solid disc with a hard (~1px anti-aliased) rim, so
+ * spray reads as flat cel blobs instead of soft photographic puffs. Only alpha
+ * is sampled; colour comes from the particle.
+ */
 export function particleSprite(): Texture {
   const key = 'sprite';
   if (cache.has(key)) return cache.get(key)!;
-  const { c, ctx } = canvas(64, 64);
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.25, 'rgba(255,255,255,0.75)');
-  g.addColorStop(0.55, 'rgba(255,255,255,0.25)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
-  const t = new CanvasTexture(c);
+  const N = 64;
+  const data = new Uint8Array(N * N * 4);
+  const aa = 1.6 / N;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = (x + 0.5) / N - 0.5;
+      const dy = (y + 0.5) / N - 0.5;
+      const r = Math.sqrt(dx * dx + dy * dy) * 2;
+      const a = Math.min(1, Math.max(0, (0.96 - r) / aa));
+      const i = (y * N + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      data[i + 3] = Math.round(a * 255);
+    }
+  }
+  const t = new DataTexture(data, N, N, RGBAFormat, UnsignedByteType);
+  t.magFilter = LinearFilter;
+  t.minFilter = LinearFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
   cache.set(key, t);
   return t;
+}
+
+function starPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, points: number, rOut: (i: number) => number, rIn: (i: number) => number, rot = 0) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const a = rot + (i / (points * 2)) * Math.PI * 2;
+    const r = i % 2 ? rIn(i >> 1) : rOut(i >> 1);
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function spriteTex(c: HTMLCanvasElement, key: string) {
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.minFilter = LinearMipmapLinearFilter;
+  t.magFilter = LinearFilter;
+  cache.set(key, t);
+  return t;
+}
+
+/** Manga impact burst: a jagged white star with a pale-yellow core and a crisp blue keyline. */
+export function impactBurstTexture(): Texture {
+  const key = 'impactBurst';
+  if (cache.has(key)) return cache.get(key)!;
+  const S = 256;
+  const { c, ctx } = canvas(S, S);
+  const rng = new Rng(77);
+  const outs = Array.from({ length: 14 }, () => rng.range(0.78, 1));
+  ctx.lineJoin = 'miter';
+  starPath(ctx, S / 2, S / 2, 14, (i) => outs[i] * S * 0.47, () => S * 0.24);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = S * 0.022;
+  ctx.strokeStyle = '#5ab8ff';
+  ctx.stroke();
+  starPath(ctx, S / 2, S / 2, 14, (i) => outs[i] * S * 0.3, () => S * 0.15, 0.08);
+  ctx.fillStyle = '#fff3a0';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, S * 0.1, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  return spriteTex(c, key);
+}
+
+/** Thick flat shock ring with a thin inner keyline. */
+export function impactRingTexture(): Texture {
+  const key = 'impactRing';
+  if (cache.has(key)) return cache.get(key)!;
+  const S = 256;
+  const { c, ctx } = canvas(S, S);
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, S * 0.44, 0, Math.PI * 2);
+  ctx.arc(S / 2, S / 2, S * 0.36, 0, Math.PI * 2, true);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, S * 0.31, 0, Math.PI * 2);
+  ctx.lineWidth = S * 0.018;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.stroke();
+  return spriteTex(c, key);
+}
+
+/** Four-point anime sparkle (concave diamond) with a small cross glint. */
+export function sparkleTexture(): Texture {
+  const key = 'sparkle';
+  if (cache.has(key)) return cache.get(key)!;
+  const S = 128;
+  const { c, ctx } = canvas(S, S);
+  const h = S / 2;
+  ctx.beginPath();
+  ctx.moveTo(h, h - h * 0.96);
+  ctx.quadraticCurveTo(h, h, h + h * 0.96, h);
+  ctx.quadraticCurveTo(h, h, h, h + h * 0.96);
+  ctx.quadraticCurveTo(h, h, h - h * 0.96, h);
+  ctx.quadraticCurveTo(h, h, h, h - h * 0.96);
+  ctx.closePath();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  starPath(ctx, h, h, 4, () => h * 0.42, () => h * 0.07, Math.PI / 4);
+  ctx.fill();
+  return spriteTex(c, key);
 }
 
 /** Lit-window facade for skyline towers. */

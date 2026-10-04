@@ -881,7 +881,7 @@ export class Game implements ReplayHost, PhotoHost {
     if (!racing || this.replay || this.photo) {
       // No screen-space race FX behind menus, replays or photos.
       const fx = this.renderer.fx;
-      fx.speed = fx.radial = fx.chroma = fx.flash = fx.drops = fx.damage = 0;
+      fx.speed = fx.radial = fx.chroma = fx.flash = fx.impact = fx.drops = fx.damage = 0;
     }
     if (this.hud) this.hud.update(simDt);
     if (this.hud2) {

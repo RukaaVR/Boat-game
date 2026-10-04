@@ -3,7 +3,7 @@
  *
  * Passes: scene → MSAA target; bright-pass (½) → down (¼) → blur H → blur V;
  * composite to screen. The composite does grading, vignette, boost radial
- * blur, chromatic aberration, speed lines, lens droplets, impact flash and
+ * blur, chromatic aberration, manga speed lines, lens droplets, impact frame, flash and
  * colour-assist daltonisation in one fullscreen draw.
  *
  * The adaptive controller owns pixel ratio. It reacts to the *median* frame
@@ -86,6 +86,7 @@ uniform float uChroma;
 uniform float uRadial;
 uniform float uSpeed;
 uniform float uFlash;
+uniform float uImpact;
 uniform vec3 uFlashColor;
 uniform float uDrops;
 uniform float uDamage;
@@ -140,17 +141,6 @@ void main() {
   }
   col += texture2D(tBloom, uv).rgb * uBloom;
 
-  // Speed lines: sparse radial streaks at the frame edge.
-  if (uSpeed > 0.01) {
-    float ang = atan(d.y, d.x * aspect);
-    float seg = floor(ang * 160.0);
-    float n = h11(seg);
-    float r = length(vec2(d.x * aspect, d.y));
-    float on = step(1.0 - 0.16 * uSpeed, n) * step(0.55, fract(n * 17.0 + uTime * (3.0 + n * 4.0)));
-    float edge = smoothstep(0.42, 0.8, r);
-    col = mix(col, vec3(1.0), on * edge * 0.22 * min(uSpeed, 1.0));
-  }
-
   // Grade (linear): exposure, saturation, contrast around mid-grey, soft shoulder.
   col *= uExposure;
   float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -162,6 +152,36 @@ void main() {
   float v = smoothstep(0.85, 0.25, length(d * vec2(aspect * 0.8, 1.0)));
   col *= mix(1.0 - uVignette, 1.0, v);
   col = mix(col, vec3(0.9, 0.05, 0.05), uDamage * (1.0 - v) * 0.5);
+
+  // Impact frame: for a frame or two the image is crushed to two-tone ink
+  // (cream highlights / navy shadows), like an anime hit frame.
+  if (uImpact > 0.01) {
+    float il = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    vec3 ink = mix(vec3(0.04, 0.06, 0.18), vec3(1.0, 0.97, 0.88), step(0.55, il));
+    col = mix(col, ink, uImpact * 0.6);
+  }
+
+  // Manga speed lines: hard-edged white wedges converging on the frame
+  // centre, clear in the middle, re-drawn on a stepped clock ("boiling").
+  float sl = max(min(uSpeed, 1.3), uImpact * 1.1);
+  if (sl > 0.01) {
+    vec2 p = vec2(d.x * aspect, d.y);
+    float r = length(p);
+    float N = 120.0;
+    float a = atan(p.y, p.x) / 6.2831853 * N;
+    float seg = floor(a);
+    float f = fract(a) - 0.5;
+    float tick = floor(uTime * 15.0);
+    float n = h11(seg + tick * 37.13);
+    float n2 = h11(seg * 1.73 + tick * 11.9 + 3.1);
+    float on = step(1.0 - (0.16 + 0.4 * clamp(sl, 0.0, 1.0)), n);
+    float r0 = mix(0.7, 0.44, clamp(sl * 0.8, 0.0, 1.0)) + n2 * 0.18;
+    float taper = sqrt(clamp((r - r0) / 0.4, 0.0, 1.0));
+    float w = (0.1 + 0.32 * n2) * taper;
+    float px = N / (6.2831853 * max(r, 1e-3) * uRes.y);
+    float line = on * clamp((w - abs(f)) / px, 0.0, 1.0);
+    col = mix(col, vec3(1.0), line * min(sl, 1.0) * 0.8);
+  }
 
   col += uFlashColor * uFlash;
   // Droplets catch a little light so they read as water on the lens.
@@ -181,6 +201,8 @@ export interface ScreenFx {
   chroma: number;
   speed: number;
   flash: number;
+  /** 0..1 anime "impact frame" (two-tone ink flash + burst lines), ~2 frames long. */
+  impact: number;
   flashColor: Color;
   drops: number;
   damage: number;
@@ -189,7 +211,7 @@ export interface ScreenFx {
 export class Renderer {
   readonly gl: WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
-  readonly fx: ScreenFx = { radial: 0, chroma: 0, speed: 0, flash: 0, flashColor: new Color(1, 1, 1), drops: 0, damage: 0 };
+  readonly fx: ScreenFx = { radial: 0, chroma: 0, speed: 0, flash: 0, impact: 0, flashColor: new Color(1, 1, 1), drops: 0, damage: 0 };
   /** 0 off, 1 protan, 2 deutan, 3 tritan. */
   assist = 0;
   quality: Quality;
@@ -250,6 +272,7 @@ export class Renderer {
         uRadial: { value: 0 },
         uSpeed: { value: 0 },
         uFlash: { value: 0 },
+        uImpact: { value: 0 },
         uFlashColor: { value: new Color(1, 1, 1) },
         uDrops: { value: 0 },
         uDamage: { value: 0 },
@@ -436,6 +459,8 @@ export class Renderer {
     u.uRadial.value = fx.radial * m;
     u.uSpeed.value = fx.speed * m;
     u.uFlash.value = fx.flash;
+    // Reduced-motion setting also tones down the strobe-like impact frame.
+    u.uImpact.value = fx.impact * m;
     u.uFlashColor.value.copy(fx.flashColor);
     u.uDrops.value = fx.drops * m;
     u.uDamage.value = fx.damage;

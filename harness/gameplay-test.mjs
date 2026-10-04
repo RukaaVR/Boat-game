@@ -56,6 +56,19 @@ const S = (page) => page.evaluate(() => window.__RIPTIDE__.stats());
 const main = await fresh();
 const P = main.page;
 
+
+/** Race podium / cup trophy sit between the finish and the next screen: wait for it and skip it. */
+const throughPodium = (page) =>
+  page.evaluate(() => {
+    const x = window.__RIPTIDE__;
+    x.simulateUntil("s.screen === 'podium' || s.screen === 'results' || s.screen === 'champFinal'", 12, 1 / 30);
+    if (x.podium) {
+      x.simulate(0.7, 1 / 30);
+      x.skipPodium();
+    }
+    x.simulate(0.2, 1 / 30);
+  });
+
 await test('GPU and CPU wave fields agree', async () => {
   const r = await P.evaluate(() => window.__RIPTIDE__.waveCheck());
   assert(r.maxHeight > 0.5, `waves too flat to be a meaningful test (max ${r.maxHeight})`);
@@ -107,6 +120,7 @@ await test('checkpoints advance and AI progresses', async () => {
 await test('race finishes and results screen appears', async () => {
   const r = await P.evaluate(() => window.__RIPTIDE__.simulateUntil("s.phase === 'results'", 160, 1 / 30));
   assert(r.ok, 'never reached results; phase=' + r.stats.phase);
+  await throughPodium(P);
   await P.waitForTimeout(400);
   const s = await S(P);
   assert(s.screen === 'results', 'screen is ' + s.screen);
@@ -284,6 +298,7 @@ await test('championship: start cup, race, standings', async () => {
     return x.simulateUntil("s.phase === 'results'", 400, 1 / 20);
   });
   assert(r.ok, 'champ race did not finish');
+  await throughPodium(P);
   await P.waitForTimeout(400);
   await P.keyboard.press('Enter');
   await P.waitForTimeout(500);
@@ -304,10 +319,12 @@ await test('championship finale awards a trophy', async () => {
     return x.simulateUntil("s.phase === 'results'", 400, 1 / 20);
   });
   assert(r.ok, 'final round did not finish');
+  await throughPodium(P);
   await P.keyboard.press('Enter'); // results → final standings
   await P.evaluate(() => window.__RIPTIDE__.tick());
   assert(await P.isVisible('text=FINAL STANDINGS'), 'no final standings');
   await P.click('[data-act="champTrophy"]');
+  await throughPodium(P);
   await P.waitForTimeout(300);
   assert(await P.isVisible('text=FINAL RESULT'), 'no trophy screen');
   const d = await P.evaluate(() => window.__RIPTIDE__.saveData());

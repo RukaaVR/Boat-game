@@ -732,7 +732,7 @@ export class Hud {
       if (this.nameCd[i] > 0) this.nameCd[i] -= dt;
       if (this.passCd[i] > 0) this.passCd[i] -= dt;
     }
-    if (s.isRace && racing) {
+    if (s.isRace && racing && !s.battleRule) {
       const rs = s.racers;
       if (!this.placesInit) {
         for (let i = 0; i < rs.length; i++) this.prevPlace[i] = rs[i].place;

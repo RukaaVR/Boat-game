@@ -1,8 +1,11 @@
 # RIPTIDE — Arcade Wave Racing
 
-A complete arcade water-racing game for the browser, built entirely from code:
-every mesh, texture, sound and music note is generated procedurally. There are
-no image, model or audio files in the project.
+A complete arcade water-racing game for the browser with a cel-shaded anime
+look. Almost everything is generated from code: every boat, island, texture,
+sound effect, voice chirp and music note. The one imported asset is the rider's
+base body, a stylised character model (`assets/models/tinybase.fbx`) converted
+once by `scripts/convert-rider.mjs` into `src/boat/riderModel.json`; hair, face,
+clothes colours and animation are all procedural on top of it.
 
 TypeScript · Vite · three.js (WebGL2) · Web Audio API · no backend.
 
@@ -30,7 +33,7 @@ no connection.
 | Nitro (hold) | `E` / `Left Ctrl` | X |
 | Air tricks | in the air: `Drift` + `↑` front flip, `Drift` + `↓` back flip, `Drift` + `←/→` 360 spin | same with stick |
 | Barrel roll (air) | `Q` | LB |
-| Use item (Battle) | `F` | B |
+| Use item (Battle, or races with items on) | `F` | B |
 | Air pitch | `W` / `S` while airborne | Left stick Y |
 | Camera (close / far / bow / cinematic / aerial) | `C` | Y |
 | Pause | `Esc` / `P` | Start |
@@ -73,15 +76,27 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 - **Shortcuts**: every course has a narrow channel through the rocks, marked
   with yellow buoys and a SHORTCUT sign. It saves distance and costs nerve.
 
+- **Items** (Battle always; normal races when Settings → Gameplay → ITEM BOXES is
+  on): drive through a box and a roulette picks an item weighted by your place —
+  leaders get defensive items, the back of the pack gets the strong ones:
+  TORPEDO, TORPEDO ×3 (three shots), OIL SLICK, SHIELD, WAVE MAKER, TURBO,
+  SEEKER (a homing missile that hunts the leader — jump at the last moment or
+  shield it), GOLDEN SURGE (mash for repeated boosts for 6 s) and STORM CALL
+  (lightning shrinks and slows every rival for 5 s; last places only, with a
+  cooldown). Nothing changes a boat's stats permanently.
+- **Callouts**: manga-style banners for overtakes (with the rival's name), first
+  place, final lap, incoming missiles, big drifts, perfect landings and the
+  career boss closing in. At most one at a time, rate-limited and queued.
+
 ## Game modes
 
 | Mode | |
 |---|---|
 | Quick Race | 6 boats, 1–5 laps, easy / normal / hard AI, any weather, optional changing weather |
 | Career | Eight named rivals, one at a time, each with an intro line. Finish ahead of the boss to unlock the next; the final boss, MAELSTROM, runs a hotter engine |
-| Championship | Four cups (3–6 races). Points 10-8-6-5-4-3, standings between rounds, trophy at the end |
+| Championship | Six cups (3–6 races), starting with the beginner SPLASH CUP. Points 10-8-6-5-4-3, standings between rounds, a podium after each race and a trophy ceremony at the end |
 | Challenges | A new daily challenge and weekly challenge, generated from the date (same for everyone), with credit and XP rewards. Boats you don't own are lent for the attempt |
-| Battle | A race with item boxes: torpedoes, oil slicks, shields, a wave maker and turbo. Weaker items go to the leaders, stronger ones to the back of the pack |
+| Battle | A fight in **Lagoon Arena** (an open lagoon ringed by islands, channels, an arch, docks and floating platforms) or on any course. Three rules: BALLOONS (3 lives, last boat afloat), TIMED (most hits in 3 minutes) and SCORE (first to 5 hits) |
 | 2 Player | Local split-screen with 0–4 AI rivals (no progression awarded) |
 | Time Trial | Solo laps against medal targets and a best-lap **ghost** — yours, or a friend's imported from a code |
 | Stunt Run | Two minutes to score with tricks, drifts, clean landings and rings |
@@ -91,7 +106,11 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 
 ## Content
 
-- **10 courses** across 7 themes — Coral Cove and Sunset Atoll (tropical bay),
+- **14 race courses plus a battle arena** — new beginner courses Palm Shallows
+  (wide, calm), Hopscotch Keys (a run of weaving ramps) and Lighthouse Point
+  (drift S-bends) make up the SPLASH CUP; **Starfall Circuit** is a neon night
+  course with light rails along both edges, light hoops for checkpoints, a
+  giant moon and a glowing skyline. The original ten: Coral Cove and Sunset Atoll (tropical bay),
   Thunderhead Coast (storm coast), Neon Harbor and Shipyard Sprint (harbour /
   industrial docks), Cinder Strait (volcanic waters), Glacier Bay (icebergs,
   drifting floes, the northern lights), Canal City (stone embankments,
@@ -106,9 +125,13 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 - **Living world**: dolphin pods leap beside the course, gull flocks circle the
   islands, a whale breaches out on open water, and fishing trawlers cross the
   course as moving obstacles (the AI steers around them). Toggle in Settings.
-- **Music that follows the race**: the procedural soundtrack speeds up, adds
-  hi-hats, fills and a lead line as the fight for a position tightens or while
-  you lead, and switches to its final-lap arrangement on the last lap.
+- **Music that follows the race**: original synthesised songs for the menu,
+  garage, race and results. In a race, layers fade in on bar lines — brass when
+  you lead, a string ostinato when the fight is close, a driving bass when
+  you're behind — and the final lap jumps to the hook, two semitones up and
+  faster. Win and lose stings on the finish. Riders have short synthesised voice
+  chirps (no recorded audio). The output runs through a compressor, limiter and
+  soft clipper.
 - **Changing weather**: optionally, a storm rolls in, night falls, or the sky
   clears part-way through a race — sky, light, water colour, rain and the sea
   state all blend over about 14 s.
@@ -120,6 +143,16 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 - **5 AI rivals** with personalities (aggressive, technical, speed, balanced,
   reckless): different lanes, drift habits, shortcut and ramp choices, nitro
   strategy, deliberate mistakes, traffic behaviour and stuck recovery.
+- **Your rider**: a character creator (main menu → RIDER, or the garage tab)
+  with hair style and colour, skin tone, eye colour and expression on a
+  turntable stage you can drag or turn with `Q`/`E`. The same rider appears in
+  races, the garage, replays, podiums and in ghost codes you share. Riders
+  react in races (item pickup, hits, tricks, glancing back at rivals) and their
+  spiky hair has spring-driven secondary motion.
+- **Podium and trophy**: after a quick race, championship round or career
+  stage the top three take the podium (winner celebrates, the others clap,
+  confetti). Finishing a cup in the top three ends with a trophy ceremony.
+  Skippable with any button.
 - **Garage**: buy boats, upgrade each one (engine, hull, nitro tank, handling;
   three stages each), and customise hull and accent colour, stripe pattern,
   race number, decal, wake-trail tint and boost-flame colour — painted live on
@@ -140,18 +173,39 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
   camera flies anywhere (`WASD`, arrows, `Q`/`E`, `Shift`). Adjust FOV and tilt,
   pick a filter (vivid, noir, sepia, retro, dream), hide the boats, and SNAP to
   save a PNG.
-- **Ghost codes**: in Time Trial, SHARE MY GHOST produces a text code (the lap,
-  quantised and deflated, about 1–2 KB). A friend pastes it into RACE A
-  FRIEND'S GHOST and races your exact line.
+- **Ghost codes (v2)**: in Time Trial, SHARE MY GHOST produces a text code (the
+  lap, quantised and deflated, about 1–2 KB) that also carries your rider look
+  and boat upgrades, a CRC-32 checksum (an edited or truncated code is
+  rejected) and a short fingerprint (`RIPTIDE-XXXX-XXXX-XXXX`) to confirm two
+  people have the same ghost. A friend pastes it into RACE A FRIEND'S GHOST;
+  imported ghosts are stored separately and never overwrite your own. Old v1
+  codes still import.
+- **Leaderboard**: the best-lap board in Time Trial is **local to this device**
+  and labelled as such. There is no online leaderboard and no server; the code
+  has a small provider interface (`src/online/leaderboard.ts`) so a real
+  backend could be added later.
 
 ## Settings and accessibility
 
 Five menu languages (English, Español, Français, Deutsch, Português), colour
 assist filters (protan / deutan / tritan), **colour-blind symbols** (shapes on
 buoys — ▲ left edge, ■ right edge, ◆ shortcut — Roman numerals on drift tiers,
-letters on medals), HUD scale, camera-shake and motion-effect sliders, boat
-shadows, wildlife on/off, changing weather on/off, touch controls and tilt,
+letters on medals), HUD scale, camera-shake and motion-effect sliders, **reduce flashes**
+(lightning, impact frames and white-outs at a quarter strength), **particle
+amount**, separate **menu / UI sound** volume, boat shadows, wildlife on/off, changing weather on/off, touch controls and tilt,
 steering sensitivity, key rebinding.
+
+**Graphics**: LOW / MEDIUM / HIGH presets plus **AUTO**, which picks a preset
+from the device (GPU renderer string, cores, memory, screen) and steps down one
+preset if the median frame time stays high even at minimum resolution. Presets
+set ocean density, MSAA, bloom, particle budget, shadows, scenery outlines and
+level-of-detail distances. Dynamic resolution (on by default) scales the pixel
+ratio from the median frame time.
+
+**Saves** are versioned (currently v2). An older save is backed up to
+`riptide.save.v1.v<N>` in localStorage before it is migrated step by step, and
+every field is validated on load. A save written by a newer build is read as
+far as it is understood and its original is backed up the same way.
 
 ## Admin panel
 
@@ -169,13 +223,21 @@ quickly. The password is **`SaltyKraken77`**.
   and boost power.
 - **World**: weather / time of day, wave height, rain strength, game speed
   (slow motion), spawn mines or a ramp ahead, free-flying camera.
-- **Debug**: live FPS / CPU stats, the `?debug=1` overlay, ocean wireframe,
-  collision shapes, hide UI, bloom, outlines, autopilot.
+- **Debug**: live FPS / CPU stats, particle and LOD counts, the `?debug=1`
+  overlay, ocean wireframe, collision shapes, hide UI, bloom, outlines,
+  autopilot, graphics preset buttons, rider animation triggers, drift-spark
+  tier preview, grant any item, podium / trophy previews, open the character
+  creator.
 
 Three wrong passwords lock the prompt for 30 seconds; a correct one stays
 unlocked until the tab is closed. The game has no server, so the check runs in
 the browser and only a hash of the password ships in the code — it keeps
 casual players out, but anyone with developer tools could get past it.
+
+**This is not security.** Everything the panel can do, a player can also do by
+editing localStorage or the JavaScript in their own browser. The password only
+stops accidental use; it protects no secrets and nothing server-side (there is
+no server).
 
 ## Architecture
 
@@ -189,14 +251,16 @@ src/
                battle items, trawler traffic, replay recorder/player, guided tutorial
   ai/          AI drivers
   environment/ layout (pure data), scenery visuals, props, sky, aurora, weather presets + blending, atmosphere
-  render/      renderer + post stack + split-screen + adaptive resolution, cel materials/outlines,
+  render/      renderer + post stack + split-screen + adaptive resolution, graphics presets,
+               distance LOD for instanced props, character / podium stages, cel materials/outlines,
                course furniture, battle visuals, wildlife, boat shadows, FX director, world
   camera/      chase/bow/cinematic/aerial rig with shake and comfort scaling
   particles/   pooled GPU point particles
   audio/       synthesised SFX/engines and procedural music sequencer
   ui/          menus, HUD, minimap, replay bar / photo panel, translations, spatial navigation, styles
   input/       keyboard + gamepads (incl. split-screen layouts) + touch, rebindable
-  save/        validated localStorage save, progression content (upgrades, achievements,
+  online/      leaderboard provider interface + the local (this-device) implementation
+  save/        validated, versioned localStorage save, progression content (upgrades, achievements,
                challenges, career), rewards, ghost codes
 public/        web manifest, icons, service worker
   debug/       ?debug=1 overlay, GPU↔CPU wave agreement check
@@ -230,7 +294,7 @@ so results are deterministic.
 
 ```bash
 npm run dev &                          # or build + preview
-npm test                               # 29 gameplay tests + 18 feature tests
+npm test                               # 29 gameplay tests + 20 feature tests
 node harness/features-test.mjs         # just the feature suite
 node harness/capture.mjs --list        # named screenshot scenarios
 node harness/capture.mjs --shots=racing,storm,night --out=shots
@@ -243,8 +307,9 @@ applied in races, achievements and lifetime stats, replay playback, photo
 snapshots, ghost-code round trips, deterministic challenges, the full guided
 tutorial, battle items and damage, split-screen input, a point-to-point sprint
 finish, the new courses, the career ladder, bottle collection, mid-race weather
-changes, touch controls, menu translation, and hostile values in the new save
-fields.
+changes, touch controls, menu translation, hostile values in the new save
+fields, v1 → v2 save migration, ghost-code v2 checksums and fingerprints, and
+all three Lagoon Arena battle rules.
 
 The gameplay suite covers: GPU/CPU wave agreement, race start sequence,
 flotation, acceleration, checkpoints and AI progress, finish and results,
@@ -302,4 +367,16 @@ numbers.
   half the single-player frame rate. Replays and progression are off in
   split-screen.
 - Only menus are translated; in-race callouts stay in English.
-- The admin password check is client-side (see above).
+- The admin password check is client-side and is not security (see above).
+- There are no online features: ghosts are shared by copying a text code, and
+  the leaderboard only lists this device's times.
+- Battle: when the player is knocked out in BALLOONS the battle ends at once
+  (no spectating). In the direct-homing phase the SEEKER ignores islands.
+- Item effect timers (shrink, surge) are not captured by the replay recorder;
+  replays show the boats' motion but not the shrink.
+- Item and voice sounds play for player 1 only in split-screen (one audio
+  output); player 2 still gets every visual warning.
+- On the podium the rider's short arms hold the trophy by its base just above
+  the head rather than fully overhead.
+- Voice chirps and music were verified by measuring output levels, not by
+  listening on real speakers.

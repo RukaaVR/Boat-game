@@ -216,14 +216,17 @@ await test('lagoon arena: every battle rule runs, AI fights, standings follow th
       let pickups = 0;
       const push = s.events.push.bind(s.events);
       s.events.push = (t, ...a) => (t === 'itemPickup' && pickups++, push(t, ...a));
-      R.simulate(70, 1 / 30);
+      // Read the HUD box while the fight is live (the new items can knock the player out before 70 s).
+      R.simulate(8, 1 / 30);
+      const mode = document.querySelector('.modebox')?.textContent ?? '';
+      R.simulate(62, 1 / 30);
       s.events.push = push;
-      return { pickups, rule: s.battleRule, laps: s.totalLaps, boxes: s.items.boxes.length, hits: s.racers.reduce((n, x) => n + x.timesHit, 0), lives: s.racers.map((x) => x.lives), mode: document.querySelector('.modebox')?.textContent ?? '' };
+      return { pickups, rule: s.battleRule, laps: s.totalLaps, boxes: s.items.boxes.length, hits: s.racers.reduce((n, x) => n + x.timesHit, 0), lives: s.racers.map((x) => x.lives), mode };
     });
     assert(r.rule === battleRule && r.laps === 0, 'rule not applied: ' + JSON.stringify(r));
     assert(r.boxes >= 40 && r.pickups >= 8, 'arena boxes not being collected: ' + JSON.stringify(r));
     assert(r.hits >= 1, 'nobody got hit in 70 s: ' + JSON.stringify(r));
-    assert(r.mode.length > 0, 'battle mode box empty');
+    assert(r.mode.length > 0, 'battle mode box empty: ' + battleRule);
   }
   await E(() => window.__RIPTIDE__.menu());
 });

@@ -314,6 +314,22 @@ await test('hostile values in new save fields are sanitised', async () => {
   await ctx.close();
 });
 
+await test('v1 save migrates to v2 with a backup and a seeded rider look', async () => {
+  const { page, ctx, errors } = await fresh({
+    init: () => {
+      localStorage.setItem('riptide.save.v1', JSON.stringify({ xp: 1234, selectedBoat: 'speedster', liveries: { speedster: { hull: '#ff0000', accent: '#00ff00', stripe: 'none', decal: 'none', number: 7 } }, settings: { reduceFlash: 'yes', particles: 9 } }));
+    },
+  });
+  const d = await page.evaluate(() => window.__RIPTIDE__.saveData());
+  const backup = await page.evaluate(() => localStorage.getItem('riptide.save.v1.v1'));
+  assert(d.version === 2 && d.xp === 1234, 'migrated: ' + JSON.stringify([d.version, d.xp]));
+  assert(d.rider && /^#[0-9a-f]{6}$/i.test(d.rider.hairColor), 'rider: ' + JSON.stringify(d.rider));
+  assert(backup && JSON.parse(backup).xp === 1234, 'no v1 backup');
+  assert(d.settings.reduceFlash === false && d.settings.particles === 1, 'a11y settings: ' + JSON.stringify([d.settings.reduceFlash, d.settings.particles]));
+  assert(errors.length === 0, errors.join(' | '));
+  await ctx.close();
+});
+
 await test('no console errors or warnings in the feature session', async () => {
   assert(main.errors.length === 0, main.errors.slice(0, 5).join(' | '));
 });

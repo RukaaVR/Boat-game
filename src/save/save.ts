@@ -7,7 +7,7 @@
  * private mode) are reported once to the UI rather than thrown.
  */
 
-import { DEFAULT_LOOK, sanitizeLook, type RiderLook } from '../boat/riderLook';
+import { DEFAULT_LOOK, lookFromLivery, sanitizeLook, type RiderLook } from '../boat/riderLook';
 import { BOATS, type BoatId } from '../boat/specs';
 import { DECALS, defaultLivery, sanitizeLivery, STRIPES, type Livery } from '../boat/livery';
 import { ACTIONS, DEFAULT_BINDINGS, type Bindings } from '../input/input';
@@ -317,6 +317,36 @@ export function sanitizeSave(raw: unknown): SaveData {
   };
 }
 
+export const SAVE_VERSION = 2;
+
+/** Version stamped in a raw save object (saves before versioning count as 1). */
+export function saveVersion(v: unknown) {
+  const n = obj(v).version;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 1;
+}
+
+/**
+ * Step a raw save forward one version at a time. Each step only reshapes data;
+ * sanitizeSave still validates every field afterwards.
+ */
+export function migrateSave(v: unknown): unknown {
+  const o = { ...obj(v) };
+  let ver = saveVersion(o);
+  if (ver < 2) {
+    // v1 → v2: riders gained a customisable look. Seed it from the colours the
+    // player already chose for their selected boat so they keep a familiar rider.
+    if (!o.rider) {
+      const sel = typeof o.selectedBoat === 'string' ? o.selectedBoat : BOATS[0].id;
+      const b = BOATS.find((x) => x.id === sel) ?? BOATS[0];
+      const liv = sanitizeLivery(obj(o.liveries)[b.id], defaultLivery(b.hullColor, b.accentColor, 7));
+      o.rider = lookFromLivery(liv);
+    }
+    ver = 2;
+  }
+  o.version = ver;
+  return o;
+}
+
 function sanitizeUpgrades(v: unknown): SaveData['upgrades'] {
   const o = obj(v);
   const out: SaveData['upgrades'] = {};
@@ -394,7 +424,16 @@ export class SaveStore {
     }
     if (!raw) return defaultSave();
     try {
-      return sanitizeSave(JSON.parse(raw));
+      const parsed: unknown = JSON.parse(raw);
+      const from = saveVersion(parsed);
+      if (from > SAVE_VERSION) {
+        // Written by a newer build: read what we understand, but keep the original safe.
+        this.backup(raw, `.v${from}`);
+      } else if (from < SAVE_VERSION) {
+        this.backup(raw, `.v${from}`);
+        this.migratedFrom = from;
+      }
+      return sanitizeSave(migrateSave(parsed));
     } catch {
       // Unparseable JSON: keep a copy for debugging, start fresh.
       this.recovered = true;
@@ -404,6 +443,17 @@ export class SaveStore {
         /* the backup is best-effort */
       }
       return defaultSave();
+    }
+  }
+
+  /** Version of the save that was migrated on load (null when none). */
+  migratedFrom: number | null = null;
+
+  private backup(raw: string, suffix: string) {
+    try {
+      if (!localStorage.getItem(SAVE_KEY + suffix)) localStorage.setItem(SAVE_KEY + suffix, raw.slice(0, 400000));
+    } catch {
+      /* best-effort */
     }
   }
 

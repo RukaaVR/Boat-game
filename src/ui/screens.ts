@@ -71,6 +71,9 @@ export class Screens {
 
   private mount(name: string, html: string, onBack: (() => void) | null, cls = 'screen dim') {
     this.clear();
+    // The character stage belongs to the rider screen only; leaving it any way
+    // other than its own back button must not keep it rendering.
+    if (name !== 'rider') this.game.closeStage();
     this.current = name;
     const r = document.createElement('div');
     r.className = cls;
@@ -399,7 +402,7 @@ export class Screens {
     this.mount(
       'challenges',
       `<h1 class="h">${t('challenges')}</h1><div class="sub">New daily challenge every day · weekly every Monday · ${d.challengesDone.length} completed</div>
-      <div class="cards">${cards}</div>
+      <div class="cards grid">${cards}</div>
       <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
       () => g.enterMenu(),
     );
@@ -433,21 +436,22 @@ export class Screens {
       const beaten = d.career.stage > i;
       const open = i === d.career.stage;
       const locked = i > d.career.stage;
-      return `<button class="btn ${open ? 'primary' : ''} ${locked ? 'disabled' : ''}" data-nav data-act="careerGo" data-arg="${i}" style="width:100%;margin-bottom:6px">
-        <span><i style="display:inline-block;width:12px;height:12px;background:${r.hull};margin-right:8px;transform:skewX(-10deg)"></i>${i + 1}. ${r.name} — ${st.title}</span>
-        <span class="k">${beaten ? '✓ BEATEN' : locked ? '🔒' : trackDef(st.trackId).name}</span></button>`;
+      return `<button class="btn crow ${open ? 'primary' : ''} ${locked ? 'disabled' : ''}" data-nav data-act="careerGo" data-arg="${i}">
+        <span class="cr-name"><i style="background:${r.hull}"></i><span>${i + 1}. ${r.name}<small>${st.title.replace(/^THE /, 'THE\u00a0')}</small></span></span>
+        <span class="k">${beaten ? '✓ BEATEN' : locked ? '🔒' : 'NEXT'}</span></button>`;
     }).join('');
     const st = CAREER[cur];
     const done = d.career.stage >= CAREER.length;
     this.mount(
       'career',
       `<h1 class="h">${t('career')}</h1><div class="sub">${t('careerSub')}</div>
-      <div class="grid2"><div class="scroll">${rows}</div>
-      <div><div class="panel"><div class="label" style="margin-top:0">${done ? 'CHAMPION' : 'NEXT RIVAL'}</div>
+      <div class="grid2 careergrid"><div class="scroll">${rows}</div>
+      <div><div class="panel careerpanel"><div class="label" style="margin-top:0">${done ? 'CHAMPION' : 'NEXT RIVAL'}</div>
         <div style="font-family:var(--font);font-style:italic;font-size:30px;color:${RIVALS[st.boss].hull}">${RIVALS[st.boss].name}</div>
         <div class="hint" style="font-size:15px;margin:8px 0 12px;line-height:1.4">${done ? 'You have beaten every rival on the water. Replay any stage for fun.' : esc(st.intro)}</div>
         <div class="hint">${trackDef(st.trackId).name} · ${st.weather.toUpperCase()} · ${st.laps} LAPS · ${st.difficulty.toUpperCase()} FIELD</div>
-        <div class="hint" style="margin-top:6px">Finish ahead of ${RIVALS[st.boss].name} to advance · REWARD ${st.credits.toLocaleString()} CR</div></div></div></div>
+        <div class="hint" style="margin-top:6px">Finish ahead of ${RIVALS[st.boss].name} to advance · REWARD ${st.credits.toLocaleString()} CR</div>
+        <button class="btn primary" data-nav data-act="careerGo" data-arg="${cur}" style="margin-top:14px"><span>${done ? 'RACE AGAIN' : 'RACE ' + RIVALS[st.boss].name}</span><span class="k">${trackDef(st.trackId).name}</span></button></div></div></div>
       <div class="footer"><button class="btn" data-nav data-act="back"><span>${t('back')}</span></button></div>`,
       () => g.enterMenu(),
     );
@@ -712,14 +716,22 @@ export class Screens {
     const bossHtml = stage
       ? `<div class="panel" style="margin:8px 0;border-left:4px solid ${RIVALS[stage.boss].hull}"><div style="font-family:var(--font);font-style:italic;font-size:22px">${RIVALS[stage.boss].name} · ${stage.title}</div><div class="hint" style="font-size:14px;margin-top:6px">${esc(stage.intro)}</div><div class="hint" style="margin-top:6px">${stage.laps} LAPS · ${stage.weather.toUpperCase()} · Finish ahead of ${RIVALS[stage.boss].name}</div></div>`
       : '';
-    body.innerHTML = `
+    // Two columns on wide screens: courses on the left (a wrapping grid that
+    // scrolls vertically), every option on the right — nothing runs off the side.
+    const keepScroll = [...body.querySelectorAll<HTMLElement>('.setup-col')].map((c) => c.scrollTop);
+    body.innerHTML = `<div class="setup2">
+      <div class="setup-col setup-courses">
       ${bossHtml}
-      ${showTracks ? `<div class="label">Course</div><div class="cards">${tracks}</div>` : `<div class="label">Course</div><div class="panel"><b style="font-family:var(--font);font-size:22px;font-style:italic">${trackDef(fixedTrack ?? st.trackId).name}</b><div class="hint">${trackDef(st.trackId).blurb}</div></div>`}
+      ${showTracks ? `<div class="label">Course</div><div class="cards grid">${tracks}</div>` : `<div class="label">Course</div><div class="panel"><b style="font-family:var(--font);font-size:22px;font-style:italic">${trackDef(fixedTrack ?? st.trackId).name}</b><div class="hint">${trackDef(st.trackId).blurb}</div></div>`}
       <div class="hint" style="margin:4px 0 4px">${records}</div>
+      </div>
+      <div class="setup-col setup-opts">
       ${stage ? '' : `<div class="label">${t('weather')}</div><div class="opts">${weather}</div>`}
       ${ruleHtml}${laps}${diff}${dynHtml}${ghostHtml}
       <div class="label">Watercraft</div><div class="opts">${boats}</div>
-      <div class="panel" style="margin-top:10px;max-width:520px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>`;
+      <div class="panel" style="margin-top:10px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>
+      </div></div>`;
+    body.querySelectorAll<HTMLElement>('.setup-col').forEach((c, i) => (c.scrollTop = keepScroll[i] ?? 0));
     if (st.mode === 'timetrial') this.fillBoard(st.trackId);
     body.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
       const t = trackGeo(c.dataset.track!);
@@ -750,7 +762,7 @@ export class Screens {
     this.mount(
       'champ',
       `<h1 class="h">CHAMPIONSHIP</h1><div class="sub">Points: ${CHAMP_POINTS.slice(0, 6).join(' · ')} — top three take a trophy</div>
-      <div class="cards">${cards}</div>
+      <div class="cards grid">${cards}</div>
       ${d.champ ? `<div class="row"><button class="btn small" data-nav data-act="champAbandon"><span>ABANDON CURRENT CUP</span></button></div>` : ''}
       <div class="footer"><button class="btn" data-nav data-act="back"><span>BACK</span></button></div>`,
       () => g.enterMenu(),
@@ -1406,8 +1418,8 @@ export class Screens {
       table = `<table class="res">${s.results
         .map((r) =>
           r.battle !== undefined
-            ? `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint">${r.boat}</td><td class="t" style="white-space:nowrap">${r.battle}</td></tr>`
-            : `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint">${r.boat}</td><td class="t">${r.finished ? formatTime(r.time) : '~' + formatTime(r.time)}</td><td class="t hint">${isFinite(r.bestLap) ? formatTime(r.bestLap) : '—'}</td></tr>`,
+            ? `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint boatcol">${r.boat}</td><td class="t" style="white-space:nowrap">${r.battle}</td></tr>`
+            : `<tr class="${r.isPlayer ? 'me' : ''}"><td class="p">${r.place}</td><td>${esc(r.name)}</td><td class="hint boatcol">${r.boat}</td><td class="t">${r.finished ? formatTime(r.time) : '~' + formatTime(r.time)}</td><td class="t hint">${isFinite(r.bestLap) ? formatTime(r.bestLap) : '—'}</td></tr>`,
         )
         .join('')}</table>`;
     } else if (s.mode === 'timetrial') {
@@ -1427,7 +1439,7 @@ export class Screens {
     this.mount(
       'results',
       `${head}
-      <div class="grid2" style="margin-top:10px"><div class="scroll panel">${table || sum.breakdown.map(([l, v]) => `<div class="row"><span class="hint">${l}</span><span class="spacer"></span><b>+${v} XP</b></div>`).join('')}</div>
+      <div class="grid2 resgrid" style="margin-top:10px"><div class="scroll panel">${table || sum.breakdown.map(([l, v]) => `<div class="row"><span class="hint">${l}</span><span class="spacer"></span><b>+${v} XP</b></div>`).join('')}</div>
       <div>
         <div class="reward">
           <div><span class="n" style="color:${medalCol}">${sum.medalLabel}</span><span class="l">MEDAL</span></div>

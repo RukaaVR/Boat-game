@@ -962,3 +962,83 @@ body.reduced-motion .hud .warnedge.on { opacity: .7; }
 /* Minor messages sit below the callout band. */
 .hud .center-msg { top: 35%; }
 .splitwrap .hud .center-msg { top: 46%; }
+
+/* ── Fit pass: nothing gets cut off at any window size ───────────────────
+   Screens scroll when their content is taller than the window, short
+   labels never break mid-phrase, and menus tighten up on short screens. */
+.screen { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.btn { min-width: 0; }
+.btn .k, .opt, .tab, .chip { white-space: nowrap; }
+.btn .k { flex-shrink: 0; }
+h1.h { padding-left: 8px; margin-left: -8px; max-width: 100%; }
+/* Settings: the label column grows with long labels instead of wrapping them. */
+.setting { grid-template-columns: minmax(200px, max-content) 1fr 60px; }
+.setting .nm { white-space: nowrap; }
+@media (max-width: 760px) {
+  .setting { grid-template-columns: 1fr; gap: 6px; }
+  .setting .nm { white-space: normal; }
+  .setting .val { text-align: left; }
+}
+
+/* Career ladder: rival name on one line, title as a smaller second line. */
+.crow { width: 100%; margin-bottom: 8px; padding-top: 8px; padding-bottom: 8px; }
+.crow .cr-name { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; }
+.crow .cr-name i { flex: none; width: 12px; height: 26px; border-radius: 4px; border: 2px solid #12306e; }
+.crow .cr-name > span { white-space: nowrap; line-height: 1.1; }
+.crow small { display: block; font-size: 12px; letter-spacing: 1px; opacity: .75; font-weight: 800; }
+.careergrid { grid-template-columns: minmax(280px, 380px) minmax(0, 620px); }
+.careerpanel .btn { width: 100%; }
+@media (max-width: 860px) { .careergrid { grid-template-columns: 1fr; } }
+
+/* Short windows (laptops at 768 / 720 px): tighten the main menu so every
+   button fits without scrolling. */
+@media (max-height: 860px) {
+  .menu { gap: 6px; margin-top: 10px; }
+  .menu .btn { padding-top: 8px; padding-bottom: 8px; font-size: 19px; }
+  .menu .btn.big { font-size: 24px; padding-top: 11px; padding-bottom: 11px; }
+  h1.h { font-size: clamp(28px, 6.5vh, 54px); }
+  .sub { margin-bottom: 10px; }
+}
+/* Phone landscape and other very short windows: two-column menu, compact
+   buttons, smaller profile card; everything else scrolls. */
+@media (max-height: 560px) {
+  .screen { padding: 12px 18px; }
+  h1.h { font-size: 26px; }
+  .sub { font-size: 11px; margin-bottom: 6px; }
+  .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; width: min(560px, 60vw); margin-top: 4px; }
+  .menu .btn { font-size: 15px; padding: 6px 14px; }
+  .menu .btn.big { grid-column: 1 / -1; font-size: 19px; padding: 8px 18px; }
+  .menu .btn .k { display: none; }
+  .menu .btn.big .k { display: inline-block; }
+  .profile { transform: scale(.72); transform-origin: top right; }
+  .footer { padding-top: 8px; }
+}
+/* Narrow phones: smaller hint pills so a label and its pill share a row. */
+@media (max-width: 480px) {
+  .btn .k { font-size: 10px; padding: 1px 6px; }
+  .btn { padding-left: 16px; padding-right: 16px; }
+  .opt { padding-left: 8px; padding-right: 8px; }
+}
+
+/* Results: the standings table gets the room it needs (place, name, boat,
+   race time, best lap) and never scrolls sideways. */
+.resgrid { grid-template-columns: minmax(0, 640px) minmax(260px, 1fr); }
+table.res td { white-space: nowrap; }
+table.res td.boatcol { font-size: 12px; }
+@media (max-width: 860px) { .resgrid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { table.res td.boatcol { display: none; } table.res td { padding: 6px 6px; } }
+
+/* Card lists wrap into a grid instead of running off the side of the screen. */
+.cards.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); overflow: visible; scroll-snap-type: none; padding: 8px 6px 14px; }
+.cards.grid .card { width: auto; }
+
+/* Event setup: courses | options, each column scrolls on its own. */
+.setup2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 430px); gap: 22px; height: 100%; min-height: 0; }
+.setup-col { overflow-y: auto; min-height: 0; padding: 0 8px 12px 4px; scrollbar-width: thin; }
+.setup-courses .cards.grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.setup-courses .card canvas { height: 92px; }
+.setup-opts .opts { flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .setup2 { grid-template-columns: 1fr; height: auto; }
+  .setup-col { overflow: visible; }
+}

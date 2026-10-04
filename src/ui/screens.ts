@@ -7,7 +7,7 @@
 import type { Game, EventRequest } from '../core/game';
 import { detectQuality } from '../render/graphics';
 import { EXPRESSIONS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, sanitizeLook, SKIN_TONES, type RiderLook } from '../boat/riderLook';
-import { BOATS, boatSpec, boatStats, type BoatId } from '../boat/specs';
+import { ADMIN_BOAT, BOATS, boatSpec, boatStats, isAdminBoat, type BoatId } from '../boat/specs';
 import { BOOSTS, DECALS, PAINTS, STRIPES, TRAILS, type Livery } from '../boat/livery';
 import { ARENAS, CUPS, CHAMP_POINTS, TRACKS, trackDef } from '../race/trackDefs';
 import { BATTLE_RULES, BATTLE_RULE_IDS, type BattleRule } from '../race/session';
@@ -93,6 +93,14 @@ export class Screens {
     this.toastBox = document.createElement('div');
     this.toastBox.className = 'toasts';
     host.appendChild(this.toastBox);
+  }
+
+  /** Garage / setup boat list: the admin boat joins it only while admin is unlocked. */
+  private boatList() {
+    return this.game.admin.unlocked ? [...BOATS, ADMIN_BOAT] : BOATS;
+  }
+  private ownsBoat(id: string) {
+    return this.game.save.data.owned.includes(id as BoatId) || (isAdminBoat(id) && this.game.admin.unlocked);
   }
 
   private mount(name: string, html: string, onBack: (() => void) | null, cls = 'screen dim') {
@@ -294,7 +302,7 @@ export class Screens {
         this.refreshSetup();
         break;
       case 'boat':
-        if (!g.save.data.owned.includes(arg as BoatId)) {
+        if (!this.ownsBoat(arg)) {
           a.click('deny');
           this.toast('Buy it in the Garage', 'NOT OWNED');
           return;
@@ -766,8 +774,8 @@ export class Screens {
     const weather = ['default', ...WEATHER_IDS]
       .map((w) => `<button class="opt ${st.weather === w ? 'on' : ''}" data-nav data-act="weather" data-arg="${w}">${w === 'default' ? 'TRACK DEFAULT' : WEATHER[w as WeatherId].name}</button>`)
       .join('');
-    const boats = BOATS.map((b) => {
-      const owned = g.save.data.owned.includes(b.id);
+    const boats = this.boatList().map((b) => {
+      const owned = this.ownsBoat(b.id);
       return `<button class="opt ${st.boat === b.id ? 'on' : ''} ${owned ? '' : 'disabled'}" data-nav data-act="boat" data-arg="${b.id}">${b.name}${owned ? '' : ' 🔒'}</button>`;
     }).join('');
     const spec = boatSpec(st.boat);
@@ -1186,14 +1194,14 @@ export class Screens {
     // Bars show the boat as you will race it: upgrades, fitted parts and your rider's build.
     let side = statCard(spec.name, spec.tagline, boatStats(tunedStats(g.save, spec.id).spec), null, `RIDER BUILD: ${d.rider.build.toUpperCase()}`);
     if (this.garageTab === 'boats') {
-      html = BOATS.map((b) => {
-        const owned = d.owned.includes(b.id);
+      html = this.boatList().map((b) => {
+        const owned = this.ownsBoat(b.id);
         const avail = lvl >= b.unlockLevel;
         const state = owned ? (d.selectedBoat === b.id ? 'SELECTED' : 'OWNED') : avail ? `${b.price.toLocaleString()} CR` : `LEVEL ${b.unlockLevel}`;
         return `<button class="btn ${this.garageBoat === b.id ? 'focus-sel' : ''}" data-nav data-act="gboat" data-arg="${b.id}" style="width:100%;margin-bottom:6px;${this.garageBoat === b.id ? 'border-left-color:var(--pink)' : ''}"><span>${b.name}</span><span class="k">${state}</span></button>`;
       }).join('');
       const st = boatStats(spec);
-      const owned = d.owned.includes(spec.id);
+      const owned = this.ownsBoat(spec.id);
       const avail = lvl >= spec.unlockLevel;
       side = statCard(spec.name, spec.tagline, st, null, `TOP ${Math.round(spec.topSpeed * 3.6)} KM/H · BOOST ${Math.round(spec.boostTopSpeed * 3.6)} KM/H · ${spec.length.toFixed(1)} M`);
       html += `<div class="panel" style="margin-top:10px">

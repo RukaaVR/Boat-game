@@ -4,7 +4,7 @@
  * so the garage bars can never disagree with how the boat actually drives.
  */
 
-export type BoatId = 'speedster' | 'bullet' | 'drifter' | 'tank' | 'aero' | 'breaker';
+export type BoatId = 'speedster' | 'bullet' | 'drifter' | 'tank' | 'aero' | 'breaker' | 'kraken';
 
 export type HullStyle = 'runabout' | 'needle' | 'skiff' | 'catamaran' | 'wing' | 'deepv';
 
@@ -202,8 +202,41 @@ export const BOATS: BoatSpec[] = [
   },
 ];
 
+/**
+ * The admin boat. Deliberately NOT in BOATS: AI never picks it, it is never
+ * bought or saved as owned, and it only appears in the garage / race setup
+ * while the admin panel is unlocked in this tab (a reload without unlocking
+ * falls back to a normal boat, because the save only accepts BOATS ids).
+ */
+export const ADMIN_BOAT: BoatSpec = {
+  id: 'kraken',
+  name: 'KRAKEN X',
+  tagline: 'Admins only. Raised from the deep. Not legal in any cup.',
+  hull: 'wing',
+  length: 4.8,
+  beam: 2.2,
+  topSpeed: 38,
+  boostTopSpeed: 50,
+  thrust: 18,
+  turnRate: 2.0,
+  yawResponse: 8.5,
+  grip: 6.0,
+  driftGrip: 1.15,
+  driftYaw: 1.5,
+  driftCharge: 1.45,
+  boostPower: 1.25,
+  stability: 0.9,
+  air: 0.95,
+  mass: 1.5,
+  price: 0,
+  unlockLevel: 1,
+  hullColor: '#14121f',
+  accentColor: '#ffcf3a',
+};
+export const isAdminBoat = (id: string) => id === ADMIN_BOAT.id;
+
 export function boatSpec(id: string): BoatSpec {
-  return BOATS.find((b) => b.id === id) ?? BOATS[0];
+  return BOATS.find((b) => b.id === id) ?? (isAdminBoat(id) ? ADMIN_BOAT : BOATS[0]);
 }
 
 /** 1–10 bars for the garage, computed from the physics values. */

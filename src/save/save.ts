@@ -530,6 +530,7 @@ export class SaveStore {
   }
 
   livery(id: BoatId): Livery {
+    if (id === 'kraken') return { hull: '#14121f', accent: '#ffcf3a', stripe: 'racing', number: 0, decal: 'bolt', trail: '#b388ff', boost: '#c04bff' };
     return this.data.liveries[id] ?? defaultLivery();
   }
 

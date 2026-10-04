@@ -13,7 +13,7 @@
 import { BufferGeometry, Float32BufferAttribute, LineBasicMaterial, LineSegments, type ShaderMaterial } from 'three';
 import type { Game } from '../core/game';
 import type { WeatherId } from '../core/types';
-import { BOATS } from '../boat/specs';
+import { ADMIN_BOAT, BOATS } from '../boat/specs';
 import { resetTune, TUNE } from '../boat/boatPhysics';
 import { CUPS, TRACKS } from '../race/trackDefs';
 import { MAX_LEVEL, sanitizeSave, xpToNext } from '../save/save';
@@ -247,6 +247,8 @@ export class AdminPanel {
           <div class="adm-row"><span>LEVEL</span><select data-f="level">${Array.from({ length: MAX_LEVEL }, (_, i) => `<option ${g.save.level === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><button data-a="setLevel">SET</button><span class="adm-dim">XP ${Math.round(d.xp)}</span></div>
           <div class="adm-row"><button data-a="unlockAll">UNLOCK EVERYTHING</button><button data-a="gold">GIVE ALL GOLD MEDALS</button></div>
           <div class="adm-row"><button data-a="allBoats">GIVE ALL BOATS</button><button data-a="maxUpgrades">MAX ALL UPGRADES</button></div>
+          <div class="adm-row"><button data-a="allClasses">UNLOCK ALL CLASSES + MIRROR / REVERSE</button></div>
+          <div class="adm-sub">ADMIN BOAT</div><div class="adm-row"><button class="${d.selectedBoat === ADMIN_BOAT.id ? 'on' : ''}" data-a="adminBoat">RIDE ${ADMIN_BOAT.name}</button><span class="adm-dim">admin-only · also listed in the garage while unlocked</span></div>
           <div class="adm-sub">EXPORT / IMPORT SAVE</div>
           <textarea data-f="savejson" spellcheck="false" placeholder="Paste a save here to import, or press EXPORT"></textarea>
           <div class="adm-row"><button data-a="export">EXPORT</button><button data-a="download">DOWNLOAD .JSON</button><button data-a="import">IMPORT</button><button class="danger" data-a="reset">RESET PROGRESS</button></div>`;
@@ -255,7 +257,7 @@ export class AdminPanel {
         return `${this.tg('nitro', 'INFINITE NITRO', TUNE.infiniteNitro)}${this.tg('god', 'GOD MODE (NO WIPEOUTS)', TUNE.godMode)}${this.tg('freezeAi', 'FREEZE AI', s!.aiFrozen)}
           ${this.sl('ai', 'AI STRENGTH', 0, 2, 0.05, TUNE.aiPower)}
           <div class="adm-row"><button data-a="nextCp">NEXT CHECKPOINT</button><button data-a="skipLap">SKIP A LAP</button><button data-a="respawn">RESPAWN</button></div>
-          <div class="adm-row"><button data-a="refill">REFILL NITRO</button><button data-a="repair">REPAIR HULL</button><button data-a="shield">SHIELD 10 s</button></div>
+          <div class="adm-row"><button data-a="pearls">10 PEARLS</button><button data-a="refill">REFILL NITRO</button><button data-a="repair">REPAIR HULL</button><button data-a="shield">SHIELD 10 s</button></div>
           <div class="adm-sub">INSTANT FINISH</div>
           <div class="adm-row">${s!.isRace ? [1, 2, 3, s!.racers.length].map((p) => `<button data-a="finish" data-v="${p}">${p === s!.racers.length ? 'LAST' : p + ['ST', 'ND', 'RD'][p - 1]}</button>`).join('') : `<button data-a="finish" data-v="1">FINISH NOW</button>`}</div>`;
       case 'physics':
@@ -457,6 +459,24 @@ export class AdminPanel {
         for (const t of TRACKS) d.medals[t.id] = { race: 3, tt: 3, stunt: 3 };
         for (const c of CUPS) d.cups[c.id] = 3;
         msg = 'Gold everywhere.';
+        break;
+      case 'allClasses':
+        // Gold trophies at every engine class, plus gold medals: opens TSUNAMI, MIRROR and REVERSE everywhere.
+        for (const t of TRACKS) d.medals[t.id] = { race: 3, tt: 3, stunt: 3 };
+        for (const c of CUPS) {
+          d.cups[c.id] = 3;
+          d.classCups.ripple[c.id] = 3;
+          d.classCups.tsunami[c.id] = 3;
+        }
+        msg = 'All engine classes and course directions unlocked.';
+        break;
+      case 'adminBoat':
+        d.selectedBoat = ADMIN_BOAT.id;
+        msg = `${ADMIN_BOAT.name} selected. Admin-only: it disappears after a reload unless admin is unlocked again.`;
+        break;
+      case 'pearls':
+        if (s) s.player.pearls = 10;
+        msg = '10 pearls.';
         break;
       case 'export':
         if (field('savejson')) (field('savejson') as unknown as HTMLTextAreaElement).value = JSON.stringify(d, null, 1);

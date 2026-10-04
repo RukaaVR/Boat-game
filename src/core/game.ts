@@ -34,6 +34,7 @@ import { applyPreset, AutoDowngrade, PRESETS, resolveQuality } from '../render/g
 import type { Quality } from '../render/renderer';
 import { boatSpec, type BoatId } from '../boat/specs';
 import type { Livery } from '../boat/livery';
+import type { FittedParts } from '../boat/parts';
 import { Hud } from '../ui/hud';
 import { Nav } from '../ui/nav';
 import { Screens } from '../ui/screens';
@@ -499,6 +500,7 @@ export class Game implements ReplayHost, PhotoHost {
       playerBoat: d.selectedBoat,
       playerLivery: this.save.livery(d.selectedBoat),
       playerLook: d.rider,
+      playerParts: this.save.parts(d.selectedBoat),
       playerName: d.playerName,
       opponents: 5,
       ghost: null,
@@ -578,7 +580,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.previewBoat(this.save.data.selectedBoat, false);
     }
   }
-  previewBoat(id: BoatId, park = true) {
+  previewBoat(id: BoatId, park = true, parts: FittedParts = this.save.parts(id)) {
     const s = this.session;
     const w = this.world;
     if (!s || !w) return;
@@ -587,7 +589,8 @@ export class Game implements ReplayHost, PhotoHost {
     const p = s.player;
     p.boat.spec = spec;
     (p as { livery: Livery }).livery = liv;
-    w.swapPlayerVisual(new BoatVisual(spec, liv, { look: this.save.data.rider }));
+    p.parts = parts;
+    w.swapPlayerVisual(new BoatVisual(spec, liv, { look: this.save.data.rider, parts }));
     w.wake.setTrailColor(0, liv.trail);
     if (park) {
       // Park the boat on clear open water near the start, away from statics.
@@ -697,6 +700,8 @@ export class Game implements ReplayHost, PhotoHost {
       champPoints: champ?.points,
       // Split-screen is a fair fight: neither player brings garage upgrades.
       playerUpgrades: req.p2Boat ? undefined : this.save.upgrades(req.boat),
+      // Parts follow the same rule as upgrades (none in split-screen).
+      playerParts: req.p2Boat ? undefined : this.save.parts(req.boat),
       field: stage ? [stage.boss, ...stage.field] : undefined,
       boss: stage?.boss,
       bossPower: stage?.bossPower,

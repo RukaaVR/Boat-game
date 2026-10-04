@@ -19,6 +19,8 @@ import type { Boat } from './boat';
 import type { Livery } from './livery';
 import MODEL from './riderModel.json';
 import { lookFromLivery, type RiderLook } from './riderLook';
+import { BUILDS } from './riderGear';
+import { addHeadwear, addTorsoWear, addWristband, hairFilter, hairSwayOf, hideHairVolume, paintTorso, wearColors } from './riderWear';
 
 type PartName = keyof typeof MODEL.parts;
 
@@ -115,21 +117,43 @@ const FWD = new Vector3(0, 0, 1);
 const BACK = new Vector3(0, 0, -1);
 const DOWN = new Vector3(0, -1, 0);
 
-function buildTorso(liv: Livery) {
+function buildTorso(liv: Livery, look: RiderLook) {
   const gb = new GeoBuilder();
   // Sleeves ride on the upper arms (see buildUpperArm).
-  gb.add(cut(part('torso'), ALL, PELVIS, FWD, UP), liv.hull);
+  gb.add(cut(part('torso'), ALL, PELVIS, FWD, UP), wearColors(look, liv).main);
   const g = gb.build();
-  g.rotateX(T);
-  return g;
+  // Outfit pattern, then collar / hood / scarf on top (riderWear.ts).
+  paintTorso(g, look, liv);
+  const wear = new GeoBuilder();
+  addTorsoWear(wear, look, liv, NECK_M.clone().sub(PELVIS));
+  const out = wear.empty ? g : mergeTorso(g, wear.build());
+  out.rotateX(T);
+  return out;
+}
+
+/** Merge the painted torso with its wear pieces, keeping both sets of vertex colours. */
+function mergeTorso(a: BufferGeometry, b: BufferGeometry) {
+  const cols = [a, b].map((g) => (g.getAttribute('color').array as Float32Array).slice());
+  const gb = new GeoBuilder();
+  gb.add(a, 0xffffff).add(b, 0xffffff);
+  const m = gb.build();
+  const c = m.getAttribute('color').array as Float32Array;
+  c.set(cols[0], 0);
+  c.set(cols[1], cols[0].length);
+  return m;
 }
 
 /** Build-time switch: coarse hair for the distant-rider LOD (same silhouette, far fewer triangles). */
 let hairLite = false;
+/** Build-time filter: locks hidden under headwear are not built at all. */
+let hairKeep: ((u: Vector3, dir: Vector3) => boolean) | null = null;
+const _hu = new Vector3();
 
-function buildHead(look: RiderLook) {
+function buildHead(look: RiderLook, liv: Livery) {
   const gb = new GeoBuilder();
   gb.add(cut(part('head'), ALL, NECK_M, FWD, UP), look.skin);
+  // Headwear and goggles share the head's draw call and outline.
+  addHeadwear(gb, look, liv, HEAD_C.clone().sub(NECK_M), HEAD_E);
   return gb.build();
 }
 
@@ -140,8 +164,10 @@ function buildHead(look: RiderLook) {
 function buildHair(liv: Livery, look: RiderLook, lite = false) {
   const gb = new GeoBuilder();
   hairLite = lite;
+  hairKeep = hairFilter(look.headwear);
   addHair(gb, liv, look);
   hairLite = false;
+  hairKeep = null;
   const g = gb.build();
   const c = HEAD_C.clone().sub(NECK_M);
   g.translate(-c.x, -c.y, -c.z);
@@ -165,6 +191,10 @@ function onHead(el: number, az: number, k = 1) {
  * root; the blade lies flat against it like a real clump of hair.
  */
 function lock(gb: GeoBuilder, col: string | Color, base: Vector3, dir: Vector3, n: Vector3, len: number, w: number, t: number, curl: Vector3) {
+  if (hairKeep) {
+    _hu.copy(base).sub(HEAD_C).add(NECK_M).divide(HEAD_E);
+    if (!hairKeep(_hu, dir.clone().normalize())) return;
+  }
   const S = hairLite ? 3 : 6;
   const pos: number[] = [];
   const idx: number[] = [];
@@ -241,7 +271,8 @@ function addHair(gb: GeoBuilder, liv: Livery, look: RiderLook) {
     pos.setXYZ(i, v.x, v.y, v.z);
   }
   cap.computeVertexNormals();
-  gb.add(cap, col);
+  if (!hideHairVolume(look.headwear)) gb.add(cap, col);
+  else cap.dispose();
 
   // Main mass: locks spread evenly (golden spiral) over the crown, sides and
   // back, bursting outward with a lift, so the silhouette is a jagged star.
@@ -514,14 +545,16 @@ function buildUpperArm(side: number, liv: Livery, look: RiderLook) {
   const sg = side === 0 ? 1 : -1;
   const gb = new GeoBuilder();
   const dir = new Vector3(sg, 0, 0);
-  gb.add(cut(part(side === 0 ? 'armL' : 'armR'), (c) => c.x * sg < ELBOW_X, SHOULDER_M[side], dir, BACK), look.skin);
-  gb.add(cut(part(side === 0 ? 'shoulderL' : 'shoulderR'), ALL, SHOULDER_M[side], dir, BACK), liv.accent);
-  gb.sphere(0.048, look.skin, { z: UPPER_ARM }, 10, 8); // elbow
+  const wc = wearColors(look, liv);
+  const sleeve = wc.sleeves ? wc.main : look.skin;
+  gb.add(cut(part(side === 0 ? 'armL' : 'armR'), (c) => c.x * sg < ELBOW_X, SHOULDER_M[side], dir, BACK), sleeve);
+  gb.add(cut(part(side === 0 ? 'shoulderL' : 'shoulderR'), ALL, SHOULDER_M[side], dir, BACK), wc.trim);
+  gb.sphere(0.048, sleeve, { z: UPPER_ARM }, 10, 8); // elbow
   return gb.build();
 }
 
 /** Forearm with watch and hand, from the elbow. */
-function buildForearm(side: number, look: RiderLook) {
+function buildForearm(side: number, look: RiderLook, liv: Livery) {
   const sg = side === 0 ? 1 : -1;
   const gb = new GeoBuilder();
   const skin = look.skin;
@@ -530,20 +563,22 @@ function buildForearm(side: number, look: RiderLook) {
   gb.add(cut(part(side === 0 ? 'armL' : 'armR'), (c) => c.x * sg >= ELBOW_X, elbow, dir, BACK), skin);
   gb.add(cut(part(side === 0 ? 'watchL' : 'watchR'), ALL, elbow, dir, BACK), WATCH);
   gb.add(cut(part(side === 0 ? 'handL' : 'handR'), ALL, elbow, dir, BACK), skin);
+  addWristband(gb, look, liv, FOREARM - 0.02, 0);
   return gb.build();
 }
 
-function buildThigh(side: number, liv: Livery) {
+function buildThigh(side: number, liv: Livery, look: RiderLook) {
   const gb = new GeoBuilder();
-  gb.add(cut(part(side === 0 ? 'legL' : 'legR'), (c) => c.y > KNEE_Y, HIP_M[side], DOWN, FWD), pick(liv, TROUSERS, 3));
+  gb.add(cut(part(side === 0 ? 'legL' : 'legR'), (c) => c.y > KNEE_Y, HIP_M[side], DOWN, FWD), wearColors(look, liv).trousers ?? pick(liv, TROUSERS, 3));
   return gb.build();
 }
 
-function buildShin(side: number, liv: Livery) {
+function buildShin(side: number, liv: Livery, look: RiderLook) {
   const gb = new GeoBuilder();
   const knee = new Vector3(HIP_M[side].x, KNEE_Y, 0);
-  gb.add(cut(part(side === 0 ? 'legL' : 'legR'), (c) => c.y <= KNEE_Y, knee, DOWN, FWD), pick(liv, TROUSERS, 3));
-  gb.sphere(0.075, pick(liv, TROUSERS, 3), {}, 12, 8); // knee
+  const col = wearColors(look, liv).trousers ?? pick(liv, TROUSERS, 3);
+  gb.add(cut(part(side === 0 ? 'legL' : 'legR'), (c) => c.y <= KNEE_Y, knee, DOWN, FWD), col);
+  gb.sphere(0.075, col, {}, 12, 8); // knee
   return gb.build();
 }
 
@@ -660,6 +695,10 @@ export class Rider {
   private headPitch = 0;
   private bob = 0;
   private wave = 0;
+  /** Weight-class torso scale and how freely the hair may swing under headwear. */
+  private bodyW = 1;
+  private bodyH = 1;
+  private hairSway = 1;
 
   constructor(
     liv: Livery,
@@ -670,10 +709,10 @@ export class Rider {
     const lk = look ?? lookFromLivery(liv);
     this.look = lk;
     const mat = ghostMat ?? cel('riderBody', { vertexColors: true, gloss: 0.25 });
-    this.torso = new Mesh(buildTorso(liv), mat);
+    this.torso = new Mesh(buildTorso(liv, lk), mat);
     this.pelvis.add(this.torso);
     const headMat = ghostMat ?? cel('riderHead', { vertexColors: true, gloss: 0.2 });
-    const headMesh = new Mesh(buildHead(lk), headMat);
+    const headMesh = new Mesh(buildHead(lk, liv), headMat);
     this.hairFull = buildHair(liv, lk);
     this.hairLite = buildHair(liv, lk, true);
     addSmoothNormals(this.hairLite);
@@ -684,8 +723,16 @@ export class Rider {
     if (!ghostMat) this.head.add(buildFace(lk));
     this.head.position.copy(NECK);
     this.torso.add(this.head);
-    this.arms = [0, 1].map((i) => [new Mesh(buildUpperArm(i, liv, lk), mat), new Mesh(buildForearm(i, lk), mat)] as [Mesh, Mesh]);
-    this.legs = [0, 1].map((i) => [new Mesh(buildThigh(i, liv), mat), new Mesh(buildShin(i, liv), mat)] as [Mesh, Mesh]);
+    this.arms = [0, 1].map((i) => [new Mesh(buildUpperArm(i, liv, lk), mat), new Mesh(buildForearm(i, lk, liv), mat)] as [Mesh, Mesh]);
+    this.legs = [0, 1].map((i) => [new Mesh(buildThigh(i, liv, lk), mat), new Mesh(buildShin(i, liv, lk), mat)] as [Mesh, Mesh]);
+    // Weight class: broader / slimmer torso and limbs (bone lengths, and so
+    // the IK reach to bar and footholds, are unchanged). The head keeps its size.
+    const body = (BUILDS.find((b) => b.id === lk.build) ?? BUILDS[1]).body;
+    this.bodyW = body[0];
+    this.bodyH = body[1];
+    for (const m of [...this.arms.flat(), ...this.legs.flat()]) m.scale.set(body[2], body[2], 1);
+    this.head.scale.set(1 / body[0], 1 / body[1], 1 / body[0]);
+    this.hairSway = hairSwayOf(lk.headwear);
     this.meshes.push(this.torso, headMesh, this.hairMesh, ...this.arms.flat(), ...this.legs.flat());
     this.torso.name = 'riderTorso';
     headMesh.name = 'riderHead';
@@ -773,8 +820,9 @@ export class Rider {
     this.squashVel += (-this.squash * 140 - this.squashVel * 10) * h;
     this.squash = clamp(this.squash + this.squashVel * h, -0.14, 0.12);
     const m = this.hairMesh;
-    m.rotation.set(this.hairRot.x, 0, this.hairRot.z);
-    m.scale.set(1 - this.squash * 0.4, 1 + this.squash, 1 - this.squash * 0.4);
+    const k = this.hairSway;
+    m.rotation.set(this.hairRot.x * k, 0, this.hairRot.z * k);
+    m.scale.set(1 - this.squash * 0.4 * k, 1 + this.squash * k, 1 - this.squash * 0.4 * k);
   }
 
   update(b: Boat, steer: number, dt: number, time: number, celebrate: boolean) {
@@ -896,7 +944,7 @@ export class Rider {
     this.pelvis.updateMatrix();
     const breathe = 1 + Math.sin(time * 1.9) * 0.012;
     this.torso.rotation.set(this.crouch, this.twist, this.lean, 'YXZ');
-    this.torso.scale.set(1, breathe, 1);
+    this.torso.scale.set(this.bodyW, breathe * this.bodyH, this.bodyW);
     this.torso.updateMatrix();
     this.head.rotation.set(this.headPitch, this.headYaw - this.twist * 0.6, -this.lean * 0.5, 'YXZ');
     _tm.multiplyMatrices(this.pelvis.matrix, this.torso.matrix);

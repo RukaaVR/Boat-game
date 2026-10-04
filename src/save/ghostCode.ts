@@ -23,7 +23,8 @@
 import type { GhostData } from '../race/session';
 import { TRACKS } from '../race/trackDefs';
 import { BOATS } from '../boat/specs';
-import { HAIR_STYLES, sanitizeLook, type RiderLook } from '../boat/riderLook';
+import { DEFAULT_LOOK, HAIR_STYLES, sanitizeLook, type RiderLook } from '../boat/riderLook';
+import { ACCESSORIES, BUILDS, HEADWEAR, OUTFITS } from '../boat/riderGear';
 import { UPGRADE_KINDS, UPGRADE_MAX, type Upgrades } from './progress';
 
 export const GHOST_CODE_VERSION = 2;
@@ -62,15 +63,35 @@ export function crc32(str: string) {
   return ((crc ^ 0xffffffff) >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * Gear (build, headwear, outfit, accessory) rides as an optional sixth dash
+ * field of four catalogue indices, e.g. "...-g-2410", and is only written when
+ * it differs from the defaults — so plain looks produce exactly the original
+ * five-field form, older codes decode unchanged, and older builds that see a
+ * six-field look simply import the ghost without a look.
+ */
+const GEAR_LISTS = [BUILDS, HEADWEAR, OUTFITS, ACCESSORIES] as const;
+const GEAR_KEYS = ['build', 'headwear', 'outfit', 'accessory'] as const;
 function packLook(l: RiderLook) {
-  return `${l.hair[0]}-${l.hairColor.slice(1)}-${l.skin.slice(1)}-${l.eyes.slice(1)}-${l.expression[0]}`;
+  const base = `${l.hair[0]}-${l.hairColor.slice(1)}-${l.skin.slice(1)}-${l.eyes.slice(1)}-${l.expression[0]}`;
+  const idx = GEAR_KEYS.map((k, i) => Math.max(0, (GEAR_LISTS[i] as readonly { id: string }[]).findIndex((o) => o.id === (l[k] ?? DEFAULT_LOOK[k]))));
+  const def = GEAR_KEYS.map((k, i) => (GEAR_LISTS[i] as readonly { id: string }[]).findIndex((o) => o.id === DEFAULT_LOOK[k]));
+  return idx.every((v, i) => v === def[i]) ? base : `${base}-${idx.map((v) => v.toString(36)).join('')}`;
 }
 function unpackLook(s: string): RiderLook | undefined {
   const p = s.split('-');
-  if (p.length !== 5) return undefined;
+  if (p.length !== 5 && p.length !== 6) return undefined;
   const hair = HAIR_STYLES.find((h) => h.id[0] === p[0])?.id;
   if (!hair) return undefined;
-  return sanitizeLook({ hair, hairColor: '#' + p[1], skin: '#' + p[2], eyes: '#' + p[3], expression: p[4] === 'd' ? 'determined' : 'grin' });
+  const look: Record<string, string> = { hair, hairColor: '#' + p[1], skin: '#' + p[2], eyes: '#' + p[3], expression: p[4] === 'd' ? 'determined' : 'grin' };
+  if (p.length === 6) {
+    if (!/^[0-9a-z]{4}$/.test(p[5])) return undefined;
+    GEAR_KEYS.forEach((k, i) => {
+      const o = (GEAR_LISTS[i] as readonly { id: string }[])[parseInt(p[5][i], 36)];
+      if (o) look[k] = o.id;
+    });
+  }
+  return sanitizeLook(look);
 }
 function packUpgrades(u?: Upgrades) {
   return UPGRADE_KINDS.map((k) => Math.max(0, Math.min(UPGRADE_MAX, Math.round(u?.[k] ?? 0)))).join('');

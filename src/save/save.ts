@@ -16,6 +16,7 @@ import type { GhostData } from '../race/session';
 import { CUPS, TRACKS } from '../race/trackDefs';
 import { BOTTLES_PER_TRACK, emptyStats, emptyUpgrades, UPGRADE_KINDS, UPGRADE_MAX, ACHIEVEMENTS, CAREER, type LifetimeStats, type Upgrades } from './progress';
 import { LANGS, type Lang } from '../ui/i18n';
+import { sanitizeBoatParts, STOCK_PARTS, type BoatPartsState, type FittedParts } from '../boat/parts';
 
 export const SAVE_KEY = 'riptide.save.v1';
 
@@ -112,6 +113,8 @@ export interface SaveData {
   rivalGhosts: Record<string, GhostData>;
   /** Bitmask of message bottles found per track. */
   bottles: Record<string, number>;
+  /** Bought and fitted boat parts per boat (garage PARTS tab). Defaulted: no version bump. */
+  boatParts: Partial<Record<BoatId, BoatPartsState>>;
 }
 
 export function defaultSettings(): Settings {
@@ -175,6 +178,7 @@ export function defaultSave(): SaveData {
     rider: { ...DEFAULT_LOOK },
     rivalGhosts: {},
     bottles: {},
+    boatParts: {},
   };
 }
 
@@ -318,6 +322,7 @@ export function sanitizeSave(raw: unknown): SaveData {
     rider: sanitizeLook(o.rider),
     rivalGhosts,
     bottles: sanitizeBottles(o.bottles),
+    boatParts: sanitizeBoatParts(o.boatParts),
   };
 }
 
@@ -502,5 +507,10 @@ export class SaveStore {
 
   upgrades(id: BoatId): Upgrades {
     return this.data.upgrades[id] ?? emptyUpgrades();
+  }
+
+  /** Parts fitted to a boat (stock when nothing was bought). */
+  parts(id: BoatId): FittedParts {
+    return this.data.boatParts[id]?.fitted ?? { ...STOCK_PARTS };
   }
 }

@@ -25,6 +25,7 @@ import { encodeGhost, decodeGhost, ghostFingerprint } from '../save/ghostCode';
 import { LocalLeaderboard } from '../online/leaderboard';
 import { LANG_NAME, LANGS } from './i18n';
 import { checkAchievements, endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
+import { buyOrFitPart, partsTab, randomGear, riderGearHtml, setRiderGear, tunedStats, withPreview, type PartsPreview } from './gearUi';
 
 const MODE_SUB: Record<ModeId, string> = { quick: 'quickSub', championship: 'champSub', timetrial: 'ttSub', freeride: 'freeSub', stunt: 'stuntSub', endless: 'endlessSub', battle: 'battleSub', career: 'careerSub', tutorial: 'tutorialSub' };
 const modeName = (m: ModeId) => t(m);
@@ -147,7 +148,7 @@ export class Screens {
       case 'rrandom': {
         a.click('select');
         const r = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
-        g.save.data.rider = { hair: r(HAIR_STYLES).id, hairColor: r(HAIR_COLORS).id, skin: r(SKIN_TONES).id, eyes: r(EYE_COLORS).id, expression: r(EXPRESSIONS).id };
+        g.save.data.rider = { ...g.save.data.rider, hair: r(HAIR_STYLES).id, hairColor: r(HAIR_COLORS).id, skin: r(SKIN_TONES).id, eyes: r(EYE_COLORS).id, expression: r(EXPRESSIONS).id, ...randomGear(g.save) };
         g.save.save();
         g.refreshStage();
         this.refreshRider();
@@ -293,7 +294,7 @@ export class Screens {
         g.cycleCamera();
         break;
       default:
-        this.handleGarage(act, arg, el) || this.handleSettings(act, arg, el) || this.handleSplit(act, arg);
+        this.handleGarage(act, arg, el) || this.handleGear(act, arg) || this.handleSettings(act, arg, el) || this.handleSplit(act, arg);
     }
   }
 
@@ -857,6 +858,58 @@ export class Screens {
   // ── Garage ───────────────────────────────────────────────────────────────
   private garageBoat: BoatId = 'speedster';
   private garageTab = 'boats';
+  /** PARTS tab try-on (shown on the boat and in the bars until fitted or cleared). */
+  private partPreview: PartsPreview | null = null;
+  /** Drop any try-on and show the boat with its fitted parts again. */
+  private clearPartPreview() {
+    if (!this.partPreview) return;
+    this.partPreview = null;
+    this.game.previewBoat(this.garageBoat, false);
+  }
+  private handleGear(act: string, arg: string): boolean {
+    const g = this.game;
+    switch (act) {
+      case 'rgear': {
+        const err = setRiderGear(g.save, arg);
+        if (err) {
+          g.audio.click('deny');
+          this.toast(err, 'LOCKED');
+          return true;
+        }
+        g.audio.click('move');
+        g.save.save();
+        g.refreshStage();
+        this.refreshRider();
+        return true;
+      }
+      case 'gpart': {
+        g.audio.click('move');
+        const [slot, id] = arg.split(':') as [PartsPreview['slot'], string];
+        this.partPreview = { slot, id };
+        g.previewBoat(this.garageBoat, false, withPreview(g.save.parts(this.garageBoat), this.partPreview));
+        this.refreshGarage();
+        return true;
+      }
+      case 'gpartfit':
+      case 'gpartbuy': {
+        const msg = buyOrFitPart(g.save, this.garageBoat, arg, act === 'gpartbuy');
+        if (msg.startsWith('!')) {
+          g.audio.click('deny');
+          this.toast(msg.slice(1), 'PARTS');
+          return true;
+        }
+        g.save.save(true);
+        if (act === 'gpartbuy') g.audio.unlockSting();
+        else g.audio.click('select');
+        this.toast(msg, act === 'gpartbuy' ? 'PURCHASED · FITTED' : 'FITTED');
+        this.partPreview = null;
+        g.previewBoat(this.garageBoat, false);
+        this.refreshGarage();
+        return true;
+      }
+    }
+    return false;
+  }
 
   // ── Rider (character creator) ──────────────────────────────────────────
   private riderReturn: 'menu' | 'garage' = 'menu';
@@ -910,7 +963,8 @@ export class Screens {
       <div class="label">HAIR COLOUR <span class="r-val">${name(HAIR_COLORS, lk.hairColor)}</span></div>${sw('hairColor', HAIR_COLORS)}
       <div class="label">SKIN <span class="r-val">${name(SKIN_TONES, lk.skin)}</span></div>${sw('skin', SKIN_TONES)}
       <div class="label">EYES <span class="r-val">${name(EYE_COLORS, lk.eyes)}</span></div>${sw('eyes', EYE_COLORS)}
-      <div class="label">EXPRESSION</div>${opts('expression', EXPRESSIONS)}`;
+      <div class="label">EXPRESSION</div>${opts('expression', EXPRESSIONS)}
+      ${riderGearHtml(g.save)}`;
     const again = focusedArg ? (this.root!.querySelector(`#rBody [data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
     g.nav.focus(again ?? (this.root!.querySelector('#rBody [data-nav]') as HTMLElement), false);
   }
@@ -919,6 +973,7 @@ export class Screens {
     const g = this.game;
     this.garageBoat = g.save.data.selectedBoat;
     this.garageTab = tab;
+    this.partPreview = null;
     this.mount(
       'garage',
       `<div class="g-banner"><h1 class="h">GARAGE</h1></div><div class="g-credits" id="gCredits"></div>
@@ -977,14 +1032,15 @@ export class Screens {
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
     (this.root!.querySelector('#gCredits') as HTMLElement).innerHTML = `<span class="coin"></span><b>${d.credits.toLocaleString()}</b><small>LV ${lvl}</small>`;
-    const tabs = ['boats', 'upgrades', 'paint', 'style', 'fx', 'rider'];
+    const tabs = ['boats', 'upgrades', 'parts', 'paint', 'style', 'fx', 'rider'];
     (this.root!.querySelector('#gTabs') as HTMLElement).innerHTML = tabs
-      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), paint: t2('paint'), style: t2('stripes'), fx: t2('trail'), rider: 'RIDER' }[t]}</button>`)
+      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), parts: 'PARTS', paint: t2('paint'), style: t2('stripes'), fx: t2('trail'), rider: 'RIDER' }[t]}</button>`)
       .join('');
     const liv = g.save.livery(this.garageBoat);
     const spec = boatSpec(this.garageBoat);
     let html = '';
-    let side = statCard(spec.name, spec.tagline, boatStats(upgradedSpec(spec, g.save.upgrades(spec.id))), null, '');
+    // Bars show the boat as you will race it: upgrades, fitted parts and your rider's build.
+    let side = statCard(spec.name, spec.tagline, boatStats(tunedStats(g.save, spec.id).spec), null, `RIDER BUILD: ${d.rider.build.toUpperCase()}`);
     if (this.garageTab === 'boats') {
       html = BOATS.map((b) => {
         const owned = d.owned.includes(b.id);
@@ -1020,6 +1076,10 @@ export class Screens {
           <div class="hint">${UPGRADE_INFO[k].blurb}</div></div>`;
       }).join('');
       side = statCard(spec.name, 'UPGRADED STATS', now, base, `TOP ${Math.round(upgradedSpec(spec, up).topSpeed * 3.6)} KM/H (stock ${Math.round(spec.topSpeed * 3.6)})`);
+    } else if (this.garageTab === 'parts') {
+      const r = partsTab(g.save, spec.id, this.partPreview);
+      html = r.html;
+      side = r.side;
     } else if (this.garageTab === 'paint') {
       const sw = (field: 'hull' | 'accent', list: string[], n: number) =>
         `<div class="swatches">${list.map((c, i) => `<button class="sw ${liv[field] === c ? 'on' : ''} ${i >= n ? 'lk disabled' : ''}" style="background:${c}" data-nav data-act="gpaint" data-arg="${field}:${c}" title="${i >= n ? 'Unlocks at a higher level' : c}"></button>`).join('')}</div>`;
@@ -1065,11 +1125,13 @@ export class Screens {
           this.rider('garage');
           return true;
         }
+        this.clearPartPreview();
         this.garageTab = arg;
         this.refreshGarage();
         return true;
       case 'gboat':
         g.audio.click('move');
+        this.partPreview = null;
         this.garageBoat = arg as BoatId;
         g.previewBoat(this.garageBoat);
         this.refreshGarage();

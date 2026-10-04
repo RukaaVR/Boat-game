@@ -1074,3 +1074,23 @@ table.res td.boatcol { font-size: 12px; }
   .footer .btn { padding-top: 6px; padding-bottom: 6px; font-size: 16px; }
   .label { margin: 8px 0 4px; }
 }
+
+/* ── Garage PARTS tab + rider gear (build / headwear / outfit / accessory) ── */
+.garage .g-dn { position: absolute; top: 0; bottom: 0; border-radius: 999px; background: repeating-linear-gradient(135deg, #ff4f6b 0 6px, #c81e3c 6px 12px); opacity: .9; }
+.garage .g-k .gd { font-style: normal; font-size: 11px; margin-left: 6px; padding: 0 5px; border-radius: 6px; vertical-align: 1px; text-shadow: none; }
+.garage .g-k .gd.up { background: #7dff3a; color: #0b3a12; }
+.garage .g-k .gd.dn { background: #ff4f6b; color: #fff; }
+.garage .parts-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.garage .parts-list .part-btn { width: 100%; font-size: 15px; }
+.garage .parts-list .part-btn.fitted { border-left-color: #7dff3a; }
+.garage .part-info { margin-top: 10px; padding: 10px 14px; }
+.garage .part-info .part-name { font-family: var(--font); font-style: italic; font-size: 18px; }
+.rider .gear-opts .opt { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.rider .gear-opts .opt.lk { opacity: .62; filter: saturate(.4); }
+.rider .gear-rule { display: block; font-size: 10px; letter-spacing: .5px; margin-top: 2px; white-space: nowrap; }
+.rider .gear-blurb { margin: 4px 0 0; font-size: 12px; }
+.rider .gear-card.g-stats { position: static; width: auto; margin-top: 10px; padding: 10px 14px 12px; }
+.rider .gear-card .g-name { font-size: 22px; }
+.rider .gear-card .g-bars { grid-template-columns: 96px 1fr; gap: 5px 10px; }
+.rider .gear-card .g-bar { height: 12px; border-width: 2px; }
+@media (max-width: 560px) { .garage .parts-list { grid-template-columns: 1fr; } }

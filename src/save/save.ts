@@ -18,6 +18,7 @@ import { BOTTLES_PER_TRACK, emptyStats, emptyUpgrades, UPGRADE_KINDS, UPGRADE_MA
 import { LANGS, type Lang } from '../ui/i18n';
 import { allCourseKeys } from '../race/variants';
 import { SPEED_CLASS_IDS, type SpeedClass } from '../race/speedClass';
+import { sanitizeBoatParts, STOCK_PARTS, type BoatPartsState, type FittedParts } from '../boat/parts';
 
 export const SAVE_KEY = 'riptide.save.v1';
 
@@ -125,6 +126,8 @@ export interface SaveData {
   classCups: { ripple: Record<string, number>; tsunami: Record<string, number> };
   /** Course ids (normal direction) whose staff ghost lap the player has beaten. */
   staffBeaten: string[];
+  /** Bought and fitted boat parts per boat (garage PARTS tab). Defaulted: no version bump. */
+  boatParts: Partial<Record<BoatId, BoatPartsState>>;
 }
 
 export function defaultSettings(): Settings {
@@ -191,6 +194,7 @@ export function defaultSave(): SaveData {
     bottles: {},
     classCups: { ripple: {}, tsunami: {} },
     staffBeaten: [],
+    boatParts: {},
   };
 }
 
@@ -346,6 +350,7 @@ export function sanitizeSave(raw: unknown): SaveData {
     bottles: sanitizeBottles(o.bottles),
     classCups,
     staffBeaten: Array.isArray(o.staffBeaten) ? [...new Set(o.staffBeaten.filter((k) => typeof k === 'string' && plain.has(k)) as string[])] : [],
+    boatParts: sanitizeBoatParts(o.boatParts),
   };
 }
 
@@ -530,5 +535,10 @@ export class SaveStore {
 
   upgrades(id: BoatId): Upgrades {
     return this.data.upgrades[id] ?? emptyUpgrades();
+  }
+
+  /** Parts fitted to a boat (stock when nothing was bought). */
+  parts(id: BoatId): FittedParts {
+    return this.data.boatParts[id]?.fitted ?? { ...STOCK_PARTS };
   }
 }

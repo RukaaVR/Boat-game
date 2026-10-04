@@ -79,7 +79,7 @@ export class World {
     this.course = new CourseVisuals(session, !!opts.symbols);
     scene.add(this.course.group);
 
-    this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery, { look: r.look }));
+    this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery, { look: r.look, parts: r.parts }));
     this.visScale = new Float32Array(session.racers.length).fill(1);
     this.goldTrail = new Uint8Array(session.racers.length);
     for (const v of this.visuals) scene.add(v.root);

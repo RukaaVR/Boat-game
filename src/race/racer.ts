@@ -1,4 +1,5 @@
 import type { RiderLook } from '../boat/riderLook';
+import type { FittedParts } from '../boat/parts';
 import { makeControls, type Controls } from '../core/types';
 import { Boat } from '../boat/boat';
 import type { BoatSpec } from '../boat/specs';
@@ -9,6 +10,8 @@ import type { AIDriver } from '../ai/aiDriver';
 export class Racer {
   /** Chosen rider look (players); AI derive theirs from the livery. */
   look: RiderLook | null = null;
+  /** Garage parts on this racer's boat (player only; drawn by BoatVisual). */
+  parts: FittedParts | null = null;
   readonly boat: Boat;
   readonly controls: Controls = makeControls();
 

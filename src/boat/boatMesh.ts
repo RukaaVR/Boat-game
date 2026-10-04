@@ -35,6 +35,8 @@ import { addBoots, foothold, Rider, type RiderAnchors } from './rider';
 import type { Livery } from './livery';
 import type { BoatSpec, HullStyle } from './specs';
 import { HOP_TIME } from './boatPhysics';
+import type { FittedParts } from './parts';
+import { addFittedParts, type HullProbe } from './partsMesh';
 
 interface HullShape {
   L: number;
@@ -193,7 +195,7 @@ interface RiderRig extends RiderAnchors {
   nozzle: Vector3;
 }
 
-function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: BufferGeometry; rig: RiderRig } {
+function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[], fit: FittedParts | null = null): { geo: BufferGeometry; rig: RiderRig } {
   const gb = new GeoBuilder();
   const main = shapes[0];
   const L = spec.length;
@@ -334,6 +336,9 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
       for (const s of [-1, 1]) gb.box(0.04, 0.12, 0.6, accent, { x: s * main.B * 0.47, y: sheerAt(main, 0.3) - 0.08, z: -0.2 * L });
   }
 
+  // Garage parts (hull kit / engine / fins), merged into the same mesh.
+  if (fit && (fit.hull !== 'stock' || fit.engine !== 'stock' || fit.fins !== 'stock')) addFittedParts(gb, hullProbe(spec, shapes), liv, fit);
+
   // Rider anchors: hips above the footholds, boots fixed to the deck.
   const hip = new Vector3(0, deck + 0.7, zRider - 0.06);
   addBoots(gb, deck, zRider, liv);
@@ -348,6 +353,27 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
     nozzle,
   };
   return { geo: gb.build(), rig };
+}
+
+/** Hull sampling functions for the bolt-on parts (partsMesh.ts). */
+function hullProbe(spec: BoatSpec, shapes: HullShape[]): HullProbe {
+  const main = shapes[0];
+  const cat = spec.hull === 'catamaran';
+  const bridge = Math.max(deckAt(main, 0.5), 0.36);
+  return {
+    spec,
+    L: main.L,
+    hulls: shapes.map((h) => ({ offsetX: h.offsetX, L: h.L, beam: (t: number) => beamAt(h, t), sheer: (t: number) => sheerAt(h, t), chine: (t: number) => Math.min(chineAt(h, t), sheerAt(h, t) - 0.05) })),
+    outerX: (t: number) =>
+      Math.max(
+        ...shapes.map((h) => {
+          const st = (t - 0.5) * (main.L / h.L) + 0.5;
+          return st < 0 || st > 1 ? 0 : Math.abs(h.offsetX) + beamAt(h, st);
+        }),
+      ),
+    deck: (t: number) => (cat ? Math.max(bridge + 0.03, deckAt(main, t)) : deckAt(main, t)),
+    rearDeckY: cat ? bridge + 0.03 : deckAt(main, 0.08),
+  };
 }
 
 const _dir = new Vector3();
@@ -383,7 +409,7 @@ export class BoatVisual {
   constructor(
     public spec: BoatSpec,
     public livery: Livery,
-    opts: { ghost?: boolean; look?: RiderLook | null } = {},
+    opts: { ghost?: boolean; look?: RiderLook | null; parts?: FittedParts | null } = {},
   ) {
     this.ghost = !!opts.ghost;
     const shapes = hullShapes(spec);
@@ -394,7 +420,7 @@ export class BoatVisual {
       : makeCel({ map: this.livTex, gloss: 1, rim: 1.2 });
     this.hull = new Mesh(hullGeo, hullMat);
     this.hull.name = 'hull';
-    const { geo, rig } = buildParts(spec, livery, shapes);
+    const { geo, rig } = buildParts(spec, livery, shapes, opts.ghost ? null : (opts.parts ?? null));
     this.rig = rig;
     const partsMat = this.ghost ? hullMat : cel('boatParts', { vertexColors: true, gloss: 0.6 });
     this.parts = new Mesh(geo, partsMat);

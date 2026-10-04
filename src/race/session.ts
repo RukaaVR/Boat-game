@@ -15,6 +15,7 @@ import { settleBoat, stepBoat, type PhysicsEnv } from '../boat/boatPhysics';
 import { resolveCollisions, StaticWorld, type CollisionHost } from '../boat/collision';
 import { boatSpec, BOATS, type BoatId } from '../boat/specs';
 import { upgradedSpec, type Upgrades } from '../save/progress';
+import { buildSpec, buildToughness, partsSpec, type FittedParts } from '../boat/parts';
 import { defaultLivery, type Livery } from '../boat/livery';
 import { AIDriver, type AIRaceView, type Style } from '../ai/aiDriver';
 import { buildLayout, type Layout } from '../environment/layout';
@@ -98,6 +99,8 @@ export interface SessionConfig {
   morePlayers?: { name: string; boat: BoatId; livery: Livery; look?: RiderLook }[];
   /** The player's chosen rider look. */
   playerLook?: RiderLook;
+  /** Garage parts fitted to the player's boat (player only; AI ride stock). */
+  playerParts?: FittedParts;
   /** Battle mode rule set (default TIMED). */
   battleRule?: BattleRule;
   /** Course variant: normal, reverse, mirror, mirror + reverse (race courses only). */
@@ -284,8 +287,10 @@ export class RaceSession {
     }
 
     // Racers: player + rivals.
-    this.player = new Racer(0, cfg.playerName, upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerLivery, true, null);
+    // Player spec = stock → garage upgrades → fitted parts → rider weight class (all copies).
+    this.player = new Racer(0, cfg.playerName, buildSpec(partsSpec(upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerParts), cfg.playerLook?.build), cfg.playerLivery, true, null);
     this.player.look = cfg.playerLook ?? null;
+    this.player.parts = cfg.playerParts ?? null;
     this.racers.push(this.player);
     this.humans.push(this.player);
     if (cfg.player2) {
@@ -320,7 +325,7 @@ export class RaceSession {
     // Engine class: a power multiplier for every boat (never the shared specs).
     const classPower = speedClassDef(cfg.speedClass).power;
     if (classPower !== 1) for (const r of this.racers) r.boat.basePower = r.boat.powerScale = r.boat.basePower * classPower;
-    this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
+    this.player.boat.toughness = (1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0)) * buildToughness(cfg.playerLook?.build);
     this.items = cfg.mode === 'battle' || (cfg.items && racing) ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
     this.fighters = this.racers.slice();
     if (this.battleRule) {

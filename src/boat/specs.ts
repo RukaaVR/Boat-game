@@ -208,7 +208,14 @@ export function boatSpec(id: string): BoatSpec {
 
 /** 1–10 bars for the garage, computed from the physics values. */
 export function boatStats(s: BoatSpec) {
-  const r = (v: number, lo: number, hi: number) => Math.max(1, Math.min(10, Math.round(1 + ((v - lo) / (hi - lo)) * 9)));
+  const raw = boatStatsRaw(s);
+  const r = (v: number) => Math.max(1, Math.min(10, Math.round(v)));
+  return { speed: r(raw.speed), accel: r(raw.accel), handling: r(raw.handling), drift: r(raw.drift), stability: r(raw.stability), air: r(raw.air) };
+}
+
+/** Unrounded bar values (0.5–10.5), for showing small part / build trade-offs. */
+export function boatStatsRaw(s: BoatSpec) {
+  const r = (v: number, lo: number, hi: number) => Math.max(0.5, Math.min(10.5, 1 + ((v - lo) / (hi - lo)) * 9));
   return {
     speed: r(s.topSpeed, 28, 35.5),
     accel: r(s.thrust, 12.5, 16),

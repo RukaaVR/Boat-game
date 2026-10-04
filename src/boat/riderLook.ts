@@ -6,6 +6,9 @@
  */
 
 import type { Livery } from './livery';
+import { ACCESSORIES, BUILDS, HEADWEAR, OUTFITS, type Accessory, type Build, type Headwear, type Outfit } from './riderGear';
+
+export type { Accessory, Build, Headwear, Outfit } from './riderGear';
 
 export type HairStyle = 'burst' | 'messy' | 'swept';
 export type Expression = 'grin' | 'determined';
@@ -16,6 +19,11 @@ export interface RiderLook {
   skin: string;
   eyes: string;
   expression: Expression;
+  /** Weight class: body proportions + small handling multipliers (player boat only). */
+  build: Build;
+  headwear: Headwear;
+  outfit: Outfit;
+  accessory: Accessory;
 }
 
 export const HAIR_STYLES: { id: HairStyle; name: string }[] = [
@@ -62,7 +70,7 @@ export const EXPRESSIONS: { id: Expression; name: string }[] = [
   { id: 'determined', name: 'DETERMINED' },
 ];
 
-export const DEFAULT_LOOK: RiderLook = { hair: 'burst', hairColor: '#f3e0a8', skin: '#ffdcc4', eyes: '#e0a020', expression: 'grin' };
+export const DEFAULT_LOOK: RiderLook = { hair: 'burst', hairColor: '#f3e0a8', skin: '#ffdcc4', eyes: '#e0a020', expression: 'grin', build: 'medium', headwear: 'none', outfit: 'team', accessory: 'none' };
 
 /** Small stable hash of the livery so each AI racer looks the same every race. */
 function pickBy<T>(liv: Livery, arr: T[], salt: number) {
@@ -79,8 +87,16 @@ export function lookFromLivery(liv: Livery): RiderLook {
     skin: pickBy(liv, SKIN_TONES, 1).id,
     eyes: pickBy(liv, EYE_COLORS, 6).id,
     expression: pickBy(liv, EXPRESSIONS, 7).id,
+    // AI rivals wear a little variety but always ride stock (medium build).
+    build: 'medium',
+    headwear: pickBy(liv, AI_HEADWEAR, 8),
+    outfit: 'team',
+    accessory: pickBy(liv, AI_ACCESSORY, 9),
   };
 }
+
+const AI_HEADWEAR: Headwear[] = ['none', 'none', 'cap', 'bandana', 'phones', 'helmet'];
+const AI_ACCESSORY: Accessory[] = ['none', 'none', 'none', 'goggles', 'scarf'];
 
 const HEX = /^#[0-9a-f]{6}$/i;
 /** Accepts only well-formed values; unknown or hostile input falls back field by field. */
@@ -93,5 +109,9 @@ export function sanitizeLook(v: unknown): RiderLook {
     skin: hex(o.skin, DEFAULT_LOOK.skin),
     eyes: hex(o.eyes, DEFAULT_LOOK.eyes),
     expression: EXPRESSIONS.some((e) => e.id === o.expression) ? (o.expression as Expression) : DEFAULT_LOOK.expression,
+    build: BUILDS.some((b) => b.id === o.build) ? (o.build as Build) : DEFAULT_LOOK.build,
+    headwear: HEADWEAR.some((h) => h.id === o.headwear) ? (o.headwear as Headwear) : DEFAULT_LOOK.headwear,
+    outfit: OUTFITS.some((f) => f.id === o.outfit) ? (o.outfit as Outfit) : DEFAULT_LOOK.outfit,
+    accessory: ACCESSORIES.some((a) => a.id === o.accessory) ? (o.accessory as Accessory) : DEFAULT_LOOK.accessory,
   };
 }

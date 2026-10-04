@@ -23,7 +23,7 @@ import { setSeaState, setSwellZones, setWaveTime, type SwellZone } from '../wate
 import { Track, type Projection, type TrackPoint } from './track';
 import { trackDef } from './trackDefs';
 import { Racer } from './racer';
-import { BattleItems } from './items';
+import { BattleItems, SHRINK_POWER, SLOW_POWER } from './items';
 import { Traffic } from './traffic';
 import type { Boat } from '../boat/boat';
 
@@ -416,7 +416,11 @@ export class RaceSession {
 
     if (this.items) this.items.update(dt, this.racers, this.phase === 'racing');
     if (this.traffic) this.traffic.update(dt, this.racers);
-    for (const r of this.racers) r.boat.powerScale = r.boat.basePower * (1 - 0.12 * r.boat.damage);
+    for (const r of this.racers) {
+      const b = r.boat;
+      // Item effects are multipliers on top of the healthy engine, never stored stats.
+      b.powerScale = b.basePower * (1 - 0.12 * b.damage) * (b.shrink > 0 ? SHRINK_POWER : 1) * (b.itemSlow > 0 ? SLOW_POWER : 1);
+    }
     this.stats.itemHits = this.player.itemHits;
     this.updateWeather(dt);
     this.updateDrafting(dt);

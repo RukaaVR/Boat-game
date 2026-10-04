@@ -743,3 +743,108 @@ h1.h { text-shadow: 4px 4px 0 #ff4f8b, 7px 7px 0 #12306e; }
 /* The creator's pattern stops short of the rider so it never washes it out. */
 .screen.rider::before { -webkit-mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); mask: linear-gradient(90deg, #000 0%, #000 26%, transparent 44%); }
 .screen.rider::after { display: none; }
+
+
+/* ── New power-up icons (SEEKER, TORPEDO ×3, GOLDEN SURGE, STORM CALL) — same ink + gloss style ── */
+.itemslot .ic-torpedo3 { background: transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Cg%20transform%3D%22translate%2818%202%29%20scale%281.0%29%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%20%3Cpath%20d%3D%22M10%204%20L4%20-4%20L16%203%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%3Cpath%20d%3D%22M10%2020%20L4%2028%20L16%2021%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%20%3Cpath%20d%3D%22M8%204%20H26%20C35%204%2040%208%2040%2012%20C40%2016%2035%2020%2026%2020%20H8%20C5%2020%204%2016%204%2012%20C4%208%205%204%208%204%20Z%22%20fill%3D%22%23ff3b5c%22%2F%3E%20%3Cpath%20d%3D%22M24%204.5%20C27%208%2027%2016%2024%2019.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%224%22%2F%3E%20%3Ccircle%20cx%3D%2233%22%20cy%3D%2211%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke-width%3D%222%22%2F%3E%20%3Cpath%20d%3D%22M9%208%20H20%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.5%22%20opacity%3D%22.75%22%2F%3E%20%3C%2Fg%3E%3Cg%20transform%3D%22translate%284%2022%29%20scale%281.0%29%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%20%3Cpath%20d%3D%22M10%204%20L4%20-4%20L16%203%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%3Cpath%20d%3D%22M10%2020%20L4%2028%20L16%2021%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%20%3Cpath%20d%3D%22M8%204%20H26%20C35%204%2040%208%2040%2012%20C40%2016%2035%2020%2026%2020%20H8%20C5%2020%204%2016%204%2012%20C4%208%205%204%208%204%20Z%22%20fill%3D%22%23ff3b5c%22%2F%3E%20%3Cpath%20d%3D%22M24%204.5%20C27%208%2027%2016%2024%2019.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%224%22%2F%3E%20%3Ccircle%20cx%3D%2233%22%20cy%3D%2211%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke-width%3D%222%22%2F%3E%20%3Cpath%20d%3D%22M9%208%20H20%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.5%22%20opacity%3D%22.75%22%2F%3E%20%3C%2Fg%3E%3Cg%20transform%3D%22translate%2820%2040%29%20scale%281.0%29%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%20%3Cpath%20d%3D%22M10%204%20L4%20-4%20L16%203%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%3Cpath%20d%3D%22M10%2020%20L4%2028%20L16%2021%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%20%3Cpath%20d%3D%22M8%204%20H26%20C35%204%2040%208%2040%2012%20C40%2016%2035%2020%2026%2020%20H8%20C5%2020%204%2016%204%2012%20C4%208%205%204%208%204%20Z%22%20fill%3D%22%23ff3b5c%22%2F%3E%20%3Cpath%20d%3D%22M24%204.5%20C27%208%2027%2016%2024%2019.5%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%224%22%2F%3E%20%3Ccircle%20cx%3D%2233%22%20cy%3D%2211%22%20r%3D%223%22%20fill%3D%22%23fff%22%20stroke-width%3D%222%22%2F%3E%20%3Cpath%20d%3D%22M9%208%20H20%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.5%22%20opacity%3D%22.75%22%2F%3E%20%3C%2Fg%3E%20%3C%2Fsvg%3E") center / 88% no-repeat !important; border: 0 !important; }
+.itemslot .ic-homer { background: transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Cg%20fill%3D%22none%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%227%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2224%22%20r%3D%2217%22%2F%3E%3C%2Fg%3E%20%3Cg%20fill%3D%22none%22%20stroke%3D%22%23ff2a44%22%20stroke-width%3D%223.5%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2224%22%20r%3D%2217%22%2F%3E%3Cpath%20d%3D%22M40%203%20V11%20M40%2037%20V45%20M19%2024%20H27%20M53%2024%20H61%22%2F%3E%3C%2Fg%3E%20%3Cg%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%20%3Cpath%20d%3D%22M8%2050%20C4%2054%204%2060%204%2060%20C4%2060%2010%2060%2014%2056%22%20fill%3D%22%23ffa21e%22%2F%3E%20%3Cpath%20d%3D%22M15%2041%20L6%2040%20L12%2033%20L21%2035%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%3Cpath%20d%3D%22M23%2049%20L24%2058%20L31%2052%20L29%2043%20Z%22%20fill%3D%22%23ffd93a%22%2F%3E%20%3Cpath%20d%3D%22M11%2053%20L36%2028%20C42%2022%2048%2020%2050%2018%20C48%2020%2046%2026%2040%2032%20L15%2057%20Z%22%20fill%3D%22%23f4f7ff%22%2F%3E%20%3Cpath%20d%3D%22M40%2032%20C46%2026%2048%2020%2050%2018%20C48%2020%2042%2022%2036%2028%20Z%22%20fill%3D%22%23ff2d55%22%2F%3E%20%3Cpath%20d%3D%22M27%2037%20L33%2043%22%20stroke-width%3D%224.5%22%2F%3E%20%3C%2Fg%3E%20%3Cpath%20d%3D%22M27%2037%20L33%2043%22%20stroke%3D%22%23ff2d55%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M16%2048%20L30%2034%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.5%22%20stroke-linecap%3D%22round%22%20opacity%3D%22.9%22%2F%3E%20%3C%2Fsvg%3E") center / 88% no-repeat !important; border: 0 !important; }
+.itemslot .ic-surge { background: transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff6b0%22%2F%3E%3Cstop%20offset%3D%22.45%22%20stop-color%3D%22%23ffd23a%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23e88a00%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%20%3Cpath%20d%3D%22M32%202%20L38%2016%20L52%208%20L48%2024%20L62%2026%20L50%2036%20L58%2050%20L42%2046%20L38%2062%20L30%2050%20L18%2060%20L18%2044%20L2%2042%20L14%2032%20L4%2018%20L20%2020%20L22%204%20Z%22%20fill%3D%22%23ff9d1e%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%2F%3E%20%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%2218%22%20fill%3D%22url%28%23g%29%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%2F%3E%20%3Cpath%20d%3D%22M35%2016%20L23%2035%20H31%20L28%2049%20L42%2029%20H34%20L38%2016%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M20%2024%20A14%2014%200%200%201%2028%2017%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20opacity%3D%22.85%22%2F%3E%20%3Cpath%20d%3D%22M54%204%20L55.5%208.5%20L60%2010%20L55.5%2011.5%20L54%2016%20L52.5%2011.5%20L48%2010%20L52.5%208.5%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%221.5%22%20stroke-linejoin%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M9%2050%20L10%2053%20L13%2054%20L10%2055%20L9%2058%20L8%2055%20L5%2054%20L8%2053%20Z%22%20fill%3D%22%23fff%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%221.2%22%20stroke-linejoin%3D%22round%22%2F%3E%20%3C%2Fsvg%3E") center / 88% no-repeat !important; border: 0 !important; }
+.itemslot .ic-storm { background: transparent url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%20%3Cg%20stroke%3D%22%2312306e%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22%3E%20%3Cpath%20d%3D%22M12%2036%20C4%2036%203%2026%2010%2024%20C10%2015%2020%2011%2026%2016%20C29%207%2044%207%2046%2018%20C55%2017%2060%2026%2054%2033%20C53%2036%2050%2037%2047%2037%20Z%22%20fill%3D%22%235a4ea8%22%2F%3E%20%3Cpath%20d%3D%22M12%2036%20C8%2036%206%2033%206%2030%20C12%2033%2040%2034%2058%2029%20C57%2034%2052%2037%2047%2037%20Z%22%20fill%3D%22%233a2f7a%22%2F%3E%20%3Cpath%20d%3D%22M33%2026%20L22%2044%20H30%20L25%2061%20L43%2038%20H34%20L40%2026%20Z%22%20fill%3D%22%23ffe14d%22%2F%3E%20%3C%2Fg%3E%20%3Cpath%20d%3D%22M18%2020%20C20%2016%2024%2015%2027%2017%22%20stroke%3D%22%23b9b0ff%22%20stroke-width%3D%223%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%20%3Cpath%20d%3D%22M33%2028%20L27%2039%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20opacity%3D%22.9%22%2F%3E%20%3Cg%20fill%3D%22%23fff%22%20stroke%3D%22%2312306e%22%20stroke-width%3D%221.4%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2248%22%20r%3D%222.4%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2247%22%20r%3D%222%22%2F%3E%3Ccircle%20cx%3D%2248%22%20cy%3D%2256%22%20r%3D%221.6%22%2F%3E%3C%2Fg%3E%20%3C%2Fsvg%3E") center / 88% no-repeat !important; border: 0 !important; }
+
+/* Bubble extras: quantity badge, surge timer ring, activation / deny / ready pops. */
+.itemslot .bubble { position: relative; }
+.itemslot .iqty {
+  position: absolute; right: -10px; bottom: -8px; min-width: 38px; padding: 0 6px; height: 30px; line-height: 30px; text-align: center;
+  font-family: var(--font); font-size: 24px; color: #fff; background: #ff3b5c; border: 3px solid #12306e; border-radius: 999px;
+  box-shadow: 0 3px 0 #12306e; -webkit-text-stroke: 3px #12306e; paint-order: stroke fill; transform: rotate(-6deg);
+}
+.itemslot .iring {
+  position: absolute; inset: -13px; border-radius: 50%; pointer-events: none; opacity: 0; --p: 0;
+  background: conic-gradient(#ffd23a calc(var(--p) * 360deg), rgba(18,48,110,.35) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  transition: opacity .2s;
+}
+.itemslot.surging .iring { opacity: 1; }
+.itemslot.surging .bubble { box-shadow: 0 0 0 4px #12306e, 0 6px 0 4px #12306e, 0 0 26px 6px #ffcc22; background: radial-gradient(circle at 35% 25%, #fff 0 18%, rgba(255,255,255,0) 40%), linear-gradient(180deg, #fffbe0 0%, #ffe680 55%, #ffc21e 100%); }
+.itemslot.surging .it-txt span:first-child { color: #ffe14d; }
+.itemslot .bubble.fire { animation: bubbleFire .35s ease-out; }
+.itemslot .bubble.fire::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; background: #fff; animation: bubbleFlash .3s ease-out forwards; pointer-events: none; }
+@keyframes bubbleFire { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@keyframes bubbleFlash { from { opacity: .95; } to { opacity: 0; transform: scale(1.35); } }
+.itemslot .bubble.deny { animation: bubbleDeny .32s linear; }
+@keyframes bubbleDeny { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+.itemslot .bubble.ready { animation: bubblePop .35s cubic-bezier(.2,.9,.3,1.5); }
+
+/* Seeker lock: reticle over the target, red edge + arrow for the targeted racer. */
+.hud .lockret { position: absolute; left: 0; top: 0; width: 92px; height: 92px; opacity: 0; transition: opacity .15s; }
+.hud .lockret.on { opacity: 1; }
+.hud .lockret i { position: absolute; width: 26px; height: 26px; border: 5px solid #ff2a44; filter: drop-shadow(0 0 0 #12306e) drop-shadow(2px 2px 0 #12306e); animation: lockPulse .5s ease-in-out infinite alternate; }
+.hud .lockret i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.hud .lockret i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.hud .lockret i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+.hud .lockret i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+.hud .lockret b { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); font-family: var(--font); font-weight: 400; font-size: 18px; color: #fff; -webkit-text-stroke: 4px #12306e; paint-order: stroke fill; letter-spacing: 2px; background: #ff2a44; border: 2px solid #12306e; border-radius: 6px; padding: 0 6px; }
+.hud .lockret.hot i { animation-duration: .16s; border-color: #ff3355; }
+@keyframes lockPulse { from { transform: scale(1); } to { transform: scale(.78); } }
+.hud .warnedge { position: absolute; inset: 0; opacity: 0; box-shadow: inset 0 0 70px 18px rgba(255, 30, 60, .75); transition: opacity .2s; }
+.hud .warnedge.on { animation: edgePulse .5s ease-in-out infinite alternate; }
+.hud .warnedge.hot { animation-duration: .16s; }
+@keyframes edgePulse { from { opacity: .25; } to { opacity: 1; } }
+.hud .warnarrow { position: absolute; left: 0; top: 0; width: 64px; height: 64px; opacity: 0; transition: opacity .2s; }
+.hud .warnarrow.on { opacity: 1; }
+.hud .warnarrow svg { width: 100%; height: 100%; animation: lockPulse .3s ease-in-out infinite alternate; filter: drop-shadow(0 0 8px rgba(255,40,70,.9)); }
+
+/* ── Manga callouts: upper-middle, clear of standings, item bubble, timer and speedo ── */
+.hud .callout {
+  position: absolute; left: 50%; top: max(22%, calc(176px * var(--hud))); width: 0; height: 0; opacity: 0; --rot: 0deg; --cs: var(--hud);
+}
+.hud .callout.on { animation: coLife 1.15s linear forwards; }
+.hud .callout .co-text {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) rotate(var(--rot)) scale(var(--cs)); white-space: nowrap;
+  font-family: var(--font); font-style: normal; font-size: 78px; line-height: 1; letter-spacing: 3px; color: #fff;
+  -webkit-text-stroke: 10px #12306e; paint-order: stroke fill; text-shadow: 6px 6px 0 #ff4fd8, 6px 6px 0 #12306e;
+}
+.hud .callout .co-lines {
+  position: absolute; left: 0; top: 0; width: 760px; height: 230px; transform: translate(-50%, -50%) rotate(var(--rot)) scale(var(--cs));
+  background: repeating-conic-gradient(from 3deg, rgba(255,255,255,.9) 0deg 1.6deg, transparent 1.6deg 7deg, rgba(18,48,110,.55) 7deg 8deg, transparent 8deg 13deg);
+  -webkit-mask: radial-gradient(ellipse 50% 50% at 50% 50%, transparent 30%, #000 46%, transparent 70%);
+  mask: radial-gradient(ellipse 50% 50% at 50% 50%, transparent 30%, #000 46%, transparent 70%);
+}
+.hud .callout.long .co-text { font-size: 62px; }
+.hud .callout.xlong .co-text { font-size: 46px; letter-spacing: 2px; }
+.hud .callout.warn .co-text { color: #ff3b5c; text-shadow: 6px 6px 0 #12306e; }
+.hud .callout.gold .co-text { color: #ffe14d; text-shadow: 6px 6px 0 #ff4fd8, 6px 6px 0 #12306e; }
+.hud .callout.cyan .co-text { color: #5ff2ff; text-shadow: 6px 6px 0 #12306e; }
+.hud .callout.lime .co-text { color: #a6ff3d; text-shadow: 6px 6px 0 #12306e; }
+.hud .callout.boss .co-text { color: #fff; background: #101418; padding: 6px 18px 10px; border: 4px solid #26e8ff; border-radius: 10px; -webkit-text-stroke: 6px #12306e; text-shadow: 4px 4px 0 #26e8ff; }
+.hud .callout.on .co-text { animation: coText 1.15s cubic-bezier(.2,.9,.3,1) forwards; }
+.hud .callout.on .co-lines { animation: coLines 1.15s ease-out forwards; }
+@keyframes coLife { 0% { opacity: 0; } 6% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes coText {
+  0% { transform: translate(-50%, -50%) rotate(calc(var(--rot) - 14deg)) scale(calc(var(--cs) * 2.2)); }
+  14% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(calc(var(--cs) * .92)); }
+  18% { transform: translate(calc(-50% - 7px), calc(-50% + 4px)) rotate(var(--rot)) scale(var(--cs)); }
+  22% { transform: translate(calc(-50% + 6px), calc(-50% - 3px)) rotate(var(--rot)) scale(var(--cs)); }
+  26% { transform: translate(calc(-50% - 4px), calc(-50% + 2px)) rotate(var(--rot)) scale(var(--cs)); }
+  30% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(var(--cs)); }
+  80% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(calc(var(--cs) * 1.04)); }
+  100% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(calc(var(--cs) * 1.12)); }
+}
+@keyframes coLines {
+  0% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(calc(var(--cs) * .4)); opacity: 0; }
+  12% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(var(--cs)); opacity: 1; }
+  75% { opacity: .9; }
+  100% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(calc(var(--cs) * 1.25)); opacity: 0; }
+}
+/* Reduced motion: no shake, no spin — a calm scale/fade. */
+body.reduced-motion .hud .callout { --rot: 0deg !important; }
+body.reduced-motion .hud .callout.on .co-text { animation: coCalm 1.15s ease-out forwards; }
+body.reduced-motion .hud .callout.on .co-lines { animation: none; opacity: .6; }
+body.reduced-motion .hud .warnedge.on, body.reduced-motion .hud .lockret i, body.reduced-motion .hud .warnarrow svg { animation: none; }
+body.reduced-motion .hud .warnedge.on { opacity: .7; }
+@keyframes coCalm { 0% { transform: translate(-50%, -50%) scale(calc(var(--cs) * .9)); } 15% { transform: translate(-50%, -50%) scale(var(--cs)); } 100% { transform: translate(-50%, -50%) scale(var(--cs)); } }
+.splitwrap .hud .callout { --cs: calc(var(--hud) * 1.1); }
+/* Minor messages sit below the callout band. */
+.hud .center-msg { top: 35%; }
+.splitwrap .hud .center-msg { top: 46%; }

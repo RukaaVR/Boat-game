@@ -284,6 +284,7 @@ export class Game implements ReplayHost, PhotoHost {
     this.touch.setTilt(s.tilt && this.touchEnabled);
     document.body.classList.toggle('touchmode', this.touchEnabled);
     document.body.classList.toggle('symbols', s.symbols);
+    document.body.classList.toggle('reduced-motion', s.motion < 0.5);
     this.input.sensitivity = s.sensitivity;
     this.applyHudScale();
     this.world?.course.setRacingLine(s.racingLine && this.state === 'race');

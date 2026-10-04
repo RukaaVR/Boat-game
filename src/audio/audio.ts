@@ -301,8 +301,10 @@ export class AudioEngine {
     this.drift!.out.gain.setTargetAtTime(mute * (player.drifting ? 0.08 + 0.04 * player.driftTier : 0), t, 0.04);
     this.drift!.filter.frequency.setTargetAtTime(2200 + player.driftTier * 700, t, 0.05);
     this.boost!.out.gain.setTargetAtTime(mute * player.boostLevel * 0.13, t, 0.05);
-    this.boostRoar!.frequency.setTargetAtTime(70 + rpm * 60, t, 0.05);
-    this.boostRoarGain!.gain.setTargetAtTime(mute * player.boostLevel * 0.07, t, 0.05);
+    // Golden Surge: the engine sings higher and harder for the whole window.
+    const surge = player.surge > 0 ? 1 : 0;
+    this.boostRoar!.frequency.setTargetAtTime(70 + rpm * 60 + surge * 45, t, 0.05);
+    this.boostRoarGain!.gain.setTargetAtTime(mute * (player.boostLevel * 0.07 + surge * 0.035), t, 0.05);
     this.wind!.out.gain.setTargetAtTime(mute * (0.02 + sp * 0.06 + (player.airborne ? 0.08 : 0) + storm * 0.07), t, 0.2);
     this.wind!.filter.frequency.setTargetAtTime(300 + sp * 900 + storm * 300, t, 0.2);
     this.rain!.out.gain.setTargetAtTime(mute * storm * 0.08, t, 0.3);
@@ -501,8 +503,23 @@ export class AudioEngine {
       case 'itemPickup':
         if (isPlayer) [660, 880, 1320, 1760].forEach((f, i) => this.tone(f, 0.08, 'square', 0.04, i * 0.04));
         break;
+      case 'itemReady':
+        // Roulette lands: a bright two-note "ta-da".
+        if (isPlayer) {
+          this.tone(1318, 0.09, 'square', 0.045);
+          this.tone(1976, 0.22, 'triangle', 0.06, 0.07);
+        }
+        break;
+      case 'itemDenied':
+        if (isPlayer) {
+          this.tone(150, 0.09, 'square', 0.05);
+          this.tone(120, 0.12, 'square', 0.05, 0.1);
+        }
+        break;
       case 'itemUse':
-        if (e.text === 'torpedo') {
+        if (e.text === 'torpedo' || e.text === 'torpedo3') {
+          // Tube thump + hiss of the launch.
+          this.tone(130, 0.18, 'sine', 0.16 * att, 0, pan, 60);
           this.burst(0.7, 'bandpass', 2400, 0.18 * att, pan, 0, 500, 1.5);
           this.tone(240, 0.4, 'sawtooth', 0.05 * att, 0, pan, 90);
         } else if (e.text === 'oil') this.burst(0.5, 'lowpass', 500, 0.15 * att, pan, 0, 150);
@@ -510,15 +527,83 @@ export class AudioEngine {
         else if (e.text === 'wave') {
           this.tone(55, 1.0, 'sine', 0.35 * att, 0, pan, 30);
           this.burst(1.5, 'lowpass', 1400, 0.4 * att, pan, 0, 200);
+        } else if (e.text === 'turbo') {
+          this.tone(220, 0.35, 'sawtooth', 0.06 * att, 0, pan, 880);
+        } else if (e.text === 'homer') {
+          // Launch: ignition crack, then a rising rocket whoosh that pans away.
+          this.burst(0.15, 'highpass', 2500, 0.2 * att, pan);
+          this.burst(1.3, 'bandpass', 500, 0.3 * att, pan, 0.03, 4200, 1.4);
+          this.tone(180, 1.1, 'sawtooth', 0.06 * att, 0.03, pan, 720);
+          if (isPlayer) [784, 988].forEach((f, i) => this.tone(f, 0.12, 'square', 0.04, 0.15 + i * 0.09));
+        } else if (e.text === 'surge') {
+          // Golden chime on every pump, over a short throaty kick.
+          [1046, 1318, 1568, 2093].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.05 * att, i * 0.03, pan));
+          this.burst(0.5, 'bandpass', 700, 0.2 * att, pan, 0, 3800, 1.3);
+          this.tone(110, 0.4, 'sawtooth', 0.08 * att, 0, pan, 260);
+        } else if (e.text === 'storm') {
+          // Global: static crackle, a whip-crack of thunder and a rolling tail.
+          this.burst(0.25, 'highpass', 4000, 0.22);
+          this.burst(0.09, 'bandpass', 2000, 0.3, 0, 0.05, 0, 3);
+          this.burst(0.09, 'bandpass', 2600, 0.25, 0, 0.16, 0, 3);
+          this.thunder(0.9);
+          if (isPlayer) [523, 784, 1046, 1568].forEach((f, i) => this.tone(f, 0.18, 'square', 0.035, 0.1 + i * 0.05));
+        }
+        break;
+      case 'itemLock':
+        // Seeker lock: an alarm on first lock, then beeps that rise in pitch and rate.
+        if (!isPlayer || e.racer < 0) break;
+        if (e.text === 'start') {
+          this.tone(880, 0.14, 'square', 0.07);
+          this.tone(660, 0.14, 'square', 0.07, 0.16);
+          this.tone(880, 0.14, 'square', 0.07, 0.32);
+        } else this.tone(900 + e.value * 900, 0.06, 'square', 0.035 + e.value * 0.03);
+        break;
+      case 'itemMiss':
+        if (!isPlayer) break;
+        if (e.text === 'dodge') {
+          // Cleared it: a cheeky upward swish.
+          this.burst(0.35, 'bandpass', 900, 0.12, 0, 0, 4000, 2);
+          [988, 1318, 1760].forEach((f, i) => this.tone(f, 0.1, 'triangle', 0.05, i * 0.05));
+        } else {
+          // Your shot fizzled: a soft deflating whiff.
+          this.tone(440, 0.3, 'triangle', 0.035, 0, 0, 220);
         }
         break;
       case 'itemHit':
+        // Unowned splashes (expired shots) fade with distance like any world sound.
+        if (e.racer < 0) {
+          const far = clamp01(1 - d / 150);
+          if (far <= 0.01) break;
+          if (e.text === 'homer-miss') {
+            this.tone(48, 1.0, 'sine', 0.3 * far, 0, pan, 22);
+            this.burst(1.8, 'lowpass', 2000, 0.35 * far, pan, 0, 60, 0.4);
+          } else this.burst(0.8, 'lowpass', 1400, 0.25 * far, pan, 0, 120, 0.5);
+          break;
+        }
+        if (e.text === 'storm') {
+          // Zap + the shrink: a wobbling "bwoo-oop" sliding down.
+          this.burst(0.12, 'highpass', 3500, 0.12 * att, pan);
+          this.tone(900, 0.45, 'sine', (isPlayer ? 0.09 : 0.04) * att, 0.03, pan, 220);
+          this.tone(1350, 0.45, 'triangle', (isPlayer ? 0.04 : 0.02) * att, 0.03, pan, 330);
+          break;
+        }
+        if (e.text === 'homer' || e.text === 'homer-miss') {
+          // Seeker impact: a deep boom with a long rumbling tail and falling water.
+          const big = e.text === 'homer' ? 1 : 0.6;
+          this.tone(48, 1.2, 'sine', 0.5 * att * big, 0, pan, 22);
+          this.burst(2.2, 'lowpass', 2200, 0.55 * att * big, pan, 0, 60, 0.4);
+          this.burst(1.4, 'bandpass', 1300, 0.18 * att * big, pan, 0.25, 300);
+          if (isPlayer && e.racer >= 0) this.tone(300, 0.6, 'sawtooth', 0.07, 0.05, 0, 70);
+          break;
+        }
         this.burst(1.2, 'lowpass', 1800, 0.45 * att, pan, 0, 80, 0.4);
         this.tone(70, 0.6, 'sine', 0.3 * att, 0, pan, 30);
         if (isPlayer) this.tone(300, 0.4, 'sawtooth', 0.06, 0.05, 0, 90);
         break;
       case 'shieldHit':
+        // Shield block: a glassy ping and a bright deflect.
         [1568, 1175, 784].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.07 * att, i * 0.05, pan));
+        this.tone(2400, 0.3, 'sine', 0.04 * att, 0, pan, 1600);
         break;
       case 'collectible':
         [1046, 1318, 1568, 2093, 2637].forEach((f, i) => this.tone(f, 0.35, 'sine', 0.07, i * 0.07));

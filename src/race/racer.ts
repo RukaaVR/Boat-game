@@ -44,6 +44,12 @@ export class Racer {
   rivalIndex = -1;
   /** Battle items: held item and hits taken/landed. */
   item: string | null = null;
+  /** Uses left on the held item (triple torpedoes: 3, 2, 1). */
+  itemCount = 0;
+  /** Seconds of item-box roulette left before the held item can be used. */
+  itemRoll = 0;
+  /** Seconds before the held item can be pressed again (golden surge spam guard). */
+  itemCooldown = 0;
   itemHits = 0;
   /** Checkpoint respawn location. */
   respawnS = 0;

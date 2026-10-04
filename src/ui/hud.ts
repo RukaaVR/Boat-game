@@ -12,12 +12,25 @@ import { CAM_LABEL, type CamMode } from '../camera/cameraRig';
 import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
 import type { Tutorial, TutorialStep } from '../race/tutorial';
-import { ITEM_IDS, ITEM_LABEL, type ItemId } from '../race/items';
+import { ITEM_IDS, ITEM_LABEL, SURGE_TIME, type ItemId } from '../race/items';
+import type { Racer } from '../race/racer';
 
 interface Msg {
   el: HTMLElement;
   t: number;
 }
+
+/** A queued manga callout. Higher `pri` jumps the queue / survives the cap. */
+interface Callout {
+  text: string;
+  cls: string;
+  pri: number;
+}
+/** Minimum spacing between callouts and how long each stays up. */
+const CALLOUT_GAP = 1.2;
+const CALLOUT_LIFE = 1.15;
+/** Overtake callouts are ignored this long after GO (the start-line shuffle). */
+const CALLOUT_GRACE = 4;
 
 function el(tag: string, cls = '', parent?: HTMLElement, html = '') {
   const e = document.createElement(tag);
@@ -48,8 +61,34 @@ export class Hud {
   private count: HTMLElement;
   private modebox: HTMLElement;
   private itemSlot: HTMLElement;
-  private heldItem: ItemId | null = null;
-  private roulette = 0;
+  private itemBubble: HTMLElement;
+  private itemRing: HTMLElement;
+  private itemIc: HTMLElement;
+  private itemQty: HTMLElement;
+  private itemTxt: HTMLElement;
+  // Seeker lock: reticle over the target, red edge + arrow when this HUD's racer is the target.
+  private lockRet: HTMLElement;
+  private warnEdge: HTMLElement;
+  private warnArrow: HTMLElement;
+  private incomingShown = false;
+  // Manga callouts.
+  private coEl: HTMLElement;
+  private coText: HTMLElement;
+  private coQueue: Callout[] = [];
+  private coCur = '';
+  private coPri = 0;
+  private coT = 99;
+  private coShown = false;
+  private prevPlace: Int16Array;
+  private nameCd: Float32Array;
+  private passCd: Float32Array;
+  private placesInit = false;
+  private finalLapShown = false;
+  private prevDrift = false;
+  private prevTier = 0;
+  private watchCd = 0;
+  private bossCd = 0;
+  private boss: Racer | null = null;
   private dmg: HTMLElement;
   private lastHits = 0;
   private proxL: HTMLElement;
@@ -97,6 +136,11 @@ export class Hud {
     this.modebox = el('div', 'modebox', tl);
     this.itemSlot = el('div', 'itemslot', tl);
     this.itemSlot.style.display = session.items ? '' : 'none';
+    this.itemBubble = el('div', 'bubble', this.itemSlot);
+    this.itemRing = el('div', 'iring', this.itemBubble);
+    this.itemIc = el('b', 'ic ic-none', this.itemBubble);
+    this.itemQty = el('div', 'iqty', this.itemBubble);
+    this.itemTxt = el('div', 'it-txt', this.itemSlot);
     this.dmg = el('div', 'dmgbar', tl, '<span>HULL</span><div><i></i></div>');
     const tc = el('div', 'tc', root);
     this.timer = el('div', 'timer', tc);
@@ -123,6 +167,17 @@ export class Hud {
     const drift = el('div', 'drift', br);
     for (let i = 0; i < 3; i++) this.driftSpans.push(el('span', '', el('div', '', drift)));
     el('div', 'glabel', br, 'DRIFT');
+    this.warnEdge = el('div', 'warnedge', root);
+    this.warnArrow = el('div', 'warnarrow', root, '<svg viewBox="-10 -10 20 20"><path d="M0,-9 L7,5 L0,1.5 L-7,5 Z" fill="#ff2a44" stroke="#12306e" stroke-width="1.6" stroke-linejoin="round"/></svg>');
+    this.lockRet = el('div', 'lockret', root, '<i></i><i></i><i></i><i></i><b>LOCK</b>');
+    this.coEl = el('div', 'callout', root, '<div class="co-lines"></div><div class="co-text"></div>');
+    this.coText = this.coEl.querySelector('.co-text') as HTMLElement;
+    const nR = session.racers.length;
+    this.prevPlace = new Int16Array(nR);
+    this.nameCd = new Float32Array(nR);
+    this.passCd = new Float32Array(nR);
+    const bossIdx = session.cfg.boss;
+    this.boss = bossIdx !== undefined ? (session.racers.find((r) => r.rivalIndex === bossIdx && r !== me) ?? null) : null;
     this.center = el('div', 'center-msg', root);
     this.count = el('div', 'count', root);
     this.count.style.display = 'none';
@@ -181,6 +236,40 @@ export class Hud {
     }
   }
 
+  /** Queue a big manga callout (rate-limited, deduped, max 2 waiting). */
+  callout(text: string, cls = '', pri = 1) {
+    if (this.session.phase !== 'racing') return;
+    if (text === this.coCur && this.coT < CALLOUT_GAP + 0.6) return;
+    for (const q of this.coQueue) if (q.text === text) return;
+    // Danger warnings cut in over a minor callout that has had its moment.
+    if (pri >= 4 && this.coShown && this.coPri < 4 && this.coT > 0.35) {
+      this.showCallout({ text, cls, pri });
+      return;
+    }
+    this.coQueue.push({ text, cls, pri });
+    this.coQueue.sort((a, b) => b.pri - a.pri);
+    if (this.coQueue.length > 2) this.coQueue.length = 2;
+  }
+
+  private showCallout(c: Callout) {
+    this.coCur = c.text;
+    this.coPri = c.pri;
+    this.coT = 0;
+    this.coShown = true;
+    this.coText.textContent = c.text;
+    const rot = (Math.random() * 2 - 1) * 4;
+    this.coEl.style.setProperty('--rot', rot.toFixed(1) + 'deg');
+    this.coEl.className = 'callout ' + c.cls + (c.text.length > 16 ? ' xlong' : c.text.length > 11 ? ' long' : '');
+    void this.coEl.offsetWidth;
+    this.coEl.classList.add('on');
+  }
+
+  private pulse(e: HTMLElement, cls: string) {
+    e.classList.remove(cls);
+    void e.offsetWidth;
+    e.classList.add(cls);
+  }
+
   showCamera(mode: CamMode) {
     this.camLabel.textContent = CAM_LABEL[mode];
     this.camLabel.style.opacity = '1';
@@ -215,10 +304,10 @@ export class Hud {
         this.message(`${e.text} <span class="trick-score">+${Math.round(e.value)}</span>`, 'gold');
         break;
       case 'land':
-        if (e.text === 'clean') this.message('PERFECT LANDING', 'lime small', 1.1);
+        if (e.text === 'clean' && e.racer === this.me.id) this.callout('PERFECT LANDING!', 'lime', 1);
         break;
       case 'wipeout':
-        this.message('WIPEOUT!', 'warn', 1.4);
+        this.callout('WIPEOUT!', 'warn', 2);
         break;
       case 'checkpoint': {
         if (!s.hasLaps) {
@@ -244,8 +333,7 @@ export class Hud {
         this.message(`LAP ${e.value}`, 'cyan');
         break;
       case 'finalLap':
-        this.message('FINAL LAP!', 'gold', 2.2);
-        break;
+        break; // per-HUD callout from update() (covers player 2 too)
       case 'wrongWay':
         break;
       case 'overtake':
@@ -265,10 +353,30 @@ export class Hud {
       case 'itemPickup':
         break; // the roulette in the item bubble announces it
       case 'itemHit':
-        this.message(e.text === 'oil' ? 'SLIPPED ON OIL!' : e.text === 'wave' ? 'SWAMPED!' : 'HIT!', 'warn', 1.2);
+        if (e.racer < 0) break; // an expired shot splashing down somewhere
+        if (e.text === 'storm') this.message('ZAPPED! SHRUNK!', 'warn small', 1.6);
+        else if (e.text === 'oil') this.message('SLIPPED ON OIL!', 'warn small', 1.2);
+        else if (e.text === 'wave') this.message('SWAMPED!', 'warn small', 1.2);
+        else if (e.text === 'homer') this.message('SEEKER HIT!', 'warn small', 1.4);
+        if (e.text === 'torpedo' || e.text === 'homer' || e.text === 'oil') this.callout('WIPEOUT!', 'warn', 2);
         break;
       case 'shieldHit':
         this.message('SHIELD BLOCKED IT', 'cyan small', 1.2);
+        break;
+      case 'itemUse':
+        if (e.racer !== this.me.id) break;
+        this.pulse(this.itemBubble, 'fire');
+        if (e.text === 'turbo' || (e.text === 'surge' && this.me.boat.surge > SURGE_TIME - 0.05)) this.callout('BOOST!', 'cyan', 1);
+        if (e.text === 'storm') this.message('RIVALS SHRUNK!', 'lime', 1.6);
+        break;
+      case 'itemDenied':
+        this.pulse(this.itemBubble, 'deny');
+        break;
+      case 'itemReady':
+        this.pulse(this.itemBubble, 'ready');
+        break;
+      case 'itemMiss':
+        if (e.text === 'dodge') this.message('DODGED!', 'lime', 1.4);
         break;
       case 'collectible': {
         const found = s.bottles.filter((b) => b.found).length;
@@ -340,18 +448,26 @@ export class Hud {
     // Battle item slot and hits landed.
     if (s.items) {
       const it = p.item as ItemId | null;
-      // Kart-style roulette: a fresh item spins through the icons first.
-      if (it && !this.heldItem) this.roulette = 1.1;
-      this.heldItem = it;
-      if (this.roulette > 0) this.roulette = Math.max(0, this.roulette - dt);
-      const spinning = it !== null && this.roulette > 0;
-      const shown = spinning ? ITEM_IDS[Math.floor(this.roulette * 14) % ITEM_IDS.length] : it;
-      const key = (shown ?? '-') + (spinning ? 'R' : '') + (b.shield > 0 ? 'S' : '');
+      // Kart-style roulette: a fresh item spins through the icons first (timed by the sim).
+      const spinning = it !== null && p.itemRoll > 0;
+      const shown = spinning ? ITEM_IDS[Math.floor(p.itemRoll * 14) % ITEM_IDS.length] : it;
+      const surging = it === 'surge' && b.surge > 0;
+      const qty = !spinning && it === 'torpedo3' ? p.itemCount : 0;
+      const key = (shown ?? '-') + (spinning ? 'R' : '') + (b.shield > 0 ? 'S' : '') + qty + (surging ? 'G' : '');
       this.set('item', key, () => {
         this.itemSlot.classList.toggle('spin', spinning);
         this.itemSlot.classList.toggle('has', !!it && !spinning);
-        this.itemSlot.innerHTML = `<div class="bubble"><b class="ic ic-${shown ?? 'none'}"></b></div><div class="it-txt"><span>${spinning ? '???' : it ? ITEM_LABEL[it] : 'NO ITEM'}</span>${it && !spinning ? `<em>${keyLabel(this.bindings.item[0])}</em>` : ''}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}</div>`;
+        this.itemSlot.classList.toggle('surging', surging);
+        this.itemIc.className = `ic ic-${shown ?? 'none'}`;
+        this.itemQty.textContent = qty > 0 ? `×${qty}` : '';
+        this.itemQty.style.display = qty > 0 ? '' : 'none';
+        const label = spinning ? '???' : it === 'torpedo3' ? `${ITEM_LABEL[it]} ×${qty}` : it ? ITEM_LABEL[it] : 'NO ITEM';
+        const hint = it && !spinning ? `<em>${surging ? 'MASH ' : ''}${keyLabel(this.bindings.item[0])}</em>` : '';
+        this.itemTxt.innerHTML = `<span>${label}</span>${hint}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}`;
       });
+      // Golden Surge: remaining-time ring around the bubble.
+      const ring = surging ? Math.ceil((b.surge / SURGE_TIME) * 90) : 0;
+      this.set('ring', ring, () => this.itemRing.style.setProperty('--p', (ring / 90).toFixed(3)));
       if (p.itemHits > this.lastHits) {
         this.lastHits = p.itemHits;
         this.message('DIRECT HIT!', 'gold', 1.2);
@@ -363,6 +479,9 @@ export class Hud {
       (this.dmg.querySelector('i') as HTMLElement).style.transform = `scaleX(${(1 - b.damage).toFixed(2)})`;
       this.dmg.classList.toggle('bad', b.damage > 0.5);
     });
+
+    this.updateThreats(dt);
+    this.updateCallouts(dt);
 
     // Mode boxes.
     let mode = '';
@@ -515,6 +634,154 @@ export class Hud {
     }
 
     this.minimap.draw(p.checkpoints);
+  }
+
+  /** Seeker lock reticle / incoming warning, and WATCH OUT for torpedoes closing in. */
+  private updateThreats(dt: number) {
+    const s = this.session;
+    const it = s.items;
+    const me = this.me;
+    const b = me.boat;
+    if (!it) return;
+    // Most urgent missile on anyone for the reticle; the one on me for the warning.
+    let any: (typeof it.missiles)[number] | null = null;
+    for (const m of it.missiles) if (m.alive && (!any || m.target === me.id || (any.target !== me.id && m.urgency > any.urgency))) any = m;
+    const mine = it.missileOn(me.id);
+    // Reticle over the locked target boat.
+    let retKey = '0';
+    const tgt = any ? s.racers[any.target] : null;
+    if (any && tgt && this.camera) {
+      this.tagPos.copy(tgt.boat.position);
+      this.tagPos.y += 1.2;
+      this.tagPos.project(this.camera);
+      if (this.tagPos.z < 1 && Math.abs(this.tagPos.x) < 1.2 && Math.abs(this.tagPos.y) < 1.2) {
+        const x = Math.round((this.tagPos.x * 0.5 + 0.5) * this.viewW);
+        const y = Math.round((0.5 - this.tagPos.y * 0.5) * this.viewH);
+        const d = this.camera.position.distanceTo(tgt.boat.position);
+        const sc = Math.max(0.55, Math.min(1.4, 22 / Math.max(6, d)));
+        retKey = `${x},${y},${sc.toFixed(2)},${any.urgency > 0.6 ? 2 : 1}`;
+      }
+    }
+    this.set('ret', retKey, () => {
+      const on = retKey !== '0';
+      this.lockRet.classList.toggle('on', on);
+      if (!on) return;
+      const [x, y, sc, u] = retKey.split(',');
+      this.lockRet.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${sc})`;
+      this.lockRet.classList.toggle('hot', u === '2');
+    });
+    // I'm the target: edge glow + arrow toward the missile + INCOMING!
+    const warn = mine ? (mine.urgency > 0.6 ? 2 : 1) : 0;
+    this.set('warn', warn, () => {
+      this.warnEdge.className = 'warnedge' + (warn ? ' on' : '') + (warn === 2 ? ' hot' : '');
+      this.warnArrow.classList.toggle('on', warn > 0);
+    });
+    if (mine) {
+      if (!this.incomingShown) {
+        this.incomingShown = true;
+        this.callout('INCOMING!', 'warn', 5);
+      }
+      const ang = Math.atan2(mine.x - b.position.x, mine.z - b.position.z) - b.heading;
+      const ax = Math.round(this.viewW * 0.5 - Math.sin(ang) * this.viewW * 0.4);
+      const ay = Math.round(this.viewH * 0.52 - Math.cos(ang) * this.viewH * 0.36);
+      const deg = Math.round((-ang * 180) / Math.PI);
+      this.set('warnA', `${ax},${ay},${deg}`, () => (this.warnArrow.style.transform = `translate(${ax}px, ${ay}px) translate(-50%, -50%) rotate(${deg}deg)`));
+    } else this.incomingShown = false;
+
+    // WATCH OUT!: a torpedo running straight at me.
+    this.watchCd = Math.max(0, this.watchCd - dt);
+    if (this.watchCd <= 0) {
+      for (const t of it.torpedoes) {
+        if (!t.alive || t.owner === me.id) continue;
+        const dx = b.position.x - t.x;
+        const dz = b.position.z - t.z;
+        const d = Math.hypot(dx, dz);
+        const sp = Math.hypot(t.vx, t.vz) || 1;
+        if (d < 32 && d > 3 && (dx * t.vx + dz * t.vz) / (d * sp) > 0.85) {
+          this.callout('WATCH OUT!', 'warn', 4);
+          this.watchCd = 3;
+          break;
+        }
+      }
+    }
+  }
+
+  /** Race-state callouts (overtakes, rivals, final lap, drift) + the callout queue itself. */
+  private updateCallouts(dt: number) {
+    const s = this.session;
+    const me = this.me;
+    const b = me.boat;
+    const racing = s.phase === 'racing';
+    for (let i = 0; i < this.nameCd.length; i++) {
+      if (this.nameCd[i] > 0) this.nameCd[i] -= dt;
+      if (this.passCd[i] > 0) this.passCd[i] -= dt;
+    }
+    if (s.isRace && racing) {
+      const rs = s.racers;
+      if (!this.placesInit) {
+        for (let i = 0; i < rs.length; i++) this.prevPlace[i] = rs[i].place;
+        this.placesInit = true;
+      } else if (this.prevPlace[me.id] !== me.place || this.othersMoved()) {
+        const early = s.raceTime < CALLOUT_GRACE || me.finished;
+        let passedN = 0;
+        let passed = -1;
+        let passer = -1;
+        const myPrev = this.prevPlace[me.id];
+        for (const o of this.others) {
+          const wasAhead = this.prevPlace[o.id] < myPrev;
+          const nowAhead = o.place < me.place;
+          if (wasAhead && !nowAhead) {
+            passedN++;
+            passed = o.id;
+          } else if (!wasAhead && nowAhead && !o.finished) passer = o.id;
+        }
+        if (!early) {
+          if (passedN > 0 && me.place === 1) this.callout('FIRST PLACE!', 'gold', 3);
+          else if (passedN === 1 && this.nameCd[passed] <= 0) {
+            this.callout(`${rs[passed].name} OVERTAKEN`, 'cyan', 2);
+            this.nameCd[passed] = 10;
+          } else if (passedN > 0) this.callout('OVERTAKE!', 'cyan', 2);
+          if (passer >= 0 && passedN === 0 && this.passCd[passer] <= 0) {
+            this.callout(`${rs[passer].name} PASSED YOU`, 'warn', 1);
+            this.passCd[passer] = 10;
+          }
+        }
+        for (let i = 0; i < rs.length; i++) this.prevPlace[i] = rs[i].place;
+      }
+      // FINAL LAP! (per HUD, so player 2 hears it too).
+      if (s.hasLaps && s.totalLaps > 1 && !this.finalLapShown && me.lap === s.totalLaps && !me.finished) {
+        this.finalLapShown = true;
+        this.callout('FINAL LAP!', 'gold', 4);
+      }
+      // Career boss breathing down your neck.
+      this.bossCd = Math.max(0, this.bossCd - dt);
+      const boss = this.boss;
+      if (boss && this.bossCd <= 0 && !me.finished && !boss.finished && s.raceTime > CALLOUT_GRACE) {
+        const gap = me.raceDist - boss.raceDist;
+        if (gap > 0 && gap < 25) {
+          this.callout(`${boss.name} IS RIGHT BEHIND YOU`, 'warn boss', 3);
+          this.bossCd = 20;
+        }
+      }
+    }
+    // NICE DRIFT!: released an ultra (tier 3) drift cleanly.
+    if (this.prevDrift && this.prevTier >= 3 && !b.drifting && b.wipeout <= 0 && racing) this.callout('NICE DRIFT!', 'gold', 1);
+    this.prevDrift = b.drifting;
+    this.prevTier = b.driftTier;
+
+    // Queue → screen.
+    this.coT += dt;
+    if (this.coShown && this.coT > CALLOUT_LIFE) {
+      this.coShown = false;
+      this.coEl.classList.remove('on');
+    }
+    if (!racing && this.coQueue.length) this.coQueue.length = 0;
+    if (this.coQueue.length && this.coT >= CALLOUT_GAP) this.showCallout(this.coQueue.shift()!);
+  }
+
+  private othersMoved() {
+    for (const o of this.others) if (this.prevPlace[o.id] !== o.place) return true;
+    return false;
   }
 
   resize() {

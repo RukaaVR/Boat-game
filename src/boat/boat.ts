@@ -108,6 +108,12 @@ export class Boat {
   damage = 0;
   /** Battle-mode shield seconds remaining. */
   shield = 0;
+  /** Golden Surge: seconds of repeat-boost window left (gold trail + aura). */
+  surge = 0;
+  /** Storm Call: seconds left shrunk (visual 0.6 scale, -25% top speed). */
+  shrink = 0;
+  /** Seconds of post-hit engine sputter (Seeker missile impact). */
+  itemSlow = 0;
   /** Damage taken multiplier (hull upgrades lower it). */
   toughness = 1;
   /** Stunt score accumulated in the session. */

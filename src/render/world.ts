@@ -51,6 +51,9 @@ export class World {
   private blend: { from: WeatherId; to: WeatherId; t: number } | null = null;
   /** Photo mode: hide every boat. */
   hideBoats = false;
+  /** Smoothed visual scale per racer (Storm Call shrink) and gold-trail state (Golden Surge). */
+  private visScale: Float32Array;
+  private goldTrail: Uint8Array;
 
   constructor(
     readonly session: RaceSession,
@@ -74,6 +77,8 @@ export class World {
     scene.add(this.course.group);
 
     this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery, { look: r.look }));
+    this.visScale = new Float32Array(session.racers.length).fill(1);
+    this.goldTrail = new Uint8Array(session.racers.length);
     for (const v of this.visuals) scene.add(v.root);
     this.ghost = session.ghost ? new BoatVisual(boatSpec(session.ghost.boatId), session.player.livery, { ghost: true }) : null;
     if (this.ghost) {
@@ -135,7 +140,11 @@ export class World {
 
   update(dt: number, time: number, rig: CameraRig, events: EventQueue) {
     const s = this.session;
-    for (const e of events.list) if (e.type === 'weatherShift') this.blendTo(e.text as WeatherId);
+    for (const e of events.list) {
+      if (e.type === 'weatherShift') this.blendTo(e.text as WeatherId);
+      // Storm Call: a stylised bolt in front of the lens; the flash respects reduced motion.
+      else if (e.type === 'itemUse' && e.text === 'storm') this.atmosphere.strike(rig.camera, 0.35 + 0.65 * this.renderer.motionFx);
+    }
     const bl = this.blend;
     if (bl) {
       bl.t = Math.min(1, bl.t + dt / this.blendSeconds);
@@ -159,6 +168,21 @@ export class World {
       const ls = LOD.scale * LOD.scale;
       v.setLod(d2 > 260 * 260 * ls ? 2 : d2 > 110 * 110 * ls ? 1 : 0);
       v.setDamage(r.boat.damage, i * 17 + 3);
+      // Storm Call shrink: pop down fast, grow back with a little overshoot-free ease.
+      const want = r.boat.shrink > 0 ? 0.6 : 1;
+      const cur = this.visScale[i];
+      if (cur !== want) {
+        const k = 1 - Math.exp(-(want < cur ? 14 : 5) * dt);
+        const nv = Math.abs(want - cur) < 0.002 ? want : cur + (want - cur) * k;
+        this.visScale[i] = nv;
+        v.root.scale.setScalar(nv);
+      }
+      // Golden Surge tints the wake ribbon gold while active.
+      const gold = r.boat.surge > 0 ? 1 : 0;
+      if (gold !== this.goldTrail[i]) {
+        this.goldTrail[i] = gold;
+        this.wake.setTrailColor(i, gold ? '#ffcc22' : r.livery.trail);
+      }
       // Ghosting after respawn: blink.
       this.visuals[i].root.visible = !this.hideBoats && (r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0);
     }

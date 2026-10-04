@@ -34,6 +34,8 @@ const _p = new Vector3();
 const _s = new Vector3();
 const _up = new Vector3(0, 1, 0);
 const _ax = new Vector3(0.3, 1, 0.2).normalize();
+const _fwd = new Vector3(0, 0, 1);
+const _dir = new Vector3();
 
 export class BattleVisuals {
   readonly group = new Group();
@@ -42,6 +44,9 @@ export class BattleVisuals {
   private slicks: InstancedMesh;
   private blasts: InstancedMesh;
   private shields: InstancedMesh;
+  private missiles: InstancedMesh;
+  private flames: InstancedMesh;
+  private locks: InstancedMesh;
   private disposables: { dispose(): void }[] = [];
 
   constructor(
@@ -93,6 +98,26 @@ export class BattleVisuals {
         void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.5); float hex = 0.15 + 0.15 * sin(vN.y * 30.0 + uTime * 4.0); gl_FragColor = vec4(uColor * (f * 1.4 + hex), f * 0.9 + 0.08); }`,
     });
     this.shields = this.inst(shg, shMat, session.racers.length);
+
+    // Seeker missile: white body, red nose and bands, yellow fins (points along +Z).
+    const mg = new GeoBuilder();
+    mg.cyl(0.32, 0.32, 2.4, 0xf4f7ff, { rx: Math.PI / 2 }, 12);
+    mg.cone(0.32, 0.9, 0xff2d55, { rx: Math.PI / 2, z: 1.65 }, 12);
+    mg.cyl(0.34, 0.34, 0.25, 0xff2d55, { rx: Math.PI / 2, z: 0.6 }, 12);
+    mg.cyl(0.34, 0.34, 0.2, 0x12306e, { rx: Math.PI / 2, z: -1.05 }, 12);
+    mg.box(1.5, 0.08, 0.55, 0xffd21e, { z: -0.9 });
+    mg.box(0.08, 1.5, 0.55, 0xffd21e, { z: -0.9 });
+    mg.box(0.9, 0.06, 0.35, 0xffd21e, { z: 0.9 });
+    const missileGeo = mg.build();
+    this.missiles = this.inst(missileGeo, cel('seeker', { vertexColors: true, gloss: 1 }), items.missiles.length);
+    addOutline(this.missiles, 1.6);
+    const fg = new GeoBuilder();
+    fg.cone(0.3, 1.8, 0xffffff, { rx: -Math.PI / 2, z: -2.1 }, 10);
+    this.flames = this.inst(fg.build(), new MeshBasicMaterial({ color: 0xffa21e, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }), items.missiles.length);
+    // Red lock-on reticle ring on the water around the target.
+    const lg = new RingGeometry(0.78, 1, 4, 1);
+    lg.rotateX(-Math.PI / 2);
+    this.locks = this.inst(lg, new MeshBasicMaterial({ color: 0xff2040, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false, side: DoubleSide }), items.missiles.length);
   }
 
   private inst(geo: BufferGeometry, mat: MeshBasicMaterial | ShaderMaterial | ReturnType<typeof cel>, n: number) {
@@ -144,6 +169,37 @@ export class BattleVisuals {
     });
     this.shields.instanceMatrix.needsUpdate = true;
     (this.shields.material as ShaderMaterial).uniforms.uTime.value = time;
+
+    const racers = this.session.racers;
+    for (let i = 0; i < it.missiles.length; i++) {
+      const m = it.missiles[i];
+      if (m.alive) {
+        _dir.set(m.vx, m.vy, m.vz);
+        if (_dir.lengthSq() < 1e-4) _dir.set(0, 0, 1);
+        _q.setFromUnitVectors(_fwd, _dir.normalize());
+        _p.set(m.x, m.y, m.z);
+        _m.compose(_p, _q, _s.setScalar(1));
+        this.missiles.setMatrixAt(i, _m);
+        _m.compose(_p, _q, _s.set(1, 1, 0.8 + 0.4 * Math.abs(Math.sin(time * 37 + i))));
+        this.flames.setMatrixAt(i, _m);
+        const tb = racers[m.target]?.boat;
+        if (tb) {
+          // Spinning diamond that tightens as the missile closes.
+          const r = (tb.spec.length * 0.9 + 1.2) * (1.6 - m.urgency * 0.6) * (1 + 0.08 * Math.sin(time * (8 + m.urgency * 14)));
+          _q.setFromAxisAngle(_up, time * (2 + m.urgency * 6));
+          _m.compose(_p.set(tb.position.x, tb.surfaceY + 0.25, tb.position.z), _q, _s.set(r, 1, r));
+        } else _m.compose(_p.set(0, -100, 0), _q.identity(), _s.setScalar(0.0001));
+        this.locks.setMatrixAt(i, _m);
+      } else {
+        _m.compose(_p.set(0, -100, 0), _q.identity(), _s.setScalar(0.0001));
+        this.missiles.setMatrixAt(i, _m);
+        this.flames.setMatrixAt(i, _m);
+        this.locks.setMatrixAt(i, _m);
+      }
+    }
+    this.missiles.instanceMatrix.needsUpdate = true;
+    this.flames.instanceMatrix.needsUpdate = true;
+    this.locks.instanceMatrix.needsUpdate = true;
   }
 
   dispose() {

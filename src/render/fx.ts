@@ -42,6 +42,11 @@ const SNOW = new Color(0.95, 0.97, 1);
 const POLLEN = new Color(0.85, 1, 0.55);
 const TIER = [new Color(1, 1, 1), new Color(0.3, 0.75, 1), new Color(1, 0.55, 0.15), new Color(1, 0.3, 0.85)];
 const CONFETTI = [new Color(1, 0.23, 0.36), new Color(0.16, 0.83, 1), new Color(1, 0.88, 0.3), new Color(0.65, 1, 0.24), new Color(0.48, 0.36, 1)];
+const GOLD = new Color(1, 0.8, 0.15);
+const GOLD_HOT = new Color(1, 0.95, 0.6);
+const DIZZY = new Color(1, 0.92, 0.3);
+const STORM = new Color(0.65, 0.85, 1);
+const MISSILE_FIRE = new Color(1, 0.6, 0.15);
 const _c = new Color();
 const _nz = new Vector3();
 
@@ -327,6 +332,8 @@ export class FxDirector {
   private drops = 0;
   private damage = 0;
   private impact = 0;
+  /** Golden Surge camera punch (decays). */
+  private surgeKick = 0;
   private boostColors: Color[];
   private pops = new AnimePops();
 
@@ -423,7 +430,24 @@ export class FxDirector {
           // Two flat tones, cel style: a tight white-hot core inside a fat livery-coloured flame.
           const core = k % 3 === 0;
           const sprd = core ? 0.8 : 2.4;
-          P.emit('boost', ex, b.position.y + 0.1, ez, b.velocity.x * 0.6 - fx * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, (Math.random() - 0.3) * sprd, b.velocity.z * 0.6 - fz * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, core ? WHITE : this.boostColors[i], core ? 0.7 : 1, core ? 0.7 + 0.5 * b.boostLevel : 1.3 + b.boostLevel);
+          P.emit('boost', ex, b.position.y + 0.1, ez, b.velocity.x * 0.6 - fx * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, (Math.random() - 0.3) * sprd, b.velocity.z * 0.6 - fz * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, core ? WHITE : b.surge > 0 ? GOLD : this.boostColors[i], core ? 0.7 : 1, core ? 0.7 + 0.5 * b.boostLevel : 1.3 + b.boostLevel);
+        }
+      }
+      // Golden Surge: a halo of gold sparks streaming off the hull.
+      if (b.surge > 0) {
+        const n = P.count(46 * lod, dt);
+        for (let k = 0; k < n; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = b.spec.beam * 0.6 + Math.random() * 0.8;
+          P.emit('spark', b.position.x + Math.cos(a) * rr, b.position.y + 0.3 + Math.random() * 1.6, b.position.z + Math.sin(a) * rr, b.velocity.x * 0.7 + Math.cos(a) * 1.5, 1.5 + Math.random() * 2.5, b.velocity.z * 0.7 + Math.sin(a) * 1.5, k % 3 === 0 ? GOLD_HOT : GOLD, 1.1, 1.4);
+        }
+      }
+      // Storm Call shrink: dizzy stars circling over the rider.
+      if (b.shrink > 0) {
+        const n = P.count(22 * lod, dt);
+        for (let k = 0; k < n; k++) {
+          const a = time * 7 + k * 2.1 + i;
+          P.emit('spark', b.position.x + Math.cos(a) * 0.9, b.position.y + 1.7 + Math.sin(time * 9 + k) * 0.15, b.position.z + Math.sin(a) * 0.9, b.velocity.x, 9.8 * 0.35, b.velocity.z, k % 2 ? DIZZY : STORM, 0.6, 1.6);
         }
       }
       // Water streaming off the hull right after take-off.
@@ -445,6 +469,43 @@ export class FxDirector {
       }
       // Celebrate / ghost visuals.
       if (this.visuals[i]) this.visuals[i].celebrate = racers[i].finished && this.session.phase !== 'racing';
+    }
+
+    // ── Item projectiles: torpedo wakes, seeker smoke + skim spray ───────────
+    const items = this.session.items;
+    if (items) {
+      for (const t of items.torpedoes) {
+        if (!t.alive) continue;
+        if ((t.x - cam.x) ** 2 + (t.z - cam.z) ** 2 > 150 * 150) continue;
+        const sy = oceanHeight(t.x, t.z, time);
+        const sp = Math.hypot(t.vx, t.vz) || 1;
+        const n = P.count(50, dt);
+        for (let k = 0; k < n; k++) {
+          const side = k % 2 ? 1 : -1;
+          P.emit('spray', t.x - (t.vx / sp) * 1.2, sy + 0.1, t.z - (t.vz / sp) * 1.2, -t.vx * 0.08 + (t.vz / sp) * side * 2.5, 1.5 + Math.random() * 2, -t.vz * 0.08 - (t.vx / sp) * side * 2.5, WHITE, 0.7, 0.6, sy - 0.2);
+        }
+        if (P.count(6, dt)) P.emit('ripple', t.x, sy + 0.05, t.z, 0, 1.2, 0, MIST, 1, 1.2);
+      }
+      for (const m of items.missiles) {
+        if (!m.alive) continue;
+        const sp = Math.hypot(m.vx, m.vy, m.vz) || 1;
+        const bx = m.x - (m.vx / sp) * 2;
+        const by = m.y - (m.vy / sp) * 2;
+        const bz = m.z - (m.vz / sp) * 2;
+        let n = P.count(40, dt);
+        for (let k = 0; k < n; k++) P.emit('smoke', bx, by, bz, (Math.random() - 0.5) * 1.2, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 1.2, k % 3 === 0 ? MISSILE_FIRE : MIST, 0.35, 0.45);
+        n = P.count(30, dt);
+        for (let k = 0; k < n; k++) P.emit('boost', bx, by, bz, -m.vx * 0.05 + (Math.random() - 0.5), Math.random() - 0.5, -m.vz * 0.05 + (Math.random() - 0.5), MISSILE_FIRE, 0.4, 0.8);
+        // Skimming low: it tears a spray line out of the sea.
+        const sy = oceanHeight(m.x, m.z, time);
+        if (m.y - sy < 2.2) {
+          n = P.count(60, dt);
+          for (let k = 0; k < n; k++) {
+            const side = k % 2 ? 1 : -1;
+            P.emit('spray', bx, sy + 0.1, bz, (m.vz / sp) * side * 4, 2 + Math.random() * 3, -(m.vx / sp) * side * 4, WHITE, 0.6, 0.7, sy - 0.2);
+          }
+        }
+      }
     }
 
     // ── Ambient world emitters near the camera ──────────────────────────────
@@ -649,6 +710,34 @@ export class FxDirector {
           if (mine) this.addRumble(0.1, 0.4, 80);
           break;
         case 'itemUse':
+          if (e.text === 'storm') {
+            // The whole sky cracks: a brief cold flash for everyone (toned down by reduced motion).
+            this.flash = Math.max(this.flash, 0.55 * (0.3 + 0.7 * renderer.motionFx));
+            renderer.fx.flashColor.setRGB(0.75, 0.88, 1);
+            if (mine) this.pops.sparkles(e.racer, e.x, e.y, e.z, 8, 2.4, STORM);
+          }
+          if (e.text === 'surge' && e.racer >= 0 && (mine || near)) {
+            this.pops.sparkles(e.racer, e.x, e.y, e.z, mine ? 9 : 5, 2.6, GOLD);
+            for (let k = 0; k < 30; k++) P.emit('spark', e.x, e.y + 0.6, e.z, (Math.random() - 0.5) * 9, 1 + Math.random() * 5, (Math.random() - 0.5) * 9, k % 2 ? GOLD : GOLD_HOT, 1, 1.8);
+            if (mine) {
+              this.surgeKick = 1;
+              this.flash = Math.max(this.flash, 0.16);
+              renderer.fx.flashColor.copy(GOLD);
+              this.chromaPulse = Math.max(this.chromaPulse, 1);
+              this.radialPulse = Math.max(this.radialPulse, 1);
+              rig.addTrauma(0.22);
+              this.addRumble(0.35, 0.8, 180);
+            }
+          }
+          if (e.text === 'homer' && (mine || near)) {
+            for (let k = 0; k < 40; k++) P.emit('splash', e.x, e.y + 0.3, e.z, (Math.random() - 0.5) * 8, 4 + Math.random() * 6, (Math.random() - 0.5) * 8, WHITE, 1, 1.2, e.y - 1);
+            for (let k = 0; k < 16; k++) P.emit('smoke', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 4, 2 + Math.random() * 2, (Math.random() - 0.5) * 4, MIST, 0.6, 0.8);
+            if (mine) rig.addTrauma(0.25);
+          }
+          if ((e.text === 'torpedo' || e.text === 'torpedo3') && mine) {
+            rig.addTrauma(0.1);
+            this.addRumble(0.2, 0.5, 100);
+          }
           if (mine && e.text === 'wave') {
             rig.addTrauma(0.35);
             this.radialPulse = 1;
@@ -660,6 +749,44 @@ export class FxDirector {
           break;
         case 'itemHit': {
           if (!near && !mine) break;
+          if (e.text === 'storm') {
+            // Zapped and shrunk: a pop, a ring of static, dizzy sparkles.
+            this.pops.burst(e.x, e.y + 1.4, e.z, 2.6);
+            if (e.racer >= 0) this.pops.sparkles(e.racer, e.x, e.y, e.z, 6, 1.6, DIZZY);
+            for (let k = 0; k < 26; k++) P.emit('spark', e.x, e.y + 1.5, e.z, (Math.random() - 0.5) * 10, 2 + Math.random() * 6, (Math.random() - 0.5) * 10, STORM, 1, 1.6);
+            if (mine) {
+              rig.addTrauma(0.35);
+              this.chromaPulse = Math.max(this.chromaPulse, 1);
+              this.addRumble(0.5, 0.9, 260);
+            }
+            break;
+          }
+          if (e.text === 'homer' || e.text === 'homer-miss') {
+            // Seeker detonation: a tall column of sea, a fireball and a shock ring.
+            const hitBoat = e.text === 'homer';
+            const sy = e.racer >= 0 ? this.session.racers[e.racer].boat.surfaceY : e.y;
+            const n = Math.round((hitBoat ? 140 : 80) * this.particles.density);
+            for (let k = 0; k < n; k++) {
+              const a = (k / n) * Math.PI * 2;
+              const out = 3 + Math.random() * 8;
+              P.emit('splash', e.x + Math.cos(a), sy + 0.3, e.z + Math.sin(a), Math.cos(a) * out, 8 + Math.random() * 14, Math.sin(a) * out, WHITE, 1.2, 1.6, sy - 1);
+            }
+            for (let k = 0; k < (hitBoat ? 46 : 20); k++) P.emit('ember', e.x, sy + 1.5, e.z, (Math.random() - 0.5) * 16, Math.random() * 14, (Math.random() - 0.5) * 16, EMBER, 0.7, 2.6);
+            for (let k = 0; k < 14; k++) P.emit('smoke', e.x, sy + 2, e.z, (Math.random() - 0.5) * 5, 3 + Math.random() * 2, (Math.random() - 0.5) * 5, SMOKE, 0.5, 0.7);
+            this.pops.crown(e.x, sy - 0.15, e.z, hitBoat ? 3.2 : 2.4, hitBoat ? 7.5 : 5);
+            this.pops.ring(e.x, sy + 0.12, e.z, hitBoat ? 22 : 15);
+            this.pops.burst(e.x, sy + 2, e.z, hitBoat ? 5.5 : 3.5);
+            if (mine) {
+              this.impact = 1;
+              rig.addTrauma(0.95);
+              this.damage = Math.max(this.damage, 1);
+              this.drops = 1;
+              this.flash = Math.max(this.flash, 0.45 * (0.4 + 0.6 * renderer.motionFx));
+              renderer.fx.flashColor.setRGB(1, 0.6, 0.3);
+              this.addRumble(1, 1, 450);
+            } else if ((e.x - cam.x) ** 2 + (e.z - cam.z) ** 2 < 60 * 60) rig.addTrauma(0.3);
+            break;
+          }
           const big = e.text === 'torpedo' || e.text === 'splash';
           for (let k = 0; k < (big ? 60 : 24); k++) P.emit('splash', e.x, e.y + 0.3, e.z, (Math.random() - 0.5) * 10, 3 + Math.random() * (big ? 10 : 4), (Math.random() - 0.5) * 10, WHITE, 1, 1.3, e.y - 1);
           if (big) for (let k = 0; k < 24; k++) P.emit('ember', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 12, Math.random() * 10, (Math.random() - 0.5) * 12, EMBER, 0.5, 2);
@@ -670,6 +797,9 @@ export class FxDirector {
           }
           break;
         }
+        case 'itemMiss':
+          if (e.text === 'dodge' && e.racer >= 0 && (near || mine)) this.pops.sparkles(e.racer, e.x, e.y, e.z, 6, 2.2, TIER[1]);
+          break;
         case 'shieldHit':
           if (near || mine) for (let k = 0; k < 40; k++) P.emit('spark', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 12, Math.random() * 8, (Math.random() - 0.5) * 12, TIER[1], 1, 1.5);
           if (mine) {
@@ -700,7 +830,10 @@ export class FxDirector {
     // Held for ~2 frames at 60 Hz, then gone: an impact frame, not a fade.
     this.impact = Math.max(0, this.impact - dt * 14);
     fx.flash = this.flash;
-    fx.speed = damp(fx.speed, smoothstep(34, 46, pb.speed) * 0.6 + pb.boostLevel * 0.7, 5, dt);
+    const surging = pb.surge > 0 ? 1 : 0;
+    this.surgeKick = Math.max(0, this.surgeKick - dt * 3);
+    rig.fovKick = surging * 0.35 + this.surgeKick * 0.65;
+    fx.speed = damp(fx.speed, Math.max(smoothstep(34, 46, pb.speed) * 0.6 + pb.boostLevel * 0.7, surging * 0.9), 5, dt);
     // Crisp image + speed lines reads more anime than heavy blur: keep blur/fringe light.
     fx.radial = Math.max(pb.boostLevel * 0.28, this.radialPulse * 0.4);
     fx.chroma = Math.max(pb.boostLevel * 0.35, this.chromaPulse * 0.6);

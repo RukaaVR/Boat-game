@@ -58,6 +58,8 @@ export interface Settings {
   reduceFlash: boolean;
   /** Particle amount multiplier (0.25..1). */
   particles: number;
+  /** Gamepad rumble (haptics) on/off. */
+  rumble: boolean;
 }
 
 export interface Medals {
@@ -143,6 +145,7 @@ export function defaultSettings(): Settings {
     wildlife: true,
     reduceFlash: false,
     particles: 1,
+    rumble: true,
   };
 }
 
@@ -222,6 +225,7 @@ function sanitizeSettings(v: unknown): Settings {
     wildlife: bool(o.wildlife, d.wildlife),
     reduceFlash: bool(o.reduceFlash, d.reduceFlash),
     particles: num(o.particles, d.particles, 0.25, 1),
+    rumble: bool(o.rumble, d.rumble),
   };
 }
 

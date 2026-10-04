@@ -92,6 +92,8 @@ export interface SessionConfig {
   items?: boolean;
   /** Split-screen second player. */
   player2?: { name: string; boat: BoatId; livery: Livery; look?: RiderLook };
+  /** Split-screen players 3 and 4 (only with `player2`). */
+  morePlayers?: { name: string; boat: BoatId; livery: Livery; look?: RiderLook }[];
   /** The player's chosen rider look. */
   playerLook?: RiderLook;
   /** Battle mode rule set (default TIMED). */
@@ -285,6 +287,12 @@ export class RaceSession {
       p2.look = cfg.player2.look ?? null;
       this.racers.push(p2);
       this.humans.push(p2);
+      for (const mp of (cfg.morePlayers ?? []).slice(0, 2)) {
+        const h = new Racer(this.racers.length, mp.name, boatSpec(mp.boat), mp.livery, true, null);
+        h.look = mp.look ?? null;
+        this.racers.push(h);
+        this.humans.push(h);
+      }
     }
     const idBase = this.racers.length;
     const field = cfg.field ?? Array.from({ length: clamp(cfg.opponents, 0, RACE_RIVALS) }, (_, i) => i);
@@ -350,6 +358,13 @@ export class RaceSession {
     // Mine pool: endless spawns them; the admin panel can drop them in any mode.
     for (let i = 0; i < 14; i++) this.mines.push({ x: 0, z: 0, active: false, t: 0 });
     setWaveTime(0);
+  }
+
+  /** Coasting driver for a finished split-screen human (one each, so their state never mixes). */
+  private moreDrivers: AIDriver[] = [];
+  private humanDriver(id: number) {
+    if (id <= 1) return this.p2Driver;
+    return (this.moreDrivers[id] ??= new AIDriver('technical', 'hard', 4343 + id * 101));
   }
 
   get isRace() {
@@ -437,7 +452,7 @@ export class RaceSession {
         }
         continue;
       }
-      const drive = r.ai ?? (r === this.player ? (this.playerAutopilot || r.finished ? this.playerDriver : null) : r.finished ? this.p2Driver : null);
+      const drive = r.ai ?? (r === this.player ? (this.playerAutopilot || r.finished ? this.playerDriver : null) : r.finished ? this.humanDriver(r.id) : null);
       if (drive && !(r.ai && this.raceTime < r.reaction && this.phase === 'racing')) {
         this.view.myDistance = r.raceDist;
         this.view.lap = r.lap;

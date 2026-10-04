@@ -209,6 +209,9 @@ export interface ScreenFx {
   damage: number;
 }
 
+const _clear = new Color();
+const _slate = new Color(0.02, 0.035, 0.09);
+
 export class Renderer {
   readonly gl: WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
@@ -415,6 +418,53 @@ export class Renderer {
       celShared.uResolution.value.set(W, band);
       gl.setRenderTarget(rt);
       gl.render(scene, cameras[i]);
+    }
+    celShared.uResolution.value.set(W, H);
+    rt.viewport.set(0, 0, W, H);
+    rt.scissor.set(0, 0, W, H);
+    rt.scissorTest = false;
+    gl.setRenderTarget(rt);
+    this.stats.calls = gl.info.render.calls;
+    this.stats.triangles = gl.info.render.triangles;
+    this.postProcess(post);
+  }
+
+  /**
+   * Split-screen grid (3–4 players): camera i renders into `rects[i]`
+   * ([x, y, w, h] as fractions of the screen, origin top-left), then one shared
+   * post pass. Extra rects without a camera (the 3-player spare quarter) are
+   * cleared to a dark slate so the overview panel sits on a clean backdrop.
+   */
+  renderGrid(scene: Scene, cameras: Camera[], rects: readonly (readonly [number, number, number, number])[], post: PostSettings, dt: number, prepare: (cam: Camera) => void) {
+    this.clock += dt;
+    const gl = this.gl;
+    gl.info.reset();
+    const W = this.size.x;
+    const H = this.size.y;
+    const rt = this.sceneRT;
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i];
+      const x = Math.round(r[0] * W);
+      const w = Math.round((r[0] + r[2]) * W) - x;
+      const yTop = Math.round(r[1] * H);
+      const h = Math.round((r[1] + r[3]) * H) - yTop;
+      const y = H - yTop - h;
+      rt.viewport.set(x, y, w, h);
+      rt.scissor.set(x, y, w, h);
+      rt.scissorTest = true;
+      gl.setRenderTarget(rt);
+      const cam = cameras[i];
+      if (!cam) {
+        gl.getClearColor(_clear);
+        const a = gl.getClearAlpha();
+        gl.setClearColor(_slate, 1);
+        gl.clear(true, true, false);
+        gl.setClearColor(_clear, a);
+        continue;
+      }
+      prepare(cam);
+      celShared.uResolution.value.set(w, h);
+      gl.render(scene, cam);
     }
     celShared.uResolution.value.set(W, H);
     rt.viewport.set(0, 0, W, H);

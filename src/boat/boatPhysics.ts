@@ -84,12 +84,18 @@ interface Internal {
   padCooldown: number;
   fromRamp: boolean;
   initialised: boolean;
+  /** Seconds since the last fresh drift press (wave-flip buffering). */
+  pressAgo: number;
+  /** This jump left a natural wave crest (not a ramp). */
+  waveLaunch: boolean;
+  /** A WAVE FLIP was completed this jump (landing bonus pending). */
+  waveFlipDone: boolean;
 }
 const internals = new WeakMap<Boat, Internal>();
 function internal(b: Boat): Internal {
   let g = internals.get(b);
   if (!g) {
-    g = { prevSurfaceY: 0, outTime: 0, vyAtContact: 0, trickArmed: false, prevRoll: false, prevDrift: false, padCooldown: 0, fromRamp: false, initialised: false };
+    g = { prevSurfaceY: 0, outTime: 0, vyAtContact: 0, trickArmed: false, prevRoll: false, prevDrift: false, padCooldown: 0, fromRamp: false, initialised: false, pressAgo: 99, waveLaunch: false, waveFlipDone: false };
     internals.set(b, g);
   }
   return g;
@@ -134,7 +140,24 @@ export function driftTurnRate(spec: { turnRate: number; driftYaw: number }, into
   return spec.turnRate * spec.driftYaw * TUNE.drift * 0.7 * (0.15 + 0.85 * (into + 1) * 0.5);
 }
 
-const TRICK_VALUE: Record<TrickKind, number> = { none: 0, frontflip: 600, backflip: 600, spin: 400, roll: 500 };
+const TRICK_VALUE: Record<TrickKind, number> = { none: 0, frontflip: 600, backflip: 600, spin: 400, roll: 500, waveflip: 250 };
+
+/**
+ * WAVE FLIP — a quick corkscrew off a natural wave crest. Tap drift at the
+ * launch (up to WAVE_PRESS_EARLY s before the hull is flagged airborne) or
+ * within WAVE_TRICK_LATE s of air; it only starts when the predicted remaining
+ * air covers the animation and the whole jump lasts at least WAVE_AIR_MIN s.
+ * It is purely visual (the physical attitude is untouched), so it can never
+ * cause a wipeout on its own; landing it pays a small boost, below a ramp trick.
+ */
+export const WAVE_AIR_MIN = 0.45;
+const WAVE_TRICK_LATE = 0.4;
+const WAVE_PRESS_EARLY = 0.12;
+/** Effective downward acceleration used to predict remaining air (gravity + hull suction). */
+const WAVE_G_EXTRA = 4;
+export function waveFlipTime(air: number) {
+  return 0.38 - 0.06 * air;
+}
 
 function startWipeout(b: Boat, id: number, env: PhysicsEnv) {
   if (b.wipeout > 0) return;
@@ -283,6 +306,8 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
       b.tricksThisJump = 0;
       b.jumpScore = 0;
       g.trickArmed = !c.drift;
+      g.waveLaunch = !g.fromRamp;
+      g.waveFlipDone = false;
       if (b.forwardSpeed > 14) env.events.push('launch', id, pos.x, pos.y, pos.z, clamp01(b.velocity.y / 8));
       // A ramp launch ends the slide (keeping what was earned); skipping off a
       // wave crest does not — the drift carries through small hops.
@@ -441,8 +466,9 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   if (pressed && !b.airborne && !b.drifting && b.wipeout <= 0 && !locked) {
     b.hop = HOP_TIME;
     b.driftWindow = DRIFT_PICK;
-    env.events.push('splash', id, pos.x, b.surfaceY, pos.z, 0.18);
+    env.events.push('splash', id, pos.x, b.surfaceY, pos.z, 0.18, 'hop');
   }
+  g.pressAgo = pressed ? 0 : Math.min(99, g.pressAgo + dt);
   if (!b.drifting && canDrift && c.drift && b.driftWindow > 0 && Math.abs(steer) > 0.3) {
     b.drifting = true;
     b.driftDir = Math.sign(steer);
@@ -451,6 +477,7 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
     b.driftTime = 0;
     b.driftSteer = 0;
     b.driftWindow = 0;
+    env.events.push('driftStart', id, pos.x, b.surfaceY, pos.z, b.driftDir);
   }
   if (b.drifting) {
     if (!c.drift || locked) releaseDrift(b, id, env);
@@ -566,15 +593,43 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
       }
     }
   }
+  // WAVE FLIP off a natural crest (see WAVE_AIR_MIN).
+  b.waveTrickReady = false;
+  if (b.airborne && b.wipeout <= 0 && b.trick === 'none' && g.waveLaunch && !g.waveFlipDone && !b.drifting && b.airTime <= WAVE_TRICK_LATE && !locked) {
+    const ge = G * TUNE.gravity + WAVE_G_EXTRA;
+    const vy = b.velocity.y;
+    const rem = (vy + Math.sqrt(vy * vy + 2 * ge * Math.max(0, b.clearance))) / ge;
+    const dur = waveFlipTime(s.air);
+    if (rem >= dur * 0.75 && b.airTime + rem >= WAVE_AIR_MIN) {
+      b.waveTrickReady = true;
+      if (g.pressAgo <= b.airTime + WAVE_PRESS_EARLY) {
+        b.trick = 'waveflip';
+        b.trickDir = steer < -0.2 ? -1 : 1;
+        b.trickT = 0;
+        b.trickDuration = dur;
+        b.hop = 0;
+        g.trickArmed = false;
+        g.pressAgo = 99;
+        b.waveTrickReady = false;
+      }
+    }
+  }
   g.prevRoll = c.roll;
   if (b.trick !== 'none') {
     b.trickT += dt / b.trickDuration;
     const p = clamp01(b.trickT);
     const e = p * p * (3 - 2 * p);
     const ang = e * Math.PI * 2;
-    b.visPitch = b.trick === 'frontflip' ? -ang : b.trick === 'backflip' ? ang : 0;
-    b.visYaw = b.trick === 'spin' ? -ang * b.trickDir : 0;
-    b.visRoll = b.trick === 'roll' ? ang * b.trickDir : 0;
+    if (b.trick === 'waveflip') {
+      // Corkscrew: a full roll with a little nose-up flick and a quarter yaw swing.
+      b.visRoll = ang * b.trickDir;
+      b.visPitch = Math.sin(Math.PI * p) * 0.28;
+      b.visYaw = -Math.sin(Math.PI * p) * 0.35 * b.trickDir;
+    } else {
+      b.visPitch = b.trick === 'frontflip' ? -ang : b.trick === 'backflip' ? ang : 0;
+      b.visYaw = b.trick === 'spin' ? -ang * b.trickDir : 0;
+      b.visRoll = b.trick === 'roll' ? ang * b.trickDir : 0;
+    }
     if (b.trickT >= 1) completeTrick(b, id, env);
   } else {
     b.visPitch = b.visYaw = b.visRoll = 0;
@@ -588,6 +643,17 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
 
 function completeTrick(b: Boat, id: number, env: PhysicsEnv) {
   const kind = b.trick;
+  if (kind === 'waveflip') {
+    // Lighter than a ramp trick: no multi-trick chain bonus, less nitro.
+    internal(b).waveFlipDone = true;
+    b.jumpScore += TRICK_VALUE.waveflip;
+    b.nitro = Math.min(1, b.nitro + 0.06);
+    env.events.push('trick', id, b.position.x, b.position.y, b.position.z, TRICK_VALUE.waveflip, TRICK_NAMES.waveflip);
+    b.trick = 'none';
+    b.trickT = 0;
+    b.visPitch = b.visYaw = b.visRoll = 0;
+    return;
+  }
   b.tricksThisJump++;
   const value = TRICK_VALUE[kind] * (1 + 0.5 * (b.tricksThisJump - 1));
   b.jumpScore += value;
@@ -620,6 +686,16 @@ function land(b: Boat, id: number, env: PhysicsEnv, vy: number) {
   b.sinceLand = 0;
   b.landStrength = strength;
   // Finishing a trick that is nearly done counts; anything less is a bail.
+  // A WAVE FLIP is visual only: unfinished, it is simply dropped (no bail).
+  if (b.trick === 'waveflip') {
+    if (b.trickT > 0.6) completeTrick(b, id, env);
+    else {
+      b.trick = 'none';
+      b.trickT = 0;
+      b.visPitch = b.visYaw = b.visRoll = 0;
+    }
+  }
+  const g = internal(b);
   if (b.trick !== 'none') {
     if (b.trickT > 0.8) completeTrick(b, id, env);
     else {
@@ -657,6 +733,13 @@ function land(b: Boat, id: number, env: PhysicsEnv, vy: number) {
     const loss = clamp(0.1 + pitchErr * 0.35 + rollErr * 0.3 + slip * 0.25, 0.05, 0.5);
     b.velocity.x -= fx * b.forwardSpeed * loss;
     b.velocity.z -= fz * b.forwardSpeed * loss;
+  }
+  if (g.waveFlipDone) {
+    // Landed a WAVE FLIP: a small kick, smaller than a ramp trick's.
+    g.waveFlipDone = false;
+    b.boostTime = Math.max(b.boostTime + 0.25, 0.6);
+    b.boostStrength = Math.max(b.boostStrength, 0.6);
+    env.events.push('waveLand', id, pos.x, b.surfaceY, pos.z, b.boostTime);
   }
   b.stuntScore += b.jumpScore;
   env.events.push('land', id, pos.x, b.surfaceY, pos.z, Math.max(strength, 0.25), clean ? 'clean' : '');

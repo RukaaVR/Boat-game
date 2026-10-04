@@ -339,6 +339,8 @@ export class FxDirector {
   private boostColors: Color[];
   private pops = new AnimePops();
   private glow = new DriftGlow(16);
+  /** 3–4 player split-screen: treat every human's boat like the player's for emission. */
+  splitHumans = false;
 
   constructor(
     private session: RaceSession,
@@ -373,7 +375,8 @@ export class FxDirector {
     const racers = this.session.racers;
     for (let i = 0; i < racers.length; i++) {
       const b = racers[i].boat;
-      const isPlayer = i === 0;
+      // Every human's own boat keeps full effects (split-screen views follow them).
+      const isPlayer = i === 0 || (this.splitHumans && racers[i].isPlayer);
       const dx = b.position.x - cam.x;
       const dz = b.position.z - cam.z;
       const d2 = dx * dx + dz * dz;
@@ -597,7 +600,7 @@ export class FxDirector {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       const mine = e.racer === 0;
-      const near = (e.x - cam.x) ** 2 + (e.z - cam.z) ** 2 < 140 * 140;
+      const near = (e.x - cam.x) ** 2 + (e.z - cam.z) ** 2 < 140 * 140 || (this.splitHumans && e.racer > 0 && !!this.session.racers[e.racer]?.isPlayer);
       switch (e.type) {
         case 'land': {
           if (!near && !mine) break;
@@ -638,6 +641,12 @@ export class FxDirector {
         }
         case 'splash': {
           if (!near && !mine) break;
+          if (e.text === 'hop') {
+            // Drift hop: a light lift-off spritz, no camera hit.
+            for (let k = 0; k < 10; k++) P.emit('splash', e.x, e.y + 0.2, e.z, (Math.random() - 0.5) * 4, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 4, WHITE, 0.6, 0.7, e.y - 0.3);
+            if (mine) this.addRumble(0.04, 0.22, 50);
+            break;
+          }
           const n = Math.round(24 * this.particles.density * (0.5 + e.value));
           for (let k = 0; k < n; k++) P.emit('splash', e.x, e.y + 0.3, e.z, (Math.random() - 0.5) * 6, 3 + Math.random() * 6 * e.value, (Math.random() - 0.5) * 6, WHITE, 1, 1 + e.value, e.y - 0.3);
           if (mine) {
@@ -683,7 +692,34 @@ export class FxDirector {
             for (let k = 0; k < 26; k++) P.emit('spark', e.x, e.y + 0.6, e.z, (Math.random() - 0.5) * 9, 2 + Math.random() * 5, (Math.random() - 0.5) * 9, TIER[e.value], 1, 1.6);
             this.pops.sparkles(e.racer, e.x, e.y, e.z, 3, 1.8, TIER[e.value]);
           }
-          if (mine) this.addRumble(0.1, 0.4, 80);
+          // Each new tier pulses harder than the last.
+          if (mine) this.addRumble(0.08 + 0.12 * e.value, 0.3 + 0.15 * e.value, 60 + 30 * e.value);
+          break;
+        case 'driftStart': {
+          // The hull snaps into the slide: a short white spark pop off the stern.
+          if (!near && !mine) break;
+          const b = this.session.racers[e.racer]?.boat;
+          if (!b) break;
+          const fx = Math.sin(b.heading);
+          const fz = Math.cos(b.heading);
+          const ox = Math.cos(b.heading) * e.value; // outside of the slide
+          const oz = -Math.sin(b.heading) * e.value;
+          const sx = b.position.x - fx * b.spec.length * 0.45;
+          const sz = b.position.z - fz * b.spec.length * 0.45;
+          for (let k = 0; k < 16; k++) {
+            const sp2 = 4 + Math.random() * 4;
+            P.emit('spark', sx, e.y + 0.4, sz, ox * sp2 + (Math.random() - 0.5) * 4 - fx * 2, 1 + Math.random() * 3, oz * sp2 + (Math.random() - 0.5) * 4 - fz * 2, WHITE, 0.45, 1.3);
+          }
+          this.pops.burst(sx + ox * 0.6, e.y + 0.55, sz + oz * 0.6, mine ? 1.1 : 0.9);
+          if (mine) this.addRumble(0.12, 0.3, 60);
+          break;
+        }
+        case 'waveLand':
+          if ((near || mine) && e.racer >= 0) this.pops.sparkles(e.racer, e.x, e.y, e.z, mine ? 6 : 3, 2, TIER[1]);
+          if (mine) {
+            rig.kickFov(2);
+            this.addRumble(0.15, 0.5, 120);
+          }
           break;
         case 'boostStart':
         case 'nitro':

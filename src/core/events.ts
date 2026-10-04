@@ -8,12 +8,14 @@
  */
 
 export type GameEventType =
-  | 'splash' // hull slap / heavy water contact; strength 0..1
+  | 'splash' // hull slap / heavy water contact; strength 0..1 (text 'hop' = drift hop)
   | 'land' // touchdown after air; strength 0..1, flag = clean
   | 'wipeout'
   | 'collide' // boat/boat or boat/static; strength 0..1
   | 'buoyHit'
   | 'driftTier' // value = tier reached
+  | 'driftStart' // hull snapped into a slide; value = drift direction (±1)
+  | 'waveLand' // landed a WAVE FLIP off a natural crest; value = boost seconds
   | 'boostStart' // value = tier / strength
   | 'nitro' // nitro activated
   | 'trick' // value = trick id, text = name

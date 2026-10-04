@@ -53,6 +53,19 @@ Battle, pause and camera at the top left. Optional tilt-to-steer.
 `Right Shift` drift, `Right Ctrl` nitro, `.` roll, `/` item, `M` camera, `\`
 respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 
+**Three or four players** (2×2 split-screen): players 3 and 4 each need a
+gamepad (P1/P2 can still use the keyboard halves; pads go to the highest
+players first). With three players the fourth quarter shows a course map and
+live standings. Fewer AI rivals are offered (max 3 with three players, 2 with
+four), and graphics step down one preset (plus a lower resolution cap and LOD
+distance) while 3–4 views render. Rumble pulses go to each player's own pad
+(Settings → Controls → RUMBLE).
+
+**Wave flips**: leave a natural wave crest with enough air (≥0.45 s) and tap
+drift at the launch or just after for a quick WAVE FLIP; landing it gives a
+small boost (less than a ramp trick). It is visual only and never causes a
+wipeout. `npx tsx harness/wave-trick-probe.ts` measures it.
+
 ## How it plays
 
 - **Drift** is the core skill and works like a kart racer. Tap drift and the

@@ -51,6 +51,8 @@ export class World {
   private blend: { from: WeatherId; to: WeatherId; t: number } | null = null;
   /** Photo mode: hide every boat. */
   hideBoats = false;
+  /** 3–4 player split-screen: the other views' cameras (boat LOD uses the nearest view). */
+  extraCams: import('three').Camera[] = [];
   /** Smoothed visual scale per racer (Storm Call shrink) and gold-trail state (Golden Surge). */
   private visScale: Float32Array;
   private goldTrail: Uint8Array;
@@ -166,7 +168,11 @@ export class World {
       const r = s.racers[i];
       this.visuals[i].update(r.boat, r.controls.steer, dt, time);
       const v = this.visuals[i];
-      const d2 = (r.boat.position.x - cam.position.x) ** 2 + (r.boat.position.z - cam.position.z) ** 2;
+      let d2 = (r.boat.position.x - cam.position.x) ** 2 + (r.boat.position.z - cam.position.z) ** 2;
+      for (let k = 0; k < this.extraCams.length; k++) {
+        const p = this.extraCams[k].position;
+        d2 = Math.min(d2, (r.boat.position.x - p.x) ** 2 + (r.boat.position.z - p.z) ** 2);
+      }
       const ls = LOD.scale * LOD.scale;
       v.setLod(d2 > 260 * 260 * ls ? 2 : d2 > 110 * 110 * ls ? 1 : 0);
       v.setDamage(r.boat.damage, i * 17 + 3);

@@ -224,7 +224,7 @@ export class Scenery {
         return g;
       });
       const merged = mergeColored(geos);
-      const m = new Mesh(merged, cel('island', { vertexColors: true }));
+      const m = new Mesh(merged, cel('island', { vertexColors: true, rim: 0.3 }));
       m.name = 'islands';
       addOutline(m, 1.6);
       this.add(m, merged);
@@ -245,8 +245,8 @@ export class Scenery {
       if (kind === 'palm') {
         const { trunk, fronds } = P.palmGeometry(v);
         this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.4);
-        // Thin double-sided leaves get no inverted-hull outline (it would blob them).
-        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, side: DoubleSide, rim: 0.6 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 0);
+        // Fronds are thin closed shells with hand-made outline normals, so they take clean ink.
+        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, rim: 0.6 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.3);
         continue;
       }
       if (kind === 'mine') {
@@ -367,7 +367,10 @@ export class Scenery {
     if (theme !== 'neon') {
       const R = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5 + 900;
       const g = P.distantRangeGeometry(cx, cz, R, style, theme, track.def.seed);
-      const m = new Mesh(g, cel('distant', { vertexColors: true, rim: 0.3 }));
+      // Unlit: distant hills read as flat pastel silhouettes, like a painted anime backdrop.
+      const dm = new MeshBasicMaterial({ vertexColors: true, fog: true });
+      const m = new Mesh(g, dm);
+      this.disposables.push(dm);
       m.name = 'distantRange';
       this.add(m, g);
     }

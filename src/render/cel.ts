@@ -37,14 +37,14 @@ import {
 let ramp: DataTexture | null = null;
 function toonRamp(): Texture {
   if (ramp) return ramp;
-  ramp = new DataTexture(new Uint8Array([150, 150, 205, 255, 255, 255]), 6, 1, RedFormat, UnsignedByteType);
+  ramp = new DataTexture(new Uint8Array([140, 140, 200, 255, 255, 255]), 6, 1, RedFormat, UnsignedByteType);
   ramp.minFilter = ramp.magFilter = NearestFilter;
   ramp.generateMipmaps = false;
   ramp.needsUpdate = true;
   return ramp;
 }
 /** Outlines are thinner than the old ink: the style wants soft, tinted lines. */
-const OUTLINE_THIN = 0.6;
+const OUTLINE_THIN = 0.8;
 
 /** Uniforms shared by every cel material — updated once per frame by the renderer. */
 export const celShared = {

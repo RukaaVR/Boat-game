@@ -25,12 +25,12 @@ const WHITE = new Color(1, 1, 1);
 function dolphinGeo() {
   const g = new GeoBuilder();
   // Body along +Z (nose forward), grey back, pale belly.
-  g.sphere(0.42, 0x6f8ea6, { sx: 0.85, sy: 0.8, sz: 2.6 }, 12, 8);
-  g.sphere(0.36, 0xd8e2ea, { y: -0.12, sx: 0.8, sy: 0.55, sz: 2.2 }, 10, 6);
-  g.cone(0.14, 0.55, 0x6f8ea6, { z: 1.25, rx: Math.PI / 2, sx: 1, sz: 0.8 }, 8);
-  g.cone(0.32, 0.6, 0x5b7890, { y: 0.4, z: -0.1, rx: -0.5, sx: 0.25 }, 6);
-  g.box(1.0, 0.06, 0.35, 0x5b7890, { z: -1.2 });
-  g.box(0.75, 0.05, 0.3, 0x5b7890, { y: -0.2, z: 0.4, rx: 0.2 });
+  g.sphere(0.42, 0x5a9ad8, { sx: 0.85, sy: 0.8, sz: 2.6 }, 12, 8);
+  g.sphere(0.36, 0xf2f8ff, { y: -0.12, sx: 0.8, sy: 0.55, sz: 2.2 }, 10, 6);
+  g.cone(0.14, 0.55, 0x5a9ad8, { z: 1.25, rx: Math.PI / 2, sx: 1, sz: 0.8 }, 8);
+  g.cone(0.32, 0.6, 0x4a86c8, { y: 0.4, z: -0.1, rx: -0.5, sx: 0.25 }, 6);
+  g.box(1.0, 0.06, 0.35, 0x4a86c8, { z: -1.2 });
+  g.box(0.75, 0.05, 0.3, 0x4a86c8, { y: -0.2, z: 0.4, rx: 0.2 });
   return g.build();
 }
 
@@ -50,12 +50,12 @@ function gullGeo(part: 'body' | 'wing') {
 
 function whaleGeo() {
   const g = new GeoBuilder();
-  g.sphere(2.2, 0x26364a, { sx: 1.0, sy: 0.85, sz: 4.2 }, 16, 10);
-  g.sphere(1.9, 0xc7d0da, { y: -0.7, z: 0.6, sx: 0.85, sy: 0.5, sz: 3.6 }, 14, 8);
-  g.box(5.2, 0.25, 1.8, 0x1f2d3e, { z: -9.4 });
-  g.box(2.6, 0.2, 1.2, 0x1f2d3e, { x: 2.4, y: -0.6, z: 3.4, rz: -0.4, ry: 0.4 });
-  g.box(2.6, 0.2, 1.2, 0x1f2d3e, { x: -2.4, y: -0.6, z: 3.4, rz: 0.4, ry: -0.4 });
-  g.cyl(0.9, 1.6, 4.0, 0x26364a, { z: -6.5, rx: Math.PI / 2 }, 10);
+  g.sphere(2.2, 0x3a5a9a, { sx: 1.0, sy: 0.85, sz: 4.2 }, 16, 10);
+  g.sphere(1.9, 0xeef4ff, { y: -0.7, z: 0.6, sx: 0.85, sy: 0.5, sz: 3.6 }, 14, 8);
+  g.box(5.2, 0.25, 1.8, 0x2e4c88, { z: -9.4 });
+  g.box(2.6, 0.2, 1.2, 0x2e4c88, { x: 2.4, y: -0.6, z: 3.4, rz: -0.4, ry: 0.4 });
+  g.box(2.6, 0.2, 1.2, 0x2e4c88, { x: -2.4, y: -0.6, z: 3.4, rz: 0.4, ry: -0.4 });
+  g.cyl(0.9, 1.6, 4.0, 0x3a5a9a, { z: -6.5, rx: Math.PI / 2 }, 10);
   return g.build();
 }
 

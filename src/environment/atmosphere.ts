@@ -31,6 +31,7 @@ import type { WakeSystem } from '../water/wake';
 import { MAX_WATER_LIGHTS } from '../water/ocean';
 import type { WaterLight } from './scenery';
 import { maxWaveHeight } from '../water/waves';
+import { A11Y } from '../core/a11y';
 
 const rainVert = /* glsl */ `
 attribute float aSeed;
@@ -282,8 +283,9 @@ export class Atmosphere {
     this.bolt.visible = this.boltT > 0;
     (this.bolt.material as LineBasicMaterial).opacity = Math.max(0, this.boltT / 0.35);
 
-    this.sky.material.uniforms.uFlash.value = this.flash;
-    if (ocean) ocean.material.uniforms.uFlash.value = this.flash;
+    const flash = this.flash * A11Y.flash;
+    this.sky.material.uniforms.uFlash.value = flash;
+    if (ocean) ocean.material.uniforms.uFlash.value = flash;
     this.hemi.intensity = w.hemiIntensity * (1 + this.flash * 1.6);
 
     // Sun direction in view space for the cel specular term.

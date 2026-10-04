@@ -20,6 +20,9 @@ import { MAX_LEVEL, sanitizeSave, xpToNext } from '../save/save';
 import { WEATHER, WEATHER_IDS } from '../environment/weatherDefs';
 import { getSeaState, oceanHeight, setSeaState } from '../water/waves';
 import { maxUpgrades } from '../save/progress';
+import { ITEM_IDS, ITEM_LABEL, type ItemId } from '../race/items';
+import { activeQuality } from '../render/graphics';
+import { LOD } from '../render/lod';
 
 /** cyrb53 — a small, fast 53-bit string hash. */
 export function hash53(str: string, seed = 0x52495054) {
@@ -265,7 +268,12 @@ export class AdminPanel {
           ${this.tg('bloom', 'BLOOM', g.renderer.bloomEnabled)}
           ${this.tg('outlines', 'OUTLINES', this.game.renderer.outlinesEnabled)}
           ${this.tg('autopilot', 'PLAYER AUTOPILOT', !!s?.playerAutopilot)}
-          <div class="adm-dim">${r.calls} draw calls · ${(r.triangles / 1000).toFixed(0)}k tris</div>`;
+          <div class="adm-sub">GRAPHICS PRESET (current ${activeQuality.toUpperCase()})</div><div class="adm-row">${(['auto', 'low', 'medium', 'high'] as const).map((q) => `<button class="${g.save.data.settings.quality === q ? 'on' : ''}" data-a="gfx" data-v="${q}">${q.toUpperCase()}</button>`).join('')}</div>
+          <div class="adm-sub">RIDER ANIMATIONS (player)</div><div class="adm-row"><button data-a="ranim" data-v="pickup">ITEM PICKUP</button><button data-a="ranim" data-v="hit">HIT</button><button data-a="ranim" data-v="trick">TRICK</button><button data-a="ranim" data-v="lookback">LOOK BACK</button><button data-a="ranim" data-v="victory">VICTORY</button></div>
+          <div class="adm-sub">DRIFT SPARKS</div><div class="adm-row"><button data-a="dtier" data-v="1">TIER 1 BLUE</button><button data-a="dtier" data-v="2">TIER 2 ORANGE</button><button data-a="dtier" data-v="3">TIER 3 PURPLE</button><button data-a="burst" data-v="3">MINI-TURBO BURST</button></div>
+          <div class="adm-sub">ITEMS ${s?.items ? '' : '(items are off in this event)'}</div><div class="adm-row">${ITEM_IDS.map((id) => `<button data-a="item" data-v="${id}" ${s?.items ? '' : 'disabled'}>${ITEM_LABEL[id]}</button>`).join('')}</div>
+          <div class="adm-row"><button data-a="creator">OPEN CHARACTER CREATOR</button></div>
+          <div class="adm-dim">${r.calls} draw calls · ${(r.triangles / 1000).toFixed(0)}k tris · particles ${g.world?.particles.active ?? 0} · LOD full ${LOD.hiCount} / reduced ${LOD.loCount}</div>`;
       }
     }
   }
@@ -277,8 +285,19 @@ export class AdminPanel {
     return `FPS ${r.fps.toFixed(0)} · ${r.frameMs.toFixed(1)} ms · CPU ${g.cpuMs.toFixed(2)} ms · DPR ${g.renderer.pixelRatio.toFixed(2)}${b ? ` · ${(b.speed * 3.6).toFixed(0)} km/h · y ${b.position.y.toFixed(1)}` : ''}`;
   }
 
+  private driftPreview: { tier: number; t: number } | null = null;
   /** Called every frame by the game. */
   update(dt: number) {
+    // Drift-tier preview: hold the player's boat in a sliding drift at a tier.
+    const dp = this.driftPreview;
+    const pb = this.game.session?.player.boat;
+    if (dp && pb) {
+      dp.t -= dt;
+      pb.drifting = dp.t > 0;
+      pb.driftTier = dp.t > 0 ? dp.tier : 0;
+      pb.driftDir = 1;
+      if (dp.t <= 0) this.driftPreview = null;
+    }
     if (!this.el) return;
     this.statsTimer += dt;
     if (this.statsTimer > 0.4 && this.tab === 'debug') {
@@ -313,6 +332,47 @@ export class AdminPanel {
     switch (a) {
       case 'close':
         return this.close();
+      case 'gfx':
+        d.settings.quality = v as 'auto' | 'low' | 'medium' | 'high';
+        g.save.save();
+        g.applySettings();
+        msg = `Graphics preset ${v.toUpperCase()} (ocean/particle density applies from the next race)`;
+        break;
+      case 'ranim': {
+        const vis = g.world?.visuals[0];
+        if (!vis) break;
+        if (v === 'victory') {
+          vis.celebrate = true;
+          setTimeout(() => (vis.celebrate = false), 2500);
+        } else vis.rider.react(v as 'pickup' | 'hit' | 'trick' | 'lookback', Math.random() < 0.5 ? -1 : 1);
+        msg = 'Rider animation: ' + v;
+        break;
+      }
+      case 'dtier':
+        if (s) {
+          this.driftPreview = { tier: Number(v), t: 2.5 };
+          const b = s.player.boat;
+          g.events.push('driftTier', 0, b.position.x, b.position.y, b.position.z, Number(v));
+          msg = 'Drift tier ' + v + ' preview';
+        }
+        break;
+      case 'burst':
+        if (s) {
+          const b = s.player.boat;
+          g.events.push('boostStart', 0, b.position.x, b.position.y, b.position.z, Number(v));
+          msg = 'Mini-turbo burst';
+        }
+        break;
+      case 'item':
+        if (s?.items) {
+          s.player.item = v as ItemId;
+          msg = 'Item: ' + ITEM_LABEL[v as ItemId];
+        }
+        break;
+      case 'creator':
+        this.close();
+        g.screens.rider('menu');
+        return;
       case 'pw':
         return this.tryPassword((this.el?.querySelector('input[data-pw]') as HTMLInputElement | null)?.value ?? '');
       case 'tab':

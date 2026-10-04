@@ -7,6 +7,7 @@
 
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DynamicDrawUsage, NormalBlending, Points, ShaderMaterial } from 'three';
 import { particleSprite } from '../render/textures';
+import { A11Y } from '../core/a11y';
 
 export type ParticleKind = 'spray' | 'mist' | 'boost' | 'spark' | 'smoke' | 'steam' | 'ember' | 'drop' | 'confetti' | 'splash' | 'ripple' | 'dust' | 'ash' | 'spindrift';
 
@@ -263,7 +264,7 @@ export class Particles {
 
   /** How many particles a `rate`/s stream should emit this frame (stochastic rounding). */
   count(rate: number, dt: number) {
-    return Math.floor(rate * dt * this.density + Math.random());
+    return Math.floor(rate * dt * this.density * A11Y.particles + Math.random());
   }
 
   update(dt: number) {

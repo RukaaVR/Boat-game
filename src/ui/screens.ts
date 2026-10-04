@@ -1205,6 +1205,11 @@ export class Screens {
           ]) +
           this.slider('shake', 'CAMERA SHAKE', 0, 1, 0.1, pct) +
           this.slider('motion', 'MOTION EFFECTS', 0, 1, 0.1, pct) +
+          this.choice('reduceFlash', 'REDUCE FLASHES', [
+            [false, 'OFF'],
+            [true, 'ON'],
+          ]) +
+          this.slider('particles', 'PARTICLE AMOUNT', 0.25, 1, 0.05, pct) +
           this.choice('assist', 'COLOUR ASSIST', [
             [0, 'OFF'],
             [1, 'PROTAN'],

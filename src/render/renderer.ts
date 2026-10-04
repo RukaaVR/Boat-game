@@ -28,6 +28,7 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { dropletTexture } from './textures';
 import { celShared } from './cel';
 import type { PostSettings } from '../environment/atmosphere';
+import { A11Y } from '../core/a11y';
 
 const quadVert = /* glsl */ `
 varying vec2 vUv;
@@ -466,9 +467,9 @@ export class Renderer {
     u.uChroma.value = fx.chroma * m * 0.15;
     u.uRadial.value = fx.radial * m;
     u.uSpeed.value = fx.speed * m;
-    u.uFlash.value = fx.flash;
+    u.uFlash.value = fx.flash * A11Y.flash;
     // Reduced-motion setting also tones down the strobe-like impact frame.
-    u.uImpact.value = fx.impact * m;
+    u.uImpact.value = fx.impact * m * A11Y.flash;
     u.uFlashColor.value.copy(fx.flashColor);
     u.uDrops.value = fx.drops * m * 0.25;
     u.uDamage.value = fx.damage;

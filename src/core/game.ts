@@ -49,6 +49,7 @@ import { PhotoPanel, ReplayBar, type PhotoHost, type ReplayHost } from '../ui/ov
 import { CAM_LABEL, CAM_MODES } from '../camera/cameraRig';
 import { checkAchievements } from '../save/rewards';
 import { decodeGhost, encodeGhost, ghostFingerprint } from '../save/ghostCode';
+import { A11Y } from './a11y';
 
 export interface EventRequest {
   mode: ModeId;
@@ -289,6 +290,8 @@ export class Game implements ReplayHost, PhotoHost {
     this.setGraphics(q);
     this.renderer.assist = s.assist;
     this.renderer.motionFx = s.motion;
+    A11Y.flash = s.reduceFlash ? 0.25 : 1;
+    A11Y.particles = s.particles;
     this.rig.motionScale = 0.35 + 0.65 * s.motion;
     this.rig.shakeScale = s.shake;
     this.input.bindings = structuredClone(s.bindings);

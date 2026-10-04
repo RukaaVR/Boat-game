@@ -52,6 +52,10 @@ export interface Settings {
   dynamicWeather: boolean;
   /** Ambient wildlife and traffic. */
   wildlife: boolean;
+  /** Tone down full-screen flashes (lightning, impact frames). */
+  reduceFlash: boolean;
+  /** Particle amount multiplier (0.25..1). */
+  particles: number;
 }
 
 export interface Medals {
@@ -134,6 +138,8 @@ export function defaultSettings(): Settings {
     shadows: true,
     dynamicWeather: false,
     wildlife: true,
+    reduceFlash: false,
+    particles: 1,
   };
 }
 
@@ -210,6 +216,8 @@ function sanitizeSettings(v: unknown): Settings {
     shadows: bool(o.shadows, d.shadows),
     dynamicWeather: bool(o.dynamicWeather, d.dynamicWeather),
     wildlife: bool(o.wildlife, d.wildlife),
+    reduceFlash: bool(o.reduceFlash, d.reduceFlash),
+    particles: num(o.particles, d.particles, 0.25, 1),
   };
 }
 

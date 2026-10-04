@@ -4,7 +4,22 @@
  * gamepad rumble requests. Holds no gameplay state.
  */
 
-import { Color, Vector3 } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  ShaderMaterial,
+  Sprite,
+  SpriteMaterial,
+  type Texture,
+  Vector3,
+} from 'three';
+import { impactBurstTexture, impactRingTexture, sparkleTexture } from './textures';
 import { clamp01, damp, smoothstep } from '../core/mathx';
 import type { EventQueue } from '../core/events';
 import type { Particles } from '../particles/particles';
@@ -30,6 +45,273 @@ const CONFETTI = [new Color(1, 0.23, 0.36), new Color(0.16, 0.83, 1), new Color(
 const _c = new Color();
 const _nz = new Vector3();
 
+// ── Anime pops ────────────────────────────────────────────────────────────────
+// Short-lived hand-drawn-looking accents: impact star bursts, flat shock rings
+// on the water, splash crowns and boost sparkles. Small fixed pools; nothing is
+// allocated after construction. Geometry is shared by every world.
+
+let crownGeo: BufferGeometry | null = null;
+/** Open jagged cylinder (radius 1, height 1): the classic cartoon splash crown. */
+function crownGeometry() {
+  if (crownGeo) return crownGeo;
+  const spikes = 11;
+  const cols = spikes * 2;
+  const pos = new Float32Array((cols + 1) * 2 * 3);
+  const idx: number[] = [];
+  for (let j = 0; j <= cols; j++) {
+    const a = (j / cols) * Math.PI * 2;
+    const tip = j % 2 === 0;
+    const rt = tip ? 1.32 : 1.1;
+    const h = tip ? 1 : 0.42;
+    const o = j * 6;
+    pos[o] = Math.cos(a);
+    pos[o + 1] = 0;
+    pos[o + 2] = Math.sin(a);
+    pos[o + 3] = Math.cos(a) * rt;
+    pos[o + 4] = h;
+    pos[o + 5] = Math.sin(a) * rt;
+    if (j < cols) {
+      const b0 = j * 2;
+      idx.push(b0, b0 + 1, b0 + 2, b0 + 1, b0 + 3, b0 + 2);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  crownGeo = g;
+  return g;
+}
+let ringGeo: PlaneGeometry | null = null;
+function ringGeometry() {
+  if (!ringGeo) ringGeo = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  return ringGeo;
+}
+
+const crownVert = /* glsl */ `
+varying float vH;
+void main() {
+  vH = position.y;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+// Front faces white, back faces pale aqua with a hard band at the rim: two flat
+// tones and no gradients, like a cel-painted splash.
+const crownFrag = /* glsl */ `
+uniform float uOpacity;
+varying float vH;
+void main() {
+  vec3 c = gl_FrontFacing ? vec3(1.0) : mix(vec3(0.55, 0.85, 1.0), vec3(0.85, 0.96, 1.0), step(0.55, vH));
+  gl_FragColor = vec4(c, uOpacity);
+  #include <colorspace_fragment>
+}
+`;
+
+type SpriteKind = 'burst' | 'sparkle';
+interface SpritePop {
+  s: Sprite;
+  m: SpriteMaterial;
+  kind: SpriteKind;
+  age: number;
+  life: number;
+  size: number;
+  spin: number;
+  /** Racer to follow (-1 = static), with offset from the boat. */
+  follow: number;
+  ox: number;
+  oy: number;
+  oz: number;
+}
+interface MeshPop {
+  mesh: Mesh;
+  age: number;
+  life: number;
+  size: number;
+  height: number;
+}
+
+class AnimePops {
+  readonly group = new Group();
+  private sprites: SpritePop[] = [];
+  private rings: MeshPop[] = [];
+  private crowns: MeshPop[] = [];
+  private nextSprite = 0;
+  private nextRing = 0;
+  private nextCrown = 0;
+  private burstTex: Texture;
+  private sparkleTex: Texture;
+
+  constructor() {
+    this.group.name = 'animePops';
+    this.burstTex = impactBurstTexture();
+    this.sparkleTex = sparkleTexture();
+    for (let i = 0; i < 32; i++) {
+      const m = new SpriteMaterial({ map: this.sparkleTex, transparent: true, depthWrite: false, fog: true });
+      const s = new Sprite(m);
+      s.visible = false;
+      s.renderOrder = 9;
+      this.group.add(s);
+      this.sprites.push({ s, m, kind: 'sparkle', age: 0, life: 0, size: 1, spin: 0, follow: -1, ox: 0, oy: 0, oz: 0 });
+    }
+    const ringTex = impactRingTexture();
+    for (let i = 0; i < 8; i++) {
+      const m = new MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      const mesh = new Mesh(ringGeometry(), m);
+      mesh.visible = false;
+      mesh.renderOrder = 5;
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.rings.push({ mesh, age: 0, life: 0, size: 1, height: 0 });
+    }
+    for (let i = 0; i < 8; i++) {
+      const m = new ShaderMaterial({ uniforms: { uOpacity: { value: 1 } }, vertexShader: crownVert, fragmentShader: crownFrag, transparent: true, depthWrite: false, side: DoubleSide });
+      const mesh = new Mesh(crownGeometry(), m);
+      mesh.visible = false;
+      mesh.renderOrder = 5;
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.crowns.push({ mesh, age: 0, life: 0, size: 1, height: 1 });
+    }
+  }
+
+  private sprite(kind: SpriteKind, x: number, y: number, z: number, size: number, life: number, color: Color) {
+    const p = this.sprites[this.nextSprite];
+    this.nextSprite = (this.nextSprite + 1) % this.sprites.length;
+    p.kind = kind;
+    p.age = 0;
+    p.life = life;
+    p.size = size;
+    p.follow = -1;
+    p.spin = (Math.random() - 0.5) * (kind === 'burst' ? 2 : 8);
+    p.m.map = kind === 'burst' ? this.burstTex : this.sparkleTex;
+    // Bursts sit on top of everything for their few frames, like a drawn-over accent.
+    p.m.depthTest = kind !== 'burst';
+    p.m.rotation = Math.random() * Math.PI * 2;
+    p.m.color.copy(color);
+    p.m.opacity = 1;
+    p.s.position.set(x, y, z);
+    p.s.scale.setScalar(0.001);
+    p.s.visible = true;
+    return p;
+  }
+
+  burst(x: number, y: number, z: number, size: number) {
+    this.sprite('burst', x, y, z, size, 0.26, WHITE);
+  }
+
+  /** Sparkle stars scattered around (and riding with) a racer. */
+  sparkles(racer: number, x: number, y: number, z: number, count: number, radius: number, color: Color) {
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * Math.PI * 2 + Math.random() * 0.8;
+      const r = radius * (0.6 + Math.random() * 0.6);
+      const ox = Math.cos(a) * r;
+      const oz = Math.sin(a) * r;
+      const oy = 0.5 + Math.random() * 1.8;
+      const c = k % 3 === 0 ? WHITE : color;
+      const p = this.sprite('sparkle', x + ox, y + oy, z + oz, 1.5 + Math.random() * 1.4, 0.4 + Math.random() * 0.3, c);
+      p.age = -k * 0.025; // pop in one after another
+      p.follow = racer;
+      p.ox = ox;
+      p.oy = oy;
+      p.oz = oz;
+    }
+  }
+
+  ring(x: number, y: number, z: number, size: number) {
+    const p = this.rings[this.nextRing];
+    this.nextRing = (this.nextRing + 1) % this.rings.length;
+    p.age = 0;
+    p.life = 0.45;
+    p.size = size;
+    p.mesh.position.set(x, y, z);
+    p.mesh.rotation.y = Math.random() * Math.PI;
+    p.mesh.scale.setScalar(0.001);
+    p.mesh.visible = true;
+  }
+
+  crown(x: number, y: number, z: number, radius: number, height: number) {
+    const p = this.crowns[this.nextCrown];
+    this.nextCrown = (this.nextCrown + 1) % this.crowns.length;
+    p.age = 0;
+    p.life = 0.5 + height * 0.06;
+    p.size = radius;
+    p.height = height;
+    p.mesh.position.set(x, y, z);
+    p.mesh.rotation.y = Math.random() * Math.PI;
+    p.mesh.scale.setScalar(0.001);
+    p.mesh.visible = true;
+  }
+
+  update(dt: number, session: RaceSession, cam: Vector3) {
+    const racers = session.racers;
+    for (const p of this.sprites) {
+      if (!p.s.visible) continue;
+      p.age += dt;
+      if (p.age >= p.life) {
+        p.s.visible = false;
+        continue;
+      }
+      if (p.age < 0) {
+        p.s.scale.setScalar(0.001);
+        continue;
+      }
+      const t = p.age / p.life;
+      let sc: number;
+      if (p.kind === 'burst') {
+        // Snap open in ~2 frames, overshoot, then shrink away.
+        sc = t < 0.15 ? 0.5 + (t / 0.15) * 0.7 : 1.2 - (t - 0.15) * 0.75;
+        p.m.opacity = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      } else {
+        // Twinkle: pop up, hold, pinch shut.
+        sc = Math.sin(Math.PI * Math.min(1, t * 1.15)) * (t < 0.5 ? 1 : 0.85 + 0.15 * Math.cos(p.age * 50));
+        p.m.opacity = 1;
+      }
+      p.m.rotation += p.spin * dt;
+      p.s.scale.setScalar(Math.max(0.001, sc * p.size));
+      if (p.follow >= 0) {
+        const b = racers[p.follow]?.boat;
+        if (b) p.s.position.set(b.position.x + p.ox, b.position.y + p.oy + t * 0.6, b.position.z + p.oz);
+      }
+    }
+    for (const p of this.rings) {
+      if (!p.mesh.visible) continue;
+      p.age += dt;
+      if (p.age >= p.life) {
+        p.mesh.visible = false;
+        continue;
+      }
+      const t = p.age / p.life;
+      const e = 1 - (1 - t) * (1 - t) * (1 - t);
+      p.mesh.scale.setScalar(Math.max(0.001, p.size * (0.25 + 0.75 * e)));
+      (p.mesh.material as MeshBasicMaterial).opacity = t < 0.55 ? 1 : 1 - (t - 0.55) / 0.45;
+    }
+    for (const p of this.crowns) {
+      if (!p.mesh.visible) continue;
+      p.age += dt;
+      if (p.age >= p.life) {
+        p.mesh.visible = false;
+        continue;
+      }
+      const t = p.age / p.life;
+      const e = 1 - (1 - t) * (1 - t);
+      const r = p.size * (0.55 + 0.75 * e);
+      const h = p.height * Math.max(0.02, Math.sin(Math.PI * Math.min(1, t * 1.1)));
+      p.mesh.scale.set(r, h, r);
+      // The chase camera drives through the player's own landing spot: fade the
+      // crown out before the lens ends up inside it.
+      const dc = Math.hypot(p.mesh.position.x - cam.x, p.mesh.position.z - cam.z);
+      const near = smoothstep(r * 1.3 + 1, r * 1.3 + 7, dc);
+      (p.mesh.material as ShaderMaterial).uniforms.uOpacity.value = (t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3) * near;
+    }
+  }
+
+  dispose() {
+    for (const p of this.sprites) p.m.dispose();
+    for (const p of this.rings) (p.mesh.material as MeshBasicMaterial).dispose();
+    for (const p of this.crowns) (p.mesh.material as ShaderMaterial).dispose();
+    this.group.removeFromParent();
+  }
+}
+
 export interface Rumble {
   strong: number;
   weak: number;
@@ -44,7 +326,9 @@ export class FxDirector {
   private radialPulse = 0;
   private drops = 0;
   private damage = 0;
+  private impact = 0;
   private boostColors: Color[];
+  private pops = new AnimePops();
 
   constructor(
     private session: RaceSession,
@@ -58,6 +342,9 @@ export class FxDirector {
   update(dt: number, time: number, rig: CameraRig, renderer: Renderer, events: EventQueue, weatherRain: number) {
     const P = this.particles;
     const cam = rig.camera.position;
+    // The pops group rides along with the particles (the world owns the scene).
+    if (!this.pops.group.parent) this.particles.objects[0].parent?.add(this.pops.group);
+    this.pops.update(dt, this.session, cam);
     this.rumble.strong = this.rumble.weak = this.rumble.ms = 0;
 
     // ── Continuous per-boat emission ──────────────────────────────────────────
@@ -90,7 +377,7 @@ export class FxDirector {
           const up = 3 + speed * 0.28 + Math.random() * 3;
           const back = speed * (0.35 + Math.random() * 0.2);
           const spread = (Math.random() - 0.5) * 2.4;
-          P.emit('spray', nx, b.surfaceY + 0.1, nz, b.velocity.x - fx * back + rx * spread, up, b.velocity.z - fz * back + rz * spread, WHITE, 1, 0.7 + sp * 0.5, floor);
+          P.emit('spray', nx, b.surfaceY + 0.1, nz, b.velocity.x - fx * back + rx * spread, up, b.velocity.z - fz * back + rz * spread, WHITE, 1, 0.85 + sp * 0.6, floor);
         }
         // Bow spray, both sides.
         n = P.count((6 + 18 * sp) * lod, dt);
@@ -117,12 +404,12 @@ export class FxDirector {
             const sx = b.position.x + fx * along + outX * b.spec.beam * 0.55;
             const sz = b.position.z + fz * along + outZ * b.spec.beam * 0.55;
             const out = 4 + speed * 0.22 + Math.random() * 3;
-            P.emit('spray', sx, b.surfaceY + 0.2, sz, b.velocity.x * 0.35 + outX * out, 3 + Math.random() * 4, b.velocity.z * 0.35 + outZ * out, _c, 1, 0.8 + sp * 0.6, floor);
+            P.emit('spray', sx, b.surfaceY + 0.2, sz, b.velocity.x * 0.35 + outX * out, 3 + Math.random() * 4, b.velocity.z * 0.35 + outZ * out, _c, 1, 0.95 + sp * 0.6, floor);
           }
           if (b.driftTier > 0) {
             n = P.count(28 * lod, dt);
             for (let k = 0; k < n; k++) {
-              P.emit('spark', b.position.x - fx * L * 0.5 + outX * 0.6, b.surfaceY + 0.4, b.position.z - fz * L * 0.5 + outZ * 0.6, outX * 4 + (Math.random() - 0.5) * 4, 2 + Math.random() * 3, outZ * 4 + (Math.random() - 0.5) * 4, TIER[b.driftTier], 1, 1.4);
+              P.emit('spark', b.position.x - fx * L * 0.5 + outX * 0.6, b.surfaceY + 0.4, b.position.z - fz * L * 0.5 + outZ * 0.6, outX * 4 + (Math.random() - 0.5) * 4, 2 + Math.random() * 3, outZ * 4 + (Math.random() - 0.5) * 4, TIER[b.driftTier], 1, 2.1);
             }
           }
         }
@@ -133,7 +420,10 @@ export class FxDirector {
         const ex = b.position.x - fx * (L * 0.5 + 0.4);
         const ez = b.position.z - fz * (L * 0.5 + 0.4);
         for (let k = 0; k < n; k++) {
-          P.emit('boost', ex, b.position.y + 0.1, ez, b.velocity.x * 0.6 - fx * 8 + (Math.random() - 0.5) * 2, (Math.random() - 0.3) * 2, b.velocity.z * 0.6 - fz * 8 + (Math.random() - 0.5) * 2, this.boostColors[i], 1, 1 + b.boostLevel);
+          // Two flat tones, cel style: a tight white-hot core inside a fat livery-coloured flame.
+          const core = k % 3 === 0;
+          const sprd = core ? 0.8 : 2.4;
+          P.emit('boost', ex, b.position.y + 0.1, ez, b.velocity.x * 0.6 - fx * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, (Math.random() - 0.3) * sprd, b.velocity.z * 0.6 - fz * (core ? 6 : 8) + (Math.random() - 0.5) * sprd, core ? WHITE : this.boostColors[i], core ? 0.7 : 1, core ? 0.7 + 0.5 * b.boostLevel : 1.3 + b.boostLevel);
         }
       }
       // Water streaming off the hull right after take-off.
@@ -225,14 +515,31 @@ export class FxDirector {
       switch (e.type) {
         case 'land': {
           if (!near && !mine) break;
-          const n = Math.round((20 + 70 * e.value) * this.particles.density);
+          const n = Math.round((16 + 56 * e.value) * this.particles.density);
           for (let k = 0; k < n; k++) {
             const a = (k / n) * Math.PI * 2;
             const out = 3 + Math.random() * 5 * (0.5 + e.value);
             P.emit('splash', e.x + Math.cos(a) * 1.2, e.y + 0.2, e.z + Math.sin(a) * 1.2, Math.cos(a) * out, 3 + e.value * 9 * Math.random(), Math.sin(a) * out, WHITE, 1, 1 + e.value, e.y - 0.3);
           }
-          for (let k = 0; k < 3; k++) P.emit('mist', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 4, 1, (Math.random() - 0.5) * 4, MIST, 1, 2);
+          // Cartoon splash crown, with droplets flicked off its spike tips.
+          const cr = 1.3 + e.value * 1.4;
+          const ch = 1.2 + e.value * 3.4;
+          // Wave hops land constantly: only real landings get a crown, and never one
+          // wrapped around the lens.
+          const camD2 = (e.x - cam.x) ** 2 + (e.z - cam.z) ** 2;
+          const tips = e.value > 0.15 && camD2 > (cr * 1.5 + 3) ** 2 ? Math.round(10 + 8 * e.value) : 0;
+          if (tips) this.pops.crown(e.x, e.y - 0.15, e.z, cr, ch);
+          for (let k = 0; k < tips; k++) {
+            const a = (k / tips) * Math.PI * 2;
+            const out = 2.5 + e.value * 3;
+            P.emit('drop', e.x + Math.cos(a) * cr * 1.3, e.y + ch * 0.6, e.z + Math.sin(a) * cr * 1.3, Math.cos(a) * out, 4 + e.value * 6, Math.sin(a) * out, WHITE, 1.2, 2.2 + e.value * 1.5, e.y - 0.3);
+          }
+          // Flat white puffs.
+          for (let k = 0; k < 4; k++) P.emit('steam', e.x + (Math.random() - 0.5) * 2, e.y + 0.6, e.z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 1.5, (Math.random() - 0.5) * 4, WHITE, 0.28, 0.3 + e.value * 0.25);
+          if (e.value > 0.2) this.pops.ring(e.x, e.y + 0.12, e.z, 6 + e.value * 9);
+          if (e.value > 0.35 && (mine || e.value > 0.6)) this.pops.burst(e.x, e.y + 0.7, e.z, 1.6 + e.value * 2.2);
           if (mine) {
+            if (e.value > 0.55) this.impact = 1;
             rig.addTrauma(0.15 + 0.45 * e.value);
             if (e.value > 0.35) this.drops = Math.max(this.drops, 0.6 + e.value * 0.4);
             this.addRumble(0.3 + 0.6 * e.value, 0.4, 180);
@@ -265,7 +572,9 @@ export class FxDirector {
             for (let k = 0; k < 10; k++) P.emit('smoke', e.x, e.y + 1, e.z, (Math.random() - 0.5) * 4, 3, (Math.random() - 0.5) * 4, SMOKE, 0.3, 0.4);
           }
           const involvesPlayer = mine || e.text === '0';
+          if (e.value > 0.3 && (involvesPlayer || e.value > 0.5 || hard)) this.pops.burst(e.x, e.y + 1, e.z, 2 + e.value * 2.5);
           if (involvesPlayer) {
+            if (e.value > 0.6 || (hard && e.value > 0.35)) this.impact = 1;
             rig.addTrauma(0.25 + 0.6 * e.value);
             this.damage = Math.max(this.damage, e.value * 0.8);
             if (e.text === 'mine') {
@@ -286,6 +595,7 @@ export class FxDirector {
         case 'driftTier':
           if (near || mine) {
             for (let k = 0; k < 26; k++) P.emit('spark', e.x, e.y + 0.6, e.z, (Math.random() - 0.5) * 9, 2 + Math.random() * 5, (Math.random() - 0.5) * 9, TIER[e.value], 1, 1.6);
+            this.pops.sparkles(e.racer, e.x, e.y, e.z, 3, 1.8, TIER[e.value]);
           }
           if (mine) this.addRumble(0.1, 0.4, 80);
           break;
@@ -293,6 +603,10 @@ export class FxDirector {
         case 'nitro':
         case 'boostPad':
         case 'perfectStart':
+          if ((mine || near) && e.racer >= 0) {
+            const c = _c.copy(this.boostColors[e.racer] ?? WHITE).lerp(WHITE, 0.35);
+            this.pops.sparkles(e.racer, e.x, e.y, e.z, mine ? 8 : 4, mine ? 2.4 : 2, c);
+          }
           if (mine) {
             this.flash = Math.max(this.flash, e.type === 'boostStart' ? 0.08 + 0.05 * e.value : 0.14);
             renderer.fx.flashColor.copy(this.boostColors[0]);
@@ -382,13 +696,22 @@ export class FxDirector {
     this.radialPulse = Math.max(0, this.radialPulse - dt * 2);
     this.drops = Math.max(0, this.drops - dt * 0.45);
     this.damage = Math.max(0, this.damage - dt * 1.6);
+    fx.impact = this.impact;
+    // Held for ~2 frames at 60 Hz, then gone: an impact frame, not a fade.
+    this.impact = Math.max(0, this.impact - dt * 14);
     fx.flash = this.flash;
     fx.speed = damp(fx.speed, smoothstep(34, 46, pb.speed) * 0.6 + pb.boostLevel * 0.7, 5, dt);
-    fx.radial = Math.max(pb.boostLevel * 0.5, this.radialPulse * 0.6);
-    fx.chroma = Math.max(pb.boostLevel * 0.7, this.chromaPulse);
+    // Crisp image + speed lines reads more anime than heavy blur: keep blur/fringe light.
+    fx.radial = Math.max(pb.boostLevel * 0.28, this.radialPulse * 0.4);
+    fx.chroma = Math.max(pb.boostLevel * 0.35, this.chromaPulse * 0.6);
     fx.drops = this.drops + (weatherRain > 0 ? 0.25 : 0);
     fx.damage = this.damage;
     void _nz;
+  }
+
+  /** Releases the pop materials (geometry/textures are shared and cached). */
+  dispose() {
+    this.pops.dispose();
   }
 
   private addRumble(strong: number, weak: number, ms: number) {

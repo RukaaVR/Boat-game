@@ -435,12 +435,13 @@ export class Hud {
 
     // Standings (race modes): compact, nearest-relevant.
     if (s.isRace) {
-      const key = s.order.map((r) => r.id).join(',') + (Math.floor(s.raceTime * 2) % 1000);
+      const br = s.battleRule;
+      const key = s.order.map((r) => (br ? `${r.id}:${r.lives}:${r.battleScore}:${r.eliminated ? 1 : 0}` : r.id)).join(',') + (br ? '' : Math.floor(s.raceTime * 2) % 1000);
       this.set('stand', key, () => {
         let h = '';
         const leader = s.order[0];
         for (const r of s.order) {
-          const gap = r === leader ? '' : r.finished ? 'FIN' : `+${Math.max(0, (leader.raceDist - r.raceDist) / Math.max(10, leader.boat.speed || 25)).toFixed(1)}`;
+          const gap = br ? (r.eliminated ? 'OUT' : br === 'balloons' ? '♥'.repeat(Math.max(0, r.lives)) : `${r.battleScore} HIT${r.battleScore === 1 ? '' : 'S'}`) : r === leader ? '' : r.finished ? 'FIN' : `+${Math.max(0, (leader.raceDist - r.raceDist) / Math.max(10, leader.boat.speed || 25)).toFixed(1)}`;
           h += `<div class="${r.isPlayer ? 'me' : ''}"><span>${r.place}</span><i style="background:${r.livery.hull}"></i><span>${r.name}</span><span class="gap">${gap}</span></div>`;
         }
         this.standings.innerHTML = h;

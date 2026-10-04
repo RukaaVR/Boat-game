@@ -35,6 +35,10 @@ export type GameEventType =
   | 'itemPickup' // battle item box; text = item id
   | 'itemUse' // text = item id
   | 'itemHit' // racer hit by a battle item; text = item id
+  | 'itemReady' // roulette finished; text = item id
+  | 'itemDenied' // item pressed with nothing usable (empty, rolling, wiped out)
+  | 'itemLock' // seeker lock beep on racer; value = urgency 0..1, text = 'start' on first lock
+  | 'itemMiss' // text = 'dodge' (target evaded a seeker) or 'miss' (owner's shot expired)
   | 'collectible' // hidden bottle found; value = index
   | 'weatherShift'; // mid-race weather change; text = new weather id
 

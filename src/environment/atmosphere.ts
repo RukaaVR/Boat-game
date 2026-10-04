@@ -74,6 +74,7 @@ export interface PostSettings {
 }
 
 const _sunDir = new Vector3();
+const _boltDir = new Vector3();
 const _c = new Color();
 
 export class Atmosphere {
@@ -93,6 +94,8 @@ export class Atmosphere {
   private boltT = 0;
   private nextStrike = 6;
   private flashT = 10;
+  /** Strength of the current flash (Storm Call honours the reduced-motion setting). */
+  private flashScale = 1;
   private rng = new Rng(1234);
   private time = 0;
   rainScale = 1;
@@ -271,6 +274,7 @@ export class Atmosphere {
       if (this.nextStrike <= 0) {
         this.nextStrike = this.rng.range(5, 13);
         this.flashT = 0;
+        this.flashScale = 1;
         this.strikeBolt(camera);
         this.events.push('lightning', -1, 0, 0, 0, this.rng.range(0.6, 1));
       }
@@ -278,7 +282,7 @@ export class Atmosphere {
     this.flashT += dt;
     const t = this.flashT;
     // Double flash envelope.
-    this.flash = t < 0.6 ? Math.max(0, 1 - t / 0.12) * 0.9 + (t > 0.18 ? Math.max(0, 1 - (t - 0.18) / 0.3) * 0.7 : 0) : 0;
+    this.flash = (t < 0.6 ? Math.max(0, 1 - t / 0.12) * 0.9 + (t > 0.18 ? Math.max(0, 1 - (t - 0.18) / 0.3) * 0.7 : 0) : 0) * this.flashScale;
     this.boltT -= dt;
     this.bolt.visible = this.boltT > 0;
     (this.bolt.material as LineBasicMaterial).opacity = Math.max(0, this.boltT / 0.35);
@@ -294,10 +298,18 @@ export class Atmosphere {
     this.sun.target.position.copy(camera.position);
   }
 
-  private strikeBolt(camera: Camera) {
+  /** A scripted strike (Storm Call item): bolt in view, flash scaled by `flash` (0..1). */
+  strike(camera: Camera, flash: number) {
+    this.flashT = 0;
+    this.flashScale = flash;
+    this.strikeBolt(camera, 140, 220);
+  }
+
+  private strikeBolt(camera: Camera, near = 380, far = 800) {
     const pos = this.bolt.geometry.getAttribute('position') as BufferAttribute;
-    const a = this.rng.range(0, Math.PI * 2);
-    const d = this.rng.range(380, 800);
+    const fwd = camera.getWorldDirection(_boltDir);
+    const a = near < 380 ? Math.atan2(fwd.z, fwd.x) + this.rng.range(-0.5, 0.5) : this.rng.range(0, Math.PI * 2);
+    const d = this.rng.range(near, far);
     let x = camera.position.x + Math.cos(a) * d;
     let z = camera.position.z + Math.sin(a) * d;
     let y = 380;

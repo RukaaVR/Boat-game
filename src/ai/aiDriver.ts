@@ -16,7 +16,7 @@ import { Rng } from '../core/rng';
 import { angleDelta, clamp, clamp01, damp, noise1 } from '../core/mathx';
 import type { Controls, Difficulty } from '../core/types';
 import type { Boat } from '../boat/boat';
-import { DRIFT_TIER_AT, TUNE } from '../boat/boatPhysics';
+import { DRIFT_TIER_AT, driftTurnRate, TUNE } from '../boat/boatPhysics';
 import { projectOnShortcut, shortcutPoint, Track, type Projection, type TrackPoint } from '../race/track';
 
 export type Style = 'aggressive' | 'technical' | 'speed' | 'balanced' | 'reckless';
@@ -92,6 +92,9 @@ export class AIDriver {
   private nextMistakeIn: number;
   private cornerDecided = -1;
   private wantDrift = false;
+  private lastDrift = false;
+  /** Time the line has wanted a hard counter-steer during the current drift. */
+  private counterT = 0;
   private driftTargetTier = 1;
   private shortcut = -1;
   private shortcutDecidedFor = -1;
@@ -274,7 +277,16 @@ export class AIDriver {
     // While sliding, the hull is deliberately offset: steer the path, not the nose.
     const ref = boat.drifting && boat.speed > 3 ? Math.atan2(boat.velocity.x, boat.velocity.z) : boat.heading;
     const err = angleDelta(ref, desired);
-    let steer = boat.drifting ? clamp(-err * 3.2 * boat.driftDir, -1, 1) * boat.driftDir : clamp(-err * 2.4 + boat.yawRate * 0.22, -1, 1);
+    let steer: number;
+    if (boat.drifting) {
+      // Kart drift: pick the radius the corner needs (feed-forward from the
+      // course curvature ahead), then correct for heading error.
+      const need = Math.abs(speed * track.curvAt(s + speed * 0.35));
+      const lo = driftTurnRate(boat.spec, -1);
+      const hi = driftTurnRate(boat.spec, 1);
+      const ff = ((need - lo) / Math.max(1e-3, hi - lo)) * 2 - 1;
+      steer = clamp(ff - err * 2.6 * boat.driftDir, -1, 1) * boat.driftDir;
+    } else steer = clamp(-err * 2.4 + boat.yawRate * 0.22, -1, 1);
 
     // ── Speed ─────────────────────────────────────────────────────────────────
     const boatScale = 0.55 + 0.45 * (boat.spec.turnRate / 1.75);
@@ -310,11 +322,17 @@ export class AIDriver {
       if (boat.drifting) {
         const reached = boat.driftCharge >= DRIFT_TIER_AT[this.driftTargetTier - 1];
         const overHold = this.mistake === 'longdrift';
-        drift = !(kNow < 0.004 && (reached || boat.driftCharge > 0.6)) || (overHold && boat.driftTime < 3.2);
+        drift = !(kNow < 0.004 && (reached || boat.driftCharge >= DRIFT_TIER_AT[0] || kNow < 0.0015)) || (overHold && boat.driftTime < 3.2);
         if (Math.abs(err) > 0.9) drift = false;
+        // A kart-style drift can't straighten out: if the line wants a hard
+        // counter-steer, the corner is over — cash in instead of fighting it.
+        this.counterT = steer * boat.driftDir < -0.95 ? this.counterT + dt : Math.max(0, this.counterT - dt * 2);
+        if (this.counterT > 0.25 && boat.driftTime > 0.35) drift = false;
         if (!drift) this.wantDrift = false;
       } else if (kNow > 0.0075 && Math.abs(steer) > 0.3) {
-        drift = true;
+        // Drifts start from a hop: if the last press didn't catch, let go for a
+        // frame so the next one is a fresh press.
+        drift = !(this.lastDrift && boat.driftWindow <= 0);
       }
     }
 
@@ -380,6 +398,7 @@ export class AIDriver {
     c.brake = brake;
     c.steer = steer;
     c.drift = drift;
+    this.lastDrift = drift;
     c.boost = boost;
     c.pitch = pitch;
     c.roll = roll;

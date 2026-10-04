@@ -56,6 +56,12 @@ export class Boat {
   driftCharge = 0;
   driftTier = 0;
   driftTime = 0;
+  /** Kart-style hop on drift press: seconds left of the (visual) hop. */
+  hop = 0;
+  /** Time left to pick a drift direction after a hop / landing. */
+  driftWindow = 0;
+  /** Smoothed steer-into-the-drift input (-1 wide … +1 tight). */
+  driftSteer = 0;
   /** Smoothed slip angle (rad) between hull and velocity. */
   slip = 0;
 
@@ -147,6 +153,9 @@ export class Boat {
     this.drifting = false;
     this.driftCharge = 0;
     this.driftTier = 0;
+    this.hop = 0;
+    this.driftWindow = 0;
+    this.driftSteer = 0;
     this.boostTime = 0;
     this.nitroActive = false;
     this.trick = 'none';

@@ -201,7 +201,7 @@ export class Hud {
 
     this.tutorialSteps = [
       `Hold <b>${k('throttle')}</b> to accelerate · steer with <b>${k('left')}</b> <b>${k('right')}</b>`,
-      `Hold <b>${k('drift')}</b> while turning to DRIFT — release at a colour tier for a boost`,
+      `Tap <b>${k('drift')}</b> to hop, steer to DRIFT, keep holding — release at a colour tier for a boost`,
       `Press <b>${k('boost')}</b> to burn NITRO — earn it by drifting, drafting, tricks and clean landings`,
       `In the air: <b>${k('drift')}</b> + direction for flips & spins, <b>${k('roll')}</b> to barrel roll. Land level!`,
       `<b>${k('camera')}</b> camera · <b>${k('respawn')}</b> respawn · <b>${keyLabel(bindings.pause[0])}</b> pause`,
@@ -212,7 +212,7 @@ export class Hud {
       throttle: `Hold ${K('throttle', 'GAS')} to accelerate`,
       steer: touch ? 'Steer with the <b>LEFT THUMB</b> — carve left and right' : `Steer with ${K('left', '')} ${K('right', '')} — carve left and right`,
       checkpoint: 'Follow the arrow at the top and pass through the glowing <b>CHECKPOINT</b>',
-      drift: `DRIFT: turn at speed and hold ${K('drift', 'DRIFT')}. Keep holding until the meter turns <b>ORANGE</b>`,
+      drift: `DRIFT: press ${K('drift', 'DRIFT')} to hop and steer into the turn, then keep holding until the sparks turn <b>ORANGE</b>`,
       release: `Now RELEASE ${K('drift', 'DRIFT')} for a mini-turbo`,
       nitro: `Hold ${K('boost', 'NITRO')} to burn nitro. Earn it back by drifting, drafting and tricks`,
       ramp: 'Hit the orange <b>RAMP</b> at full speed',

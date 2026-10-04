@@ -29,7 +29,7 @@ no connection.
 | Throttle | `W` / `↑` | RT |
 | Brake / reverse | `S` / `↓` | LT |
 | Steer | `A` `D` / `←` `→` | Left stick |
-| Drift (hold through a turn, release for boost) | `Shift` / `Space` | A / RB |
+| Drift (tap to hop + steer, hold through the turn, release for boost) | `Shift` / `Space` | A / RB |
 | Nitro (hold) | `E` / `Left Ctrl` | X |
 | Air tricks | in the air: `Drift` + `↑` front flip, `Drift` + `↓` back flip, `Drift` + `←/→` 360 spin | same with stick |
 | Barrel roll (air) | `Q` | LB |
@@ -55,11 +55,15 @@ respawn. With two gamepads each player gets one; with one gamepad it goes to P2.
 
 ## How it plays
 
-- **Drift** is the core skill. Hold drift while steering at speed: the hull kicks
-  out into a slide while the boat's path carves the corner. Steering into the
-  turn tightens it, counter-steer widens it. The drift meter fills through three
-  colour tiers (blue → orange → pink); release for a mini-turbo whose length
-  depends on the tier.
+- **Drift** is the core skill and works like a kart racer. Tap drift and the
+  boat **hops**; steer during the hop (or land a jump with drift held) and it
+  breaks into a slide that way. The direction is locked for the whole drift:
+  steering only sets the radius — into the turn for a tight arc, away for a wide
+  one — and it never straightens out. The hull swings out and holds its angle,
+  the slide keeps its speed, and small wave skips don't break it. Sparks build
+  through three tiers (blue → orange → pink), faster the tighter you hold the
+  line; release for a mini-turbo whose length depends on the tier. Holding the
+  button without a fresh hop does nothing, so every drift is deliberate.
 - **Nitro** is a reserve you spend by holding the nitro button. You earn it by
   drifting, drafting behind rivals (a SLIPSTREAM indicator appears), tricks,
   clean landings, boost pads and stunt rings.
@@ -299,6 +303,7 @@ node harness/features-test.mjs         # just the feature suite
 node harness/capture.mjs --list        # named screenshot scenarios
 node harness/capture.mjs --shots=racing,storm,night --out=shots
 npx tsx harness/sim-probe.ts coral     # headless full race, numeric report
+npx tsx harness/drift-probe.ts         # drift feel: turn rate wide/neutral/tight, speed kept, tier times
 node harness/perf.mjs --url=http://localhost:4173/   # real-clock perf sampling
 ```
 

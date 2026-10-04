@@ -80,6 +80,7 @@ interface Internal {
   vyAtContact: number;
   trickArmed: boolean;
   prevRoll: boolean;
+  prevDrift: boolean;
   padCooldown: number;
   fromRamp: boolean;
   initialised: boolean;
@@ -88,7 +89,7 @@ const internals = new WeakMap<Boat, Internal>();
 function internal(b: Boat): Internal {
   let g = internals.get(b);
   if (!g) {
-    g = { prevSurfaceY: 0, outTime: 0, vyAtContact: 0, trickArmed: false, prevRoll: false, padCooldown: 0, fromRamp: false, initialised: false };
+    g = { prevSurfaceY: 0, outTime: 0, vyAtContact: 0, trickArmed: false, prevRoll: false, prevDrift: false, padCooldown: 0, fromRamp: false, initialised: false };
     internals.set(b, g);
   }
   return g;
@@ -124,7 +125,14 @@ const TIER_BOOST: readonly [number, number][] = [
   [1.15, 0.82],
   [1.85, 1.0],
 ];
-export const DRIFT_TIER_AT = [1.0, 2.1, 3.3];
+export const DRIFT_TIER_AT = [0.9, 1.9, 3.0];
+/** Length of the drift hop (s) and how long after it a direction can be picked. */
+export const HOP_TIME = 0.3;
+const DRIFT_PICK = 0.32;
+/** Drift path turn rate (rad/s) for a spec at a given into-the-turn input (-1 wide … +1 tight). */
+export function driftTurnRate(spec: { turnRate: number; driftYaw: number }, into: number) {
+  return spec.turnRate * spec.driftYaw * TUNE.drift * 0.7 * (0.15 + 0.85 * (into + 1) * 0.5);
+}
 
 const TRICK_VALUE: Record<TrickKind, number> = { none: 0, frontflip: 600, backflip: 600, spin: 400, roll: 500 };
 
@@ -276,14 +284,14 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
       b.jumpScore = 0;
       g.trickArmed = !c.drift;
       if (b.forwardSpeed > 14) env.events.push('launch', id, pos.x, pos.y, pos.z, clamp01(b.velocity.y / 8));
-      if (b.drifting) {
-        // Leaving the water ends the slide but keeps what was earned.
-        releaseDrift(b, id, env);
-      }
+      // A ramp launch ends the slide (keeping what was earned); skipping off a
+      // wave crest does not — the drift carries through small hops.
+      if (b.drifting && g.fromRamp) releaseDrift(b, id, env);
     }
     if (b.airborne) {
       b.airTime += dt;
       b.airPeak = Math.max(b.airPeak, b.clearance);
+      if (b.drifting && b.airTime > 0.7) releaseDrift(b, id, env);
     }
   } else {
     g.outTime = 0;
@@ -379,17 +387,24 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   if (b.wipeout > 0) au -= sv * 2.2;
 
   if (driftNow) {
-    // ── Arcade drift: the path carves, the hull holds a slide angle into the turn.
+    // ── Kart-style drift: the direction is locked for the whole slide; steering
+    // only sets the radius, from a wide arc (counter-steer) to a tight one (into
+    // the turn) — it never straightens out. The hull swings out and holds an
+    // angle into the corner, and the slide keeps nearly all its speed.
     const into = steer * b.driftDir; // -1 counter-steer … +1 full into the turn
-    const omega = -b.driftDir * s.turnRate * s.driftYaw * TUNE.drift * 0.62 * (0.5 + 0.5 * into + 0.08);
+    b.driftSteer = damp(b.driftSteer, into, 7, dt);
+    const entry = 0.6 + 0.4 * smoothstep(0, 0.2, b.driftTime);
+    const omega = -b.driftDir * driftTurnRate(s, b.driftSteer) * entry;
     let phi = Math.atan2(b.velocity.x, b.velocity.z) + omega * dt;
-    const spd = Math.max(0, vSpd + au * dt - vSpd * 0.12 * dt);
+    const spd = Math.max(0, vSpd + au * dt - vSpd * 0.04 * dt);
     b.velocity.x = Math.sin(phi) * spd;
     b.velocity.z = Math.cos(phi) * spd;
-    const slide = 0.5 * (s.driftYaw / 1.35) * (0.75 + 0.25 * Math.abs(into));
+    const slide = 0.6 * (s.driftYaw / 1.35) * (0.7 + 0.3 * (b.driftSteer + 1) * 0.5);
     const target = phi - b.driftDir * slide;
     const prev = b.heading;
-    b.heading = wrapAngle(b.heading + wrapAngle(target - b.heading) * (1 - Math.exp(-9 * dt)));
+    // Snap out fast on entry, then hold steady.
+    const follow = b.driftTime < 0.25 ? 14 : 8;
+    b.heading = wrapAngle(b.heading + wrapAngle(target - b.heading) * (1 - Math.exp(-follow * dt)));
     b.yawRate = wrapAngle(b.heading - prev) / dt;
     phi = b.heading;
     const nfx = Math.sin(phi);
@@ -415,13 +430,27 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
   b.slip = damp(b.slip, slipNow, 8, dt);
 
   // ── Drift ───────────────────────────────────────────────────────────────
+  // Press drift → a little hop; steer during the hop (or land a jump holding
+  // drift) to start sliding that way. Holding the button without a fresh hop
+  // does nothing, so drifts are always a deliberate input.
   const canDrift = !b.airborne && u > 9 && b.wipeout <= 0 && !locked;
-  if (!b.drifting && canDrift && c.drift && Math.abs(steer) > 0.35) {
+  const pressed = c.drift && !g.prevDrift;
+  g.prevDrift = c.drift;
+  b.hop = Math.max(0, b.hop - dt);
+  b.driftWindow = Math.max(0, b.driftWindow - dt);
+  if (pressed && !b.airborne && !b.drifting && b.wipeout <= 0 && !locked) {
+    b.hop = HOP_TIME;
+    b.driftWindow = DRIFT_PICK;
+    env.events.push('splash', id, pos.x, b.surfaceY, pos.z, 0.18);
+  }
+  if (!b.drifting && canDrift && c.drift && b.driftWindow > 0 && Math.abs(steer) > 0.3) {
     b.drifting = true;
     b.driftDir = Math.sign(steer);
     b.driftCharge = 0;
     b.driftTier = 0;
     b.driftTime = 0;
+    b.driftSteer = 0;
+    b.driftWindow = 0;
   }
   if (b.drifting) {
     if (!c.drift || locked) releaseDrift(b, id, env);
@@ -431,20 +460,25 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
       b.driftTier = 0;
     } else {
       b.driftTime += dt;
-      const into = clamp01(steer * b.driftDir);
-      b.driftCharge += dt * s.driftCharge * (0.6 + 0.55 * into) * (0.35 + 0.65 * smoothstep(6, 18, u));
-      b.nitro = Math.min(1, b.nitro + dt * 0.045 * s.driftCharge);
-      while (b.driftTier < 3 && b.driftCharge >= DRIFT_TIER_AT[b.driftTier]) {
-        b.driftTier++;
-        env.events.push('driftTier', id, pos.x, pos.y, pos.z, b.driftTier);
+      // Sparks charge faster the tighter you hold the line; they pause while a
+      // wave skip has the hull out of the water.
+      if (!b.airborne) {
+        const into = clamp01((b.driftSteer + 1) * 0.5);
+        b.driftCharge += dt * s.driftCharge * (0.75 + 0.4 * into) * (0.35 + 0.65 * smoothstep(6, 18, u));
+        b.nitro = Math.min(1, b.nitro + dt * 0.045 * s.driftCharge);
+        while (b.driftTier < 3 && b.driftCharge >= DRIFT_TIER_AT[b.driftTier]) {
+          b.driftTier++;
+          env.events.push('driftTier', id, pos.x, pos.y, pos.z, b.driftTier);
+        }
       }
     }
   }
 
   // ── Yaw ──────────────────────────────────────────────────────────────────
   if (b.airborne) {
-    const target = -steer * 0.75 * (0.4 + 0.6 * s.air);
-    b.yawRate = damp(b.yawRate, b.trick === 'spin' ? 0 : target, 3, dt);
+    // A drift carried over a wave skip holds its angle in the air.
+    const target = b.drifting ? 0 : -steer * 0.75 * (0.4 + 0.6 * s.air);
+    b.yawRate = damp(b.yawRate, b.trick === 'spin' ? 0 : target, b.drifting ? 8 : 3, dt);
   } else if (b.wipeout > 0) {
     b.yawRate = damp(b.yawRate, 0, 2.5, dt);
   } else if (b.drifting) {
@@ -579,6 +613,9 @@ function releaseDrift(b: Boat, id: number, env: PhysicsEnv) {
 
 function land(b: Boat, id: number, env: PhysicsEnv, vy: number) {
   const pos = b.position;
+  // Landing a real jump with drift held and a direction picks up a slide
+  // straight away (tiny wave skips don't count).
+  if (b.airTime >= 0.3) b.driftWindow = DRIFT_PICK;
   const strength = clamp01(-vy / 13);
   b.sinceLand = 0;
   b.landStrength = strength;

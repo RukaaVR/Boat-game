@@ -34,6 +34,7 @@ import type { RiderLook } from './riderLook';
 import { addBoots, foothold, Rider, type RiderAnchors } from './rider';
 import type { Livery } from './livery';
 import type { BoatSpec, HullStyle } from './specs';
+import { HOP_TIME } from './boatPhysics';
 
 interface HullShape {
   L: number;
@@ -436,6 +437,7 @@ export class BoatVisual {
     // Physics floats every hull at one reference draft; lift deeper keels so
     // each design shows the same waterline (just under the chine).
     const lift = Math.max(0, shapes[0].depth - 0.36) * 0.9;
+    this.lift = lift;
     this.body.position.y = lift;
     this.body.add(this.hull, this.parts, this.rider.root, this.lights, this.flame);
     this.root.add(this.body);
@@ -443,6 +445,8 @@ export class BoatVisual {
   }
 
   private lod = 0;
+  /** Waterline lift for this hull (body rest height). */
+  private lift = 0;
   get lodLevel() {
     return this.lod;
   }
@@ -487,6 +491,13 @@ export class BoatVisual {
       _q.multiply(_qt);
     }
     r.quaternion.copy(_q);
+
+    // Kart-style drift hop (visual only — physics stays on the water), and a
+    // quick bumpy bounce while the slide is held.
+    let hopY = 0;
+    if (b.hop > 0) hopY = Math.sin(Math.PI * (1 - b.hop / HOP_TIME)) * 0.42;
+    else if (b.drifting && !b.airborne) hopY = Math.abs(Math.sin(b.driftTime * 15)) * 0.045;
+    this.body.position.y = this.lift + hopY;
 
     this.rider.update(b, steer, dt, time, this.celebrate);
 

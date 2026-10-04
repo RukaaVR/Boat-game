@@ -63,7 +63,17 @@ const ss = {
   },
 };
 
-type Tab = 'save' | 'race' | 'physics' | 'world' | 'debug';
+type Tab = 'save' | 'race' | 'physics' | 'world' | 'fun' | 'debug';
+
+/** One-click physics presets for the FUN tab (multipliers on top of normal handling). */
+const FUN_PRESETS: Record<string, [string, Partial<Record<'speed' | 'grip' | 'drift' | 'gravity' | 'buoyancy' | 'boost', number>>]> = {
+  normal: ['NORMAL', {}],
+  moon: ['MOON GRAVITY', { gravity: 0.35 }],
+  ice: ['ICE RINK', { grip: 0.35, drift: 1.6 }],
+  rocket: ['ROCKET BOATS', { speed: 1.6, boost: 2.5 }],
+  glue: ['SUPER GRIP', { grip: 2.3, drift: 0.7 }],
+  slowpoke: ['SLOWPOKE', { speed: 0.6, boost: 0.5 }],
+};
 
 const TUNE_SLIDERS: [keyof typeof TUNE, string, number, number][] = [
   ['speed', 'TOP SPEED / THRUST', 0.5, 2],
@@ -85,6 +95,10 @@ export class AdminPanel {
   /** True while the free camera is flying. */
   freeCam = false;
   unlocked = false;
+  /** FUN: riders' heads drawn at a silly size (visual only). */
+  private bigHeads = false;
+  private bigHeadTimer = 0;
+  private funPreset = 'normal';
 
   constructor(private game: Game) {
     this.unlocked = ss.get(SESSION_KEY) === hash53(PASS_HASH);
@@ -198,7 +212,7 @@ export class AdminPanel {
       if (lock > 0) this.tickLock();
       return;
     }
-    const tabs: Tab[] = ['save', 'race', 'physics', 'world', 'debug'];
+    const tabs: Tab[] = ['save', 'race', 'physics', 'world', 'fun', 'debug'];
     el.innerHTML = `<div class="adm-head"><b>ADMIN</b><span class="adm-tabs">${tabs.map((t) => `<button class="${t === this.tab ? 'on' : ''}" data-a="tab" data-v="${t}">${t.toUpperCase()}</button>`).join('')}</span><button data-a="close">✕</button></div>
       <div class="adm-body">${this.body()}</div>${msg ? `<div class="adm-msg">${msg}</div>` : ''}`;
   }
@@ -257,6 +271,14 @@ export class AdminPanel {
           <div class="adm-row"><button data-a="mine" data-v="1">SPAWN MINE</button><button data-a="mine" data-v="5">SPAWN 5 MINES</button><button data-a="ramp">SPAWN RAMP AHEAD</button></div>
           ${this.tg('freecam', 'FREE CAMERA (WASD move · arrows look · Q/E down/up · Shift fast)', this.freeCam)}`;
       }
+      case 'fun': {
+        const racers = s?.racers ?? [];
+        const follow = g.adminCamTarget;
+        return `<div class="adm-sub">PHYSICS PRESETS (every boat)</div><div class="adm-row">${Object.entries(FUN_PRESETS).map(([id, [label]]) => `<button class="${this.funPreset === id ? 'on' : ''}" data-a="funPreset" data-v="${id}">${label}</button>`).join('')}</div>
+          ${this.tg('bigHeads', 'BIG HEAD MODE (visual only)', this.bigHeads)}
+          <div class="adm-sub">CAMERA FOLLOWS ${racing ? '' : '(start a race)'}</div><div class="adm-row">${racers.map((r, i) => `<button class="${(follow ?? 0) === i ? 'on' : ''}" data-a="follow" data-v="${i}" ${racing ? '' : 'disabled'}>${r.isPlayer ? 'YOU' : r.name}</button>`).join('')}</div>
+          <div class="adm-sub">TELEPORT TO CHECKPOINT ${racing && s!.hasLaps ? '' : '(lap races only)'}</div><div class="adm-row">${racing && s!.hasLaps ? Array.from({ length: s!.gateCount }, (_, i) => `<button data-a="tpGate" data-v="${i}">${i === 0 ? 'START' : 'CP ' + i}</button>`).join('') : ''}</div>`;
+      }
       case 'debug': {
         const r = g.renderer.stats;
         const ocean = g.world?.ocean.material as ShaderMaterial | undefined;
@@ -289,6 +311,16 @@ export class AdminPanel {
   private driftPreview: { tier: number; t: number } | null = null;
   /** Called every frame by the game. */
   update(dt: number) {
+    // Big-head mode: scale every rider's head group (the neck pivot) a couple of
+    // times a second so riders spawned by a new race pick it up too.
+    this.bigHeadTimer -= dt;
+    if (this.bigHeadTimer <= 0 && this.game.world) {
+      this.bigHeadTimer = 0.5;
+      const k = this.bigHeads ? 1.9 : 1;
+      this.game.world.scene.traverse((o) => {
+        if (o.name === 'riderHead' && o.parent && o.parent.scale.x !== k) o.parent.scale.setScalar(k);
+      });
+    }
     // Drift-tier preview: hold the player's boat in a sliding drift at a tier.
     const dp = this.driftPreview;
     const pb = this.game.session?.player.boat;
@@ -462,6 +494,23 @@ export class AdminPanel {
       case 'toggle':
         this.toggleFlag(v);
         break;
+      case 'funPreset': {
+        const preset = FUN_PRESETS[v];
+        if (preset) {
+          Object.assign(TUNE, { speed: 1, grip: 1, drift: 1, gravity: 1, buoyancy: 1, boost: 1 }, preset[1]);
+          this.funPreset = v;
+          msg = 'Physics: ' + preset[0];
+        }
+        break;
+      }
+      case 'follow':
+        g.adminCamTarget = Number(v) === 0 ? null : Number(v);
+        g.rig.cut();
+        break;
+      case 'tpGate':
+        if (s) s.adminTeleportToGate(Number(v));
+        g.rig.cut();
+        break;
       case 'nextCp':
         if (s) s.adminNextCheckpoint();
         g.rig.cut();
@@ -522,6 +571,10 @@ export class AdminPanel {
         break;
       case 'god':
         TUNE.godMode = !TUNE.godMode;
+        break;
+      case 'bigHeads':
+        this.bigHeads = !this.bigHeads;
+        this.bigHeadTimer = 0;
         break;
       case 'freezeAi':
         if (s) s.aiFrozen = !s.aiFrozen;

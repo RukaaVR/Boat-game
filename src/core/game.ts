@@ -152,6 +152,8 @@ export class Game implements ReplayHost, PhotoHost {
   private touchShown = false;
   /** Harness-scripted player controls (merged over live input). */
   controlOverride: Record<string, number | boolean> | null = null;
+  /** Admin: race camera follows this racer index instead of the player (null = player). */
+  adminCamTarget: number | null = null;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -753,6 +755,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.rewards = null;
       this.resultsShown = false;
       this.finishCamStarted = false;
+      this.adminCamTarget = null;
       this.rig.mode = this.rig.mode === 'cinematic' ? 'chase' : this.rig.mode;
       this.rig.startIntro();
       this.audio.unlock();
@@ -1128,7 +1131,7 @@ export class Game implements ReplayHost, PhotoHost {
       this.rig.endScripted();
       this.rig.mode = 'cinematic';
     }
-    const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : s.player.boat;
+    const target = this.replay ? (s.racers[this.replayTargetIdx] ?? s.player).boat : ((this.adminCamTarget !== null ? s.racers[this.adminCamTarget] : null) ?? s.player).boat;
     if (this.rig.scripted === 'free') this.driveFreeCam(dt);
     if (this.garage) this.updateGarageFx(dt);
     if (simDt > 0 || this.garage || this.rig.scripted === 'free' || rp) this.rig.update(simDt || dt, target, s.track, s.time);

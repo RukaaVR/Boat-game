@@ -826,6 +826,30 @@ export class RaceSession {
   }
 
   /** Teleport the player to the next checkpoint gate. */
+  /** Admin: put the player just past gate `i` of the current lap, at speed. */
+  adminTeleportToGate(i: number) {
+    const p = this.player;
+    if (!this.hasLaps) return;
+    const gateLen = this.track.lapLength / this.gateCount;
+    const lapStart = Math.floor(p.raceDist / this.track.lapLength) * this.track.lapLength;
+    const target = lapStart + Math.max(0, Math.min(this.gateCount - 1, i)) * gateLen + 6;
+    const ds = target - p.raceDist;
+    const s = this.track.wrapS(p.s + ds);
+    this.track.sample(s, _tp);
+    const b = p.boat;
+    const spd = Math.max(15, b.speed);
+    b.place(_tp.x, _tp.z, _tp.heading);
+    settleBoat(b, this.time);
+    b.velocity.set(_tp.tx * spd, 0, _tp.tz * spd);
+    b.forwardSpeed = spd;
+    b.engine = 1;
+    p.s = s;
+    p.raceDist = target;
+    p.maxRaceDist = Math.max(p.maxRaceDist, p.raceDist);
+    this.track.project(b.position.x, b.position.z, -1, _proj);
+    p.hint = _proj.index;
+  }
+
   adminNextCheckpoint() {
     const p = this.player;
     const gateLen = this.track.lapLength / this.gateCount;

@@ -12,6 +12,7 @@ import { Rng } from '../core/rng';
 import type { Buoy, Collider, StuntRing, ThemeId } from '../core/types';
 import type { Track, TrackPoint } from '../race/track';
 import { buildArenaLayout } from './arenaLayout';
+import { variantLayout } from './layoutVariant';
 
 export type PropKind =
   | 'island'
@@ -85,6 +86,12 @@ const _p: TrackPoint = { x: 0, z: 0, tx: 0, tz: 0, heading: 0 };
 
 export function buildLayout(track: Track): Layout {
   if (track.arena) return buildArenaLayout(track);
+  // Variants dress the course exactly like the normal layout, transformed.
+  if (track.base) return variantLayout(buildLayoutCore(track.base), track);
+  return buildLayoutCore(track);
+}
+
+function buildLayoutCore(track: Track): Layout {
   const theme = track.def.theme;
   const rng = new Rng(track.def.seed * 7 + 13);
   const W = track.width;
@@ -445,24 +452,8 @@ export function buildLayout(track: Track): Layout {
     }
   }
 
-  // ── Chevron signs on the outside of corners ─────────────────────────────────
-  const signs: Sign[] = [];
-  let lastSign = -999;
-  for (let s = 0; s < track.length; s += 10) {
-    if (!track.inPlay(s, -20) || theme === 'canal') continue;
-    const k = track.curvAt(s);
-    if (Math.abs(k) < 0.011 || s - lastSign < 70) continue;
-    lastSign = s;
-    track.sample(s, _p);
-    const outside = k > 0 ? -1 : 1; // turning right → outside is left
-    const lat = outside * (W * 0.5 + 7);
-    const x = _p.x - _p.tz * lat;
-    const z = _p.z + _p.tx * lat;
-    if (colliders.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + 3)) continue;
-    // Face back down the course toward approaching racers.
-    signs.push({ x, z, heading: _p.heading + Math.PI, dir: k > 0 ? 1 : -1 });
-    colliders.push({ x, z, r: 1.4, kind: 'pile' });
-  }
+  // Signs go last among the colliders (variants strip and re-place them).
+  const signs = placeSigns(track, colliders);
 
   // ── Stunt rings: over ramps, over swell zones, scattered on straights ───────
   const rings: StuntRing[] = [];
@@ -505,4 +496,30 @@ export function buildLayout(track: Track): Layout {
   }
 
   return { theme, props, colliders, buoys, signs, rings, bottles, islands, extent };
+}
+
+/** Chevron signs on the outside of corners (adds a post collider per sign). */
+export function placeSigns(track: Track, colliders: Collider[]): Sign[] {
+  const theme = track.def.theme;
+  const W = track.width;
+  // ── Chevron signs on the outside of corners ─────────────────────────────────
+  const signs: Sign[] = [];
+  let lastSign = -999;
+  for (let s = 0; s < track.length; s += 10) {
+    if (!track.inPlay(s, -20) || theme === 'canal') continue;
+    const k = track.curvAt(s);
+    if (Math.abs(k) < 0.011 || s - lastSign < 70) continue;
+    lastSign = s;
+    track.sample(s, _p);
+    const outside = k > 0 ? -1 : 1; // turning right → outside is left
+    const lat = outside * (W * 0.5 + 7);
+    const x = _p.x - _p.tz * lat;
+    const z = _p.z + _p.tx * lat;
+    if (colliders.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + 3)) continue;
+    // Face back down the course toward approaching racers.
+    signs.push({ x, z, heading: _p.heading + Math.PI, dir: k > 0 ? 1 : -1 });
+    colliders.push({ x, z, r: 1.4, kind: 'pile' });
+  }
+
+  return signs;
 }

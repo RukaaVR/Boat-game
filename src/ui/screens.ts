@@ -22,6 +22,10 @@ import { RIVALS } from '../race/session';
 import { t, t as t2 } from './i18n';
 import { ACHIEVEMENTS, BOTTLES_PER_TRACK, bottleCount, CAREER, dayKey, makeChallenge, UPGRADE_INFO, UPGRADE_KINDS, UPGRADE_MAX, upgradeCost, upgradedSpec, weekKey, type Challenge } from '../save/progress';
 import { encodeGhost, decodeGhost, ghostFingerprint } from '../save/ghostCode';
+import { courseKey, courseMedals, courseName, parseCourseKey, VARIANT_IDS, VARIANTS, variantUnlocked, type CourseVariant } from '../race/variants';
+import { SPEED_CLASS_IDS, SPEED_CLASSES, speedClassDef, speedClassUnlocked, TSUNAMI_RULE, type SpeedClass } from '../race/speedClass';
+import { staffGhostTime } from '../race/staffGhosts';
+import { cupTrophy } from '../save/classCups';
 import { LocalLeaderboard } from '../online/leaderboard';
 import { LANG_NAME, LANGS } from './i18n';
 import { checkAchievements, endlessTargets, medalName, stuntTargets, type RewardSummary } from '../save/rewards';
@@ -31,14 +35,25 @@ const modeName = (m: ModeId) => t(m);
 const modeBlurb = (m: ModeId) => t(MODE_SUB[m]);
 
 const trackCache = new Map<string, Track>();
-function trackGeo(id: string) {
-  let t = trackCache.get(id);
+function trackGeo(id: string, variant: CourseVariant = 'normal') {
+  const def = trackDef(id);
+  const v = def.arena ? 'normal' : variant;
+  const key = courseKey(def.id, v);
+  let t = trackCache.get(key);
   if (!t) {
-    t = new Track(trackDef(id));
-    trackCache.set(id, t);
+    t = new Track(def, v);
+    trackCache.set(key, t);
   }
   return t;
 }
+/** Modes whose setup offers the course-variant picker. */
+const VARIANT_MODES: ModeId[] = ['quick', 'timetrial', 'freeride', 'stunt', 'endless'];
+
+/** Display name of a records / ghost course key (e.g. `coral~r` → CORAL COVE · REVERSE). */
+const keyName = (key: string) => {
+  const ck = parseCourseKey(key);
+  return ck ? courseName(ck.trackId, ck.variant) : trackDef(key).name;
+};
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -58,7 +73,17 @@ export class Screens {
   private toastBox: HTMLElement;
   current = '';
   /** Pending setup choices. */
-  private setup: EventRequest = { mode: 'quick', trackId: 'coral', weather: 'default', laps: 3, difficulty: 'normal', boat: 'speedster', battleRule: 'balloons' };
+  private setup: EventRequest = { mode: 'quick', trackId: 'coral', weather: 'default', laps: 3, difficulty: 'normal', boat: 'speedster', battleRule: 'balloons', variant: 'normal', speedClass: 'surge' };
+  /** Engine class picked on the championship screen. */
+  private champClass: SpeedClass = 'surge';
+
+  /** The course variant the current setup will actually race (normal where the mode has no picker or it is locked). */
+  private effVariant(): CourseVariant {
+    const st = this.setup;
+    const v = st.variant ?? 'normal';
+    if (!VARIANT_MODES.includes(st.mode) || trackDef(st.trackId).arena) return 'normal';
+    return variantUnlocked(this.game.save.data, st.trackId, v).ok ? v : 'normal';
+  }
 
   constructor(
     private game: Game,
@@ -208,15 +233,49 @@ export class Screens {
         }
         a.click('move');
         this.setup.trackId = arg;
+        this.setup.variant = this.effVariant();
         this.refreshSetup();
-        g.setBackdrop(arg, this.weatherFor());
+        g.setBackdrop(arg, this.weatherFor(), this.effVariant());
+        break;
+      }
+      case 'variant': {
+        const v = arg as CourseVariant;
+        const u = variantUnlocked(g.save.data, this.setup.trackId, v);
+        if (!u.ok) {
+          a.click('deny');
+          this.toast(u.why, `${VARIANTS[v].name} LOCKED`);
+          return;
+        }
+        a.click('move');
+        this.setup.variant = v;
+        if (v !== 'normal' && this.setup.ghost === 'staff') this.setup.ghost = 'mine';
+        this.refreshSetup();
+        g.setBackdrop(this.setup.trackId, this.weatherFor(), this.effVariant());
+        break;
+      }
+      case 'sclass':
+      case 'cclass': {
+        const c = arg as SpeedClass;
+        if (!speedClassUnlocked(g.save.data, c)) {
+          a.click('deny');
+          this.toast(TSUNAMI_RULE, `${SPEED_CLASSES[c].name} LOCKED`);
+          return;
+        }
+        a.click('move');
+        if (act === 'sclass') {
+          this.setup.speedClass = c;
+          this.refreshSetup();
+        } else {
+          this.champClass = c;
+          this.champ();
+        }
         break;
       }
       case 'weather':
         a.click('move');
         this.setup.weather = arg as WeatherId | 'default';
         this.refreshSetup();
-        g.setBackdrop(this.setup.trackId, this.weatherFor());
+        g.setBackdrop(this.setup.trackId, this.weatherFor(), this.effVariant());
         break;
       case 'brule':
         a.click('move');
@@ -247,7 +306,7 @@ export class Screens {
         break;
       case 'go':
         a.click('select');
-        g.startEvent({ ...this.setup });
+        g.startEvent({ ...this.setup, variant: this.effVariant(), speedClass: speedClassUnlocked(g.save.data, this.setup.speedClass ?? 'surge') ? this.setup.speedClass : 'surge' });
         break;
       case 'cup':
         this.startCup(arg);
@@ -624,7 +683,7 @@ export class Screens {
       'screen full',
     );
     this.refreshSetup(fixedTrack);
-    g.setBackdrop(this.setup.trackId, this.weatherFor());
+    g.setBackdrop(this.setup.trackId, this.weatherFor(), this.effVariant());
     const go = this.root!.querySelector('#goBtn') as HTMLElement;
     this.game.nav.focus(go, false);
   }
@@ -647,7 +706,9 @@ export class Screens {
     const g = this.game;
     const st = this.setup;
     const lvl = g.save.level;
-    const rec = g.save.data.records[st.trackId] ?? {};
+    const variant = this.effVariant();
+    const key = courseKey(st.trackId, variant);
+    const rec = g.save.data.records[key] ?? {};
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
     const showTracks = st.mode !== 'championship' && st.mode !== 'career';
@@ -661,7 +722,8 @@ export class Screens {
         <span class="tag">${t.arena ? 'ARENA' : t.look === 'neonnight' ? 'NEON NIGHT' : t.theme.toUpperCase()}</span>
         <canvas data-track="${t.id}"></canvas>
         <div class="ct">${t.name}</div><div class="cs">${t.blurb}</div>
-        ${locked ? `<div class="lock">🔒 LEVEL ${t.unlockLevel}</div>` : this.medalsHtml(t.id)}
+        ${locked ? `<div class="lock">🔒 LEVEL ${t.unlockLevel}</div>` : this.medalsHtml(t.arena ? t.id : courseKey(t.id, variantUnlocked(g.save.data, t.id, variant).ok ? variant : 'normal'))}
+        ${!locked && g.save.data.staffBeaten.includes(t.id) ? '<span class="staff-badge" title="You beat the staff ghost lap on this course">STAFF ✓</span>' : ''}
       </div>`;
     }).join('');
     const weather = ['default', ...WEATHER_IDS]
@@ -683,10 +745,11 @@ export class Screens {
         ? `<div class="label">Battle rules</div><div class="opts">${BATTLE_RULE_IDS.map((r) => `<button class="opt ${rule === r ? 'on' : ''}" data-nav data-act="brule" data-arg="${r}">${BATTLE_RULES[r].name}</button>`).join('')}<span class="hint" style="align-self:center">${BATTLE_RULES[rule].blurb}</span></div>`
         : '';
     let records = '';
-    const ghost = g.save.data.ghosts[st.trackId];
+    const ghost = g.save.data.ghosts[key];
+    const staffT = variant === 'normal' ? staffGhostTime(st.trackId) : 0;
     if (st.mode === 'timetrial') {
-      const [gm, sm, bm] = trackDef(st.trackId).medals;
-      records = `BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b> · GOLD ${formatTime(gm)} · SILVER ${formatTime(sm)} · BRONZE ${formatTime(bm)}${ghost ? ` · GHOST ${formatTime(ghost.time)}` : ''}`;
+      const [gm, sm, bm] = courseMedals(st.trackId, variant);
+      records = `${variant !== 'normal' ? `<b>${VARIANTS[variant].name}</b> · ` : ''}BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b> · GOLD ${formatTime(gm)} · SILVER ${formatTime(sm)} · BRONZE ${formatTime(bm)}${ghost ? ` · GHOST ${formatTime(ghost.time)}` : ''}${staffT ? ` · STAFF ${formatTime(staffT)}${g.save.data.staffBeaten.includes(st.trackId) ? ' ✓' : ''}` : ''}`;
     } else if (st.mode === 'stunt') {
       const [gm, sm, bm] = stuntTargets(st.trackId);
       records = `BEST <b>${rec.stunt ?? '—'}</b> · GOLD ${gm} · SILVER ${Math.round(sm)} · BRONZE ${Math.round(bm)}`;
@@ -697,17 +760,19 @@ export class Screens {
       records = '';
     } else if (st.mode === 'battle') {
       records = trackDef(st.trackId).arena ? 'OPEN LAGOON · ITEM BOXES EVERYWHERE · WHIRLPOOLS · CHANNELS BEHIND THE ISLANDS' : 'BATTLE ON A RACE COURSE: boxes sit in rows across the lane';
-    } else if (st.mode !== 'freeride') records = `RECORD <b>${rec.race ? formatTime(rec.race) : '—'}</b> · BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b>`;
+    } else if (st.mode !== 'freeride') records = `${variant !== 'normal' ? `<b>${VARIANTS[variant].name}</b> · ` : ''}RECORD <b>${rec.race ? formatTime(rec.race) : '—'}</b> · BEST LAP <b>${rec.lap ? formatTime(rec.lap) : '—'}</b>${st.mode === 'quick' && (st.speedClass ?? 'surge') !== 'surge' ? ' · records are kept at SURGE only' : ''}`;
     const dyn = st.mode === 'quick' || st.mode === 'championship' || st.mode === 'battle' || st.mode === 'freeride';
     const dynHtml = dyn ? `<div class="label">${t('dynWeather')}</div><div class="opts">${[false, true].map((v) => `<button class="opt ${g.save.data.settings.dynamicWeather === v ? 'on' : ''}" data-nav data-act="dynw" data-arg="${v}">${v ? t('on') : t('off')}</button>`).join('')}</div>` : '';
     const ghostHtml =
       st.mode === 'timetrial'
         ? (() => {
-            const rival = g.save.data.rivalGhosts[st.trackId];
-            const pick = st.ghost === 'rival' && rival ? 'rival' : 'mine';
+            const rival = g.save.data.rivalGhosts[key];
+            const pick = st.ghost === 'rival' && rival ? 'rival' : st.ghost === 'staff' && staffT ? 'staff' : 'mine';
             return `<div class="label">Ghost</div><div class="opts">
               <button class="opt ${pick === 'mine' ? 'on' : ''} ${ghost ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="mine">MY BEST ${ghost ? formatTime(ghost.time) : '— NONE YET'}</button>
-              <button class="opt ${pick === 'rival' ? 'on' : ''} ${rival ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="rival">${rival ? `${esc(rival.name ?? 'RIVAL')} ${formatTime(rival.time)}` : "FRIEND'S — NONE"}</button></div>
+              <button class="opt ${pick === 'rival' ? 'on' : ''} ${rival ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="rival">${rival ? `${esc(rival.name ?? 'RIVAL')} ${formatTime(rival.time)}` : "FRIEND'S — NONE"}</button>
+              <button class="opt ${pick === 'staff' ? 'on' : ''} ${staffT ? '' : 'disabled'}" data-nav data-act="ghostPick" data-arg="staff">${staffT ? `STAFF (AI) ${formatTime(staffT)}` : 'STAFF — NORMAL DIRECTION ONLY'}</button></div>
+              <div class="hint" style="margin-top:6px">STAFF is an AI reference lap: the game's own autopilot, best lap of every boat, recorded offline. Beat it for a STAFF ✓ badge.</div>
               <div class="opts" style="margin-top:6px"><button class="opt ${ghost ? '' : 'disabled'}" data-nav data-act="ghostShare">SHARE MY GHOST</button><button class="opt" data-nav data-act="ghostImport">IMPORT CODE</button></div>
               <div class="hint" style="margin-top:6px">Ghost codes are shared by copy &amp; paste — there is no online server. Imported ghosts never replace your own best.</div>
               <div class="label">Best laps <span class="r-val">${esc(this.board.label)}</span></div><div class="panel lboard" id="lboard"><span class="hint">Loading…</span></div>`;
@@ -727,14 +792,15 @@ export class Screens {
       </div>
       <div class="setup-col setup-opts">
       ${stage ? '' : `<div class="label">${t('weather')}</div><div class="opts">${weather}</div>`}
-      ${ruleHtml}${laps}${diff}${dynHtml}${ghostHtml}
+      ${this.variantHtml(variant)}${this.classHtml()}${ruleHtml}${laps}${diff}${dynHtml}${ghostHtml}
       <div class="label">Watercraft</div><div class="opts">${boats}</div>
       <div class="panel" style="margin-top:10px"><div style="font-family:var(--font);font-style:italic;font-size:18px">${spec.name}</div><div class="hint" style="margin-bottom:8px">${spec.tagline}</div><div class="statbars">${bars}</div></div>
       </div></div>`;
     body.querySelectorAll<HTMLElement>('.setup-col').forEach((c, i) => (c.scrollTop = keepScroll[i] ?? 0));
-    if (st.mode === 'timetrial') this.fillBoard(st.trackId);
+    if (st.mode === 'timetrial') this.fillBoard(key);
     body.querySelectorAll<HTMLCanvasElement>('canvas[data-track]').forEach((c) => {
-      const t = trackGeo(c.dataset.track!);
+      // Previews show the chosen direction's layout (mirrored when MIRROR is picked).
+      const t = trackGeo(c.dataset.track!, variant);
       drawTrackPreview(c, t.px, t.pz, c.dataset.track === st.trackId ? '#ff3b5c' : '#26e8ff', trackDef(c.dataset.track!).sprint);
     });
     // Restore focus to the equivalent control after re-render.
@@ -742,26 +808,68 @@ export class Screens {
     if (again) g.nav.focus(again, false);
   }
 
+  /** Course-variant picker (options column). Locked variants say how to unlock them. */
+  private variantHtml(variant: CourseVariant) {
+    const st = this.setup;
+    if (!VARIANT_MODES.includes(st.mode) || trackDef(st.trackId).arena) return '';
+    const d = this.game.save.data;
+    const rules: string[] = [];
+    const opts = VARIANT_IDS.map((v) => {
+      const u = variantUnlocked(d, st.trackId, v);
+      if (!u.ok) rules.push(`🔒 ${VARIANTS[v].name}: ${u.why}`);
+      return `<button class="opt ${variant === v ? 'on' : ''} ${u.ok ? '' : 'opt-locked'}" data-nav data-act="variant" data-arg="${v}">${VARIANTS[v].name}${u.ok ? '' : ' 🔒'}</button>`;
+    }).join('');
+    return `<div class="label">Direction</div><div class="opts">${opts}</div>${rules.length ? `<div class="hint variant-rules">${rules.join('<br>')}</div>` : ''}`;
+  }
+
+  /** Engine-class picker (Quick Race); a fixed note elsewhere. */
+  private classHtml() {
+    const st = this.setup;
+    const d = this.game.save.data;
+    if (st.mode === 'quick') {
+      const cur = speedClassUnlocked(d, st.speedClass ?? 'surge') ? (st.speedClass ?? 'surge') : 'surge';
+      const opts = SPEED_CLASS_IDS.map((c) => {
+        const ok = speedClassUnlocked(d, c);
+        return `<button class="opt ${cur === c ? 'on' : ''} ${ok ? '' : 'opt-locked'}" data-nav data-act="sclass" data-arg="${c}">${SPEED_CLASSES[c].name}${ok ? '' : ' 🔒'}</button>`;
+      }).join('');
+      return `<div class="label">Engine class</div><div class="opts">${opts}</div><div class="hint">${speedClassDef(cur).blurb}${speedClassUnlocked(d, 'tsunami') ? '' : ` · 🔒 TSUNAMI: ${TSUNAMI_RULE}`}</div>`;
+    }
+    if (st.mode === 'championship') {
+      const c = d.champ?.speedClass ?? 'surge';
+      return `<div class="label">Engine class</div><div class="hint">${SPEED_CLASSES[c].name} — set when the cup was started</div>`;
+    }
+    if (st.mode === 'timetrial') return `<div class="label">Engine class</div><div class="hint">SURGE — fixed in Time Trial so medal times and ghosts stay comparable</div>`;
+    return '';
+  }
+
   // ── Championship ─────────────────────────────────────────────────────────
   champ() {
     const g = this.game;
     const d = g.save.data;
     const lvl = g.save.level;
+    if (!speedClassUnlocked(d, this.champClass)) this.champClass = 'surge';
+    const cls = this.champClass;
+    const classOpts = SPEED_CLASS_IDS.map((c) => {
+      const ok = speedClassUnlocked(d, c);
+      return `<button class="opt ${cls === c ? 'on' : ''} ${ok ? '' : 'opt-locked'}" data-nav data-act="cclass" data-arg="${c}">${SPEED_CLASSES[c].name}${ok ? '' : ' 🔒'}</button>`;
+    }).join('');
     const cards = CUPS.map((c) => {
       const locked = lvl < c.unlockLevel;
       const active = d.champ?.cupId === c.id;
-      const trophy = d.cups[c.id] ?? 0;
+      const trophy = cupTrophy(d, cls, c.id);
+      const perClass = SPEED_CLASS_IDS.map((k) => `<span class="cls-trophy" title="${SPEED_CLASSES[k].name}"><span class="medal m${cupTrophy(d, k, c.id)}"></span>${SPEED_CLASSES[k].name[0]}</span>`).join('');
       return `<div class="card ${locked ? 'locked' : ''} ${active ? 'sel' : ''}" data-nav data-act="cup" data-arg="${c.id}" style="width:260px">
         <span class="tag">${c.tracks.length} RACES</span>
         <div class="ct" style="margin-top:22px">${c.name}</div>
         <div class="cs">${c.tracks.map((t) => trackDef(t).name).join(' · ')}</div>
-        ${locked ? `<div class="lock">🔒 LEVEL ${c.unlockLevel}</div>` : `<div class="medals"><span class="medal m${trophy}"></span><span class="hint" style="margin-left:6px">${trophy ? medalName(trophy) + ' TROPHY' : 'NO TROPHY YET'}</span></div>`}
-        ${active ? `<div class="lock" style="color:var(--cyan)">IN PROGRESS · ROUND ${d.champ!.round + 1}</div>` : ''}
+        ${locked ? `<div class="lock">🔒 LEVEL ${c.unlockLevel}</div>` : `<div class="medals"><span class="medal m${trophy}"></span><span class="hint" style="margin-left:6px">${trophy ? medalName(trophy) + ' TROPHY' : 'NO TROPHY YET'} · ${SPEED_CLASSES[cls].name}</span></div><div class="cls-trophies">${perClass}</div>`}
+        ${active ? `<div class="lock" style="color:var(--cyan)">IN PROGRESS · ROUND ${d.champ!.round + 1} · ${SPEED_CLASSES[d.champ!.speedClass ?? 'surge'].name}</div>` : ''}
       </div>`;
     }).join('');
     this.mount(
       'champ',
-      `<h1 class="h">CHAMPIONSHIP</h1><div class="sub">Points: ${CHAMP_POINTS.slice(0, 6).join(' · ')} — top three take a trophy</div>
+      `<h1 class="h">CHAMPIONSHIP</h1><div class="sub">Points: ${CHAMP_POINTS.slice(0, 6).join(' · ')} — top three take a trophy · trophies are kept per engine class</div>
+      <div class="label">Engine class</div><div class="opts">${classOpts}</div><div class="hint" style="margin-bottom:6px">${SPEED_CLASSES[cls].blurb}${speedClassUnlocked(d, 'tsunami') ? '' : ` · 🔒 TSUNAMI: ${TSUNAMI_RULE}`}</div>
       <div class="cards grid">${cards}</div>
       ${d.champ ? `<div class="row"><button class="btn small" data-nav data-act="champAbandon"><span>ABANDON CURRENT CUP</span></button></div>` : ''}
       <div class="footer"><button class="btn" data-nav data-act="back"><span>BACK</span></button></div>`,
@@ -781,12 +889,12 @@ export class Screens {
     g.audio.click('select');
     const go = () => {
       if (!d.champ || d.champ.cupId !== id) {
-        d.champ = { cupId: id, round: 0, points: new Array(1 + Math.min(5, RIVALS.length)).fill(0) };
+        d.champ = { cupId: id, round: 0, points: new Array(1 + Math.min(5, RIVALS.length)).fill(0), speedClass: this.champClass };
         g.save.save();
       }
       this.champStandings();
     };
-    if (d.champ && d.champ.cupId !== id) this.confirm('Start a new cup? Your current championship will be abandoned.', go);
+    if (d.champ && (d.champ.cupId !== id || (d.champ.speedClass ?? 'surge') !== this.champClass)) this.confirm('Start a new cup? Your current championship will be abandoned.', go);
     else go();
   }
 
@@ -804,7 +912,7 @@ export class Screens {
     const nextTrack = cup.tracks[ch.round];
     this.mount(
       'champStandings',
-      `<h1 class="h">${cup.name}</h1><div class="sub">${lastRound ? 'FINAL STANDINGS' : `ROUND ${ch.round + 1} OF ${cup.tracks.length} — ${trackDef(nextTrack).name}`}</div>
+      `<h1 class="h">${cup.name}</h1><div class="sub">${SPEED_CLASSES[ch.speedClass ?? 'surge'].name} · ${lastRound ? 'FINAL STANDINGS' : `ROUND ${ch.round + 1} OF ${cup.tracks.length} — ${trackDef(nextTrack).name}`}</div>
       <div class="grid2"><div class="panel scroll"><table class="res">${rows}</table></div>
       <div><div class="label">Schedule</div>${cup.tracks.map((t, i) => `<div class="hint" style="font-size:15px;margin:6px 0;${i === ch.round ? 'color:var(--cyan)' : i < ch.round ? 'opacity:.5' : ''}">${i + 1}. ${trackDef(t).name}${i < ch.round ? ' ✓' : ''}</div>`).join('')}</div></div>
       <div class="footer"><button class="btn" data-nav data-act="back"><span>MENU</span></button><span class="spacer"></span>
@@ -1138,15 +1246,15 @@ export class Screens {
         return true;
       case 'ghostPick':
         g.audio.click('move');
-        this.setup.ghost = arg === 'rival' ? 'rival' : 'mine';
+        this.setup.ghost = arg === 'rival' ? 'rival' : arg === 'staff' ? 'staff' : 'mine';
         this.refreshSetup();
         return true;
       case 'ghostShare': {
-        const gh = d.ghosts[this.setup.trackId];
+        const gh = d.ghosts[courseKey(this.setup.trackId, this.effVariant())];
         if (!gh) return true;
         g.audio.click('select');
         void encodeGhost(gh, gh.name ?? d.playerName).then((code) =>
-          this.showText(`YOUR GHOST · ${ghostFingerprint(code)}`, `${trackDef(gh.trackId).name} · ${formatTime(gh.time)} · ${boatSpec(gh.boatId).name}. Send the whole code to a friend; they choose IMPORT CODE in Time Trial. The RIPTIDE-… fingerprint lets you check you both have the same ghost.`, code),
+          this.showText(`YOUR GHOST · ${ghostFingerprint(code)}`, `${keyName(gh.trackId)} · ${formatTime(gh.time)} · ${boatSpec(gh.boatId).name}. Send the whole code to a friend; they choose IMPORT CODE in Time Trial. The RIPTIDE-… fingerprint lets you check you both have the same ghost.`, code),
         );
         return true;
       }
@@ -1160,10 +1268,13 @@ export class Screens {
             }
             const { version, ...data } = gh;
             void version;
+            const ck = parseCourseKey(gh.trackId);
+            if (!ck) return;
             d.rivalGhosts[gh.trackId] = data;
             g.save.save(true);
-            this.toast(`${gh.name} · ${trackDef(gh.trackId).name} · ${formatTime(gh.time)} · ${ghostFingerprint(code.trim())}`, 'GHOST IMPORTED');
-            this.setup.trackId = gh.trackId;
+            this.toast(`${gh.name} · ${keyName(gh.trackId)} · ${formatTime(gh.time)} · ${ghostFingerprint(code.trim())}`, 'GHOST IMPORTED');
+            this.setup.trackId = ck.trackId;
+            this.setup.variant = ck.variant;
             this.setup.ghost = 'rival';
             this.refreshSetup();
           });
@@ -1413,7 +1524,7 @@ export class Screens {
     let head = '';
     let table = '';
     if (s.isRace) {
-      head = `<div class="bigplace">${ordinal(p.place)}</div><div class="sub">${trackDef(s.cfg.trackId).name} · ${s.cfg.difficulty.toUpperCase()}</div>`;
+      head = `<div class="bigplace">${ordinal(p.place)}</div><div class="sub">${courseName(s.cfg.trackId, s.track.variant)} · ${s.cfg.difficulty.toUpperCase()}${(s.cfg.speedClass ?? 'surge') !== 'surge' ? ' · ' + speedClassDef(s.cfg.speedClass).name : ''}</div>`;
       if (s.battleRule) head = `<div class="bigplace">${ordinal(p.place)}</div><div class="sub">BATTLE · ${BATTLE_RULES[s.battleRule].name} · ${trackDef(s.cfg.trackId).name}</div>`;
       table = `<table class="res">${s.results
         .map((r) =>
@@ -1423,7 +1534,7 @@ export class Screens {
         )
         .join('')}</table>`;
     } else if (s.mode === 'timetrial') {
-      head = `<div class="bigplace" style="font-size:clamp(50px,8vw,110px)">${isFinite(p.bestLap) ? formatTime(p.bestLap) : '—'}</div><div class="sub">BEST LAP · ${trackDef(s.cfg.trackId).name}${s.newGhost ? ' · NEW GHOST SAVED' : ''}</div>`;
+      head = `<div class="bigplace" style="font-size:clamp(50px,8vw,110px)">${isFinite(p.bestLap) ? formatTime(p.bestLap) : '—'}</div><div class="sub">BEST LAP · ${courseName(s.cfg.trackId, s.track.variant)}${s.newGhost ? ' · NEW GHOST SAVED' : ''}</div>`;
       table = `<table class="res">${p.lapTimes.map((t, i) => `<tr class="${t === p.bestLap ? 'me' : ''}"><td class="p">L${i + 1}</td><td class="t">${formatTime(t)}</td></tr>`).join('')}</table>`;
     } else if (s.mode === 'stunt') {
       head = `<div class="bigplace">${s.stuntScore.toLocaleString()}</div><div class="sub">STUNT SCORE · ${p.tricks} TRICKS · ${s.ringsTaken} RINGS</div>`;

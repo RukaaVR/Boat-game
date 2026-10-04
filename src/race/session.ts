@@ -25,6 +25,8 @@ import { trackDef } from './trackDefs';
 import { Racer } from './racer';
 import { BattleItems, SHRINK_POWER, SLOW_POWER } from './items';
 import { Traffic } from './traffic';
+import { courseKey, type CourseVariant } from './variants';
+import { speedClassDef, type SpeedClass } from './speedClass';
 import type { Boat } from '../boat/boat';
 
 export type Phase = 'intro' | 'countdown' | 'racing' | 'finished' | 'results';
@@ -96,6 +98,10 @@ export interface SessionConfig {
   playerLook?: RiderLook;
   /** Battle mode rule set (default TIMED). */
   battleRule?: BattleRule;
+  /** Course variant: normal, reverse, mirror, mirror + reverse (race courses only). */
+  variant?: CourseVariant;
+  /** Engine class for every boat in the event (default SURGE). */
+  speedClass?: SpeedClass;
 }
 
 /** Per-event player counters (achievements, challenges). */
@@ -242,7 +248,7 @@ export class RaceSession {
     this.events = events;
     this.ghost = cfg.ghost;
     const def = trackDef(cfg.trackId);
-    this.track = new Track(def);
+    this.track = new Track(def, cfg.variant ?? 'normal');
     this.layout = buildLayout(this.track);
     for (const c of this.layout.colliders) this.statics.add(c);
     // Gate pylons are solid.
@@ -303,6 +309,9 @@ export class RaceSession {
       this.racers.push(racer);
     }
     this.player.points = cfg.champPoints?.[0] ?? 0;
+    // Engine class: a power multiplier for every boat (never the shared specs).
+    const classPower = speedClassDef(cfg.speedClass).power;
+    if (classPower !== 1) for (const r of this.racers) r.boat.basePower = r.boat.powerScale = r.boat.basePower * classPower;
     this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
     this.items = cfg.mode === 'battle' || (cfg.items && racing) ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
     this.fighters = this.racers.slice();
@@ -350,6 +359,11 @@ export class RaceSession {
     // Mine pool: endless spawns them; the admin panel can drop them in any mode.
     for (let i = 0; i < 14; i++) this.mines.push({ x: 0, z: 0, active: false, t: 0 });
     setWaveTime(0);
+  }
+
+  /** Records / medals / ghost key of this course variant (e.g. `coral~r`). */
+  get courseKey() {
+    return courseKey(this.cfg.trackId, this.track.variant);
   }
 
   get isRace() {
@@ -674,7 +688,7 @@ export class RaceSession {
     const best = this.ghost?.time ?? Infinity;
     const prev = this.newGhost?.time ?? Infinity;
     if (lapTime < Math.min(best, prev) && this.ghostRec.length > 30) {
-      this.newGhost = { trackId: this.cfg.trackId, boatId: this.cfg.playerBoat, time: lapTime, samples: this.ghostRec.slice() };
+      this.newGhost = { trackId: this.courseKey, boatId: this.cfg.playerBoat, time: lapTime, samples: this.ghostRec.slice() };
     }
     this.ghostRec.length = 0;
     this.ghostAcc = 0;

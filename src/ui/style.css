@@ -1074,3 +1074,10 @@ table.res td.boatcol { font-size: 12px; }
   .footer .btn { padding-top: 6px; padding-bottom: 6px; font-size: 16px; }
   .label { margin: 8px 0 4px; }
 }
+
+/* ── Course variants, engine classes, staff ghosts ───────────────────────── */
+.opt.opt-locked { opacity: 0.5; }
+.variant-rules { margin-top: 4px; line-height: 1.5; }
+.staff-badge { position: absolute; right: 8px; bottom: 8px; padding: 2px 7px; border-radius: 6px; background: var(--cyan, #26e8ff); color: #071422; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; }
+.cls-trophies { display: flex; gap: 10px; margin-top: 4px; font-size: 11px; opacity: 0.85; }
+.cls-trophy { display: inline-flex; align-items: center; gap: 3px; }

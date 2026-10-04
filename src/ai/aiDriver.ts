@@ -295,7 +295,7 @@ export class AIDriver {
     let pace = p.pace * d.pace * this.band;
     if (this.mistake === 'overshoot') pace *= 1.18;
     let target = Math.min(corner * pace * boatScale * Math.min(1.15, TUNE.aiPower), boat.spec.topSpeed * TUNE.speed * TUNE.aiPower * boat.powerScale * d.straight * this.band);
-    if (usingShortcut) target = Math.min(target, boat.spec.topSpeed * 0.92);
+    if (usingShortcut) target = Math.min(target, boat.spec.topSpeed * 0.92 * boat.powerScale);
     target = Math.min(target, speedCap);
     // Big heading error = slow down to make the turn.
     if (Math.abs(err) > 0.6) target = Math.min(target, 14);

@@ -1,3 +1,7 @@
+// Bundled (offline-safe) anime UI fonts: Bangers for display, M PLUS Rounded for text.
+import '@fontsource/bangers/latin-400.css';
+import '@fontsource/m-plus-rounded-1c/latin-700.css';
+import '@fontsource/m-plus-rounded-1c/latin-800.css';
 import './ui/style.css';
 import { Game } from './core/game';
 

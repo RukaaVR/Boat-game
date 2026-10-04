@@ -273,6 +273,7 @@ export class AdminPanel {
           <div class="adm-sub">DRIFT SPARKS</div><div class="adm-row"><button data-a="dtier" data-v="1">TIER 1 BLUE</button><button data-a="dtier" data-v="2">TIER 2 ORANGE</button><button data-a="dtier" data-v="3">TIER 3 PURPLE</button><button data-a="burst" data-v="3">MINI-TURBO BURST</button></div>
           <div class="adm-sub">ITEMS ${s?.items ? '' : '(items are off in this event)'}</div><div class="adm-row">${ITEM_IDS.map((id) => `<button data-a="item" data-v="${id}" ${s?.items ? '' : 'disabled'}>${ITEM_LABEL[id]}</button>`).join('')}</div>
           <div class="adm-row"><button data-a="creator">OPEN CHARACTER CREATOR</button></div>
+          <div class="adm-sub">PODIUM / TROPHY PREVIEW</div><div class="adm-row"><button data-a="podium">PODIUM</button><button data-a="trophy" data-v="1">GOLD TROPHY</button><button data-a="trophy" data-v="2">SILVER</button><button data-a="trophy" data-v="3">BRONZE</button></div>
           <div class="adm-dim">${r.calls} draw calls · ${(r.triangles / 1000).toFixed(0)}k tris · particles ${g.world?.particles.active ?? 0} · LOD full ${LOD.hiCount} / reduced ${LOD.loCount}</div>`;
       }
     }
@@ -366,9 +367,19 @@ export class AdminPanel {
       case 'item':
         if (s?.items) {
           s.player.item = v as ItemId;
+          s.player.itemCount = v === 'torpedo3' ? 3 : 1;
+          s.player.itemRoll = 0;
           msg = 'Item: ' + ITEM_LABEL[v as ItemId];
         }
         break;
+      case 'podium':
+        this.close();
+        g.debugPodium();
+        return;
+      case 'trophy':
+        this.close();
+        g.debugTrophy(Number(v) as 1 | 2 | 3);
+        return;
       case 'creator':
         this.close();
         g.screens.rider('menu');

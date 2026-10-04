@@ -19,7 +19,7 @@ import { World } from '../render/world';
 import { CameraRig, type CamMode } from '../camera/cameraRig';
 import { Input } from '../input/input';
 import { AudioEngine, type Listener } from '../audio/audio';
-import { Music } from '../audio/music';
+import { Music, type RaceState } from '../audio/music';
 import { SaveStore } from '../save/save';
 import { applyRewards, finishChampionship, noRewards, type RewardSummary } from '../save/rewards';
 import { CAREER, type Challenge } from '../save/progress';
@@ -75,6 +75,7 @@ type State = 'boot' | 'title' | 'menu' | 'race';
 const _listener: Listener = { x: 0, z: 0, rx: 1, rz: 0 };
 const _right = new Vector3();
 const _nearest: Boat[] = [];
+const _raceState: RaceState = { finalLap: false, close: false, place: 0, racers: 1, boosting: false };
 
 /** Post settings for the character stage when no world exists yet. */
 const STAGE_POST = { bloom: 0.25, exposure: 1, saturation: 1.1, contrast: 1, vignette: 0.15 };
@@ -120,6 +121,8 @@ export class Game implements ReplayHost, PhotoHost {
   cpuMs = 0;
   /** Smoothed music pressure. */
   private pressure = 0;
+  /** Raw 0..1 closeness to the nearest rival in the standings (music CLOSE state). */
+  private closeness = 0;
   /** How tight the fight around the player is: 0 calm … 1 wheel-to-wheel or leading. */
   private racePressure(s: RaceSession) {
     if (!s.isRace || s.phase !== 'racing') return 0;
@@ -129,6 +132,7 @@ export class Game implements ReplayHost, PhotoHost {
     const ahead = i > 0 ? (s.order[i - 1].raceDist - p.raceDist) / pace : Infinity;
     const behind = i < s.order.length - 1 ? (p.raceDist - s.order[i + 1].raceDist) / pace : Infinity;
     const close = Math.max(clamp01(1 - ahead / 2.5), clamp01(1 - behind / 1.8));
+    this.closeness = close;
     const lead = p.place === 1 ? 0.55 : 0;
     const finale = s.hasLaps && p.lap >= s.totalLaps ? 0.25 : 0;
     return clamp01(Math.max(close, lead) + finale);
@@ -1044,6 +1048,13 @@ export class Game implements ReplayHost, PhotoHost {
       const revving = s.phase === 'countdown' ? s.player.controls.throttle * 0.8 : 0;
       this.audio.updateRace(dt, s.player.boat, s.player.boat.engine, _nearest, _listener, w.atmosphere.preset.rain, this.paused, revving);
       const final = s.hasLaps && s.player.lap >= s.totalLaps && s.totalLaps > 1 && s.phase === 'racing';
+      if (!s.isRace || s.phase !== 'racing') this.closeness = 0;
+      _raceState.finalLap = final;
+      _raceState.close = this.closeness > 0.55;
+      _raceState.place = s.isRace ? s.player.place : 0;
+      _raceState.racers = s.racers.length;
+      _raceState.boosting = s.phase === 'racing' && s.player.boat.boostLevel > 0.25;
+      this.music.setRaceState(_raceState);
       if (s.phase === 'results' || s.phase === 'finished') this.music.setMood('results');
       else this.music.setMood(final || (s.mode === 'endless' && s.endlessLevel >= 3) || (s.mode === 'stunt' && s.stuntTimeLeft < 20) ? 'final' : 'race');
       this.music.setIntensity(clamp01(s.player.boat.boostLevel));
@@ -1353,6 +1364,17 @@ export class Game implements ReplayHost, PhotoHost {
       },
       musicMood() {
         return g.music.mood;
+      },
+      musicDebug() {
+        return g.music.debug();
+      },
+      /** Test hook: render one voice syllable. */
+      sayVoice(id: import('../audio/voice').Syllable, racer = 0) {
+        g.audio.voice?.say(id, racer);
+      },
+      /** Test hook: end the race now with the player in `place`. */
+      finishRace(place = 1) {
+        g.session?.adminFinish(place);
       },
       gpuMemory() {
         const info = g.renderer.gl.info;

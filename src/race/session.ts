@@ -65,6 +65,8 @@ export interface SessionConfig {
   dynamicWeather?: boolean;
   /** Fishing-boat traffic crossing the course. */
   traffic?: boolean;
+  /** Item boxes and power-ups (always on in battle). */
+  items?: boolean;
   /** Split-screen second player. */
   player2?: { name: string; boat: BoatId; livery: Livery };
 }
@@ -166,7 +168,7 @@ export class RaceSession {
   endlessLevel = 1;
   ringsTaken = 0;
   results: ResultRow[] = [];
-  /** Battle mode items (null in other modes). */
+  /** Item boxes and power-ups (battle mode, or races with items on). */
   readonly items: BattleItems | null;
   readonly traffic: Traffic | null;
   /** Obstacles the AI steers around (rebuilt each step, no allocation). */
@@ -256,7 +258,7 @@ export class RaceSession {
     }
     this.player.points = cfg.champPoints?.[0] ?? 0;
     this.player.boat.toughness = 1 - 0.15 * (cfg.playerUpgrades?.hull ?? 0);
-    this.items = cfg.mode === 'battle' ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
+    this.items = cfg.mode === 'battle' || (cfg.items && racing) ? new BattleItems(this.track, this.statics, events, def.seed + 7) : null;
     this.traffic = cfg.traffic ? new Traffic(this.track, this.statics, events, def.seed + 3, 2) : null;
     if (cfg.dynamicWeather) {
       const next: Record<WeatherId, WeatherId[]> = { clear: ['storm', 'sunset'], sunset: ['night', 'storm'], storm: ['clear', 'sunset'], night: ['storm', 'clear'] };

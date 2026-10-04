@@ -1077,6 +1077,10 @@ export class Screens {
             ['hard', 'HARD'],
           ]) +
           this.slider('laps', 'DEFAULT LAPS', 1, 5, 1, (v) => String(v)) +
+          this.choice('items', 'ITEM BOXES & POWER-UPS IN RACES', [
+            [true, 'ON'],
+            [false, 'OFF'],
+          ]) +
           this.choice('racingLine', 'RACING LINE ASSIST', [
             [false, 'OFF'],
             [true, 'ON'],

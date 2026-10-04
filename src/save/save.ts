@@ -30,6 +30,8 @@ export interface Settings {
   assist: number;
   sensitivity: number;
   racingLine: boolean;
+  /** Item boxes and power-ups in normal races. */
+  items: boolean;
   units: 'kmh' | 'mph';
   difficulty: Difficulty;
   laps: number;
@@ -112,6 +114,7 @@ export function defaultSettings(): Settings {
     assist: 0,
     sensitivity: 1,
     racingLine: false,
+    items: true,
     units: 'kmh',
     difficulty: 'normal',
     laps: 3,
@@ -185,6 +188,7 @@ function sanitizeSettings(v: unknown): Settings {
     assist: Math.round(num(o.assist, d.assist, 0, 3)),
     sensitivity: num(o.sensitivity, d.sensitivity, 0.4, 1.8),
     racingLine: bool(o.racingLine, d.racingLine),
+    items: bool(o.items, d.items),
     units: oneOf(o.units, ['kmh', 'mph'] as const, d.units),
     difficulty: oneOf(o.difficulty, ['easy', 'normal', 'hard'] as const, d.difficulty),
     laps: Math.round(num(o.laps, d.laps, 1, 9)),

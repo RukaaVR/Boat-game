@@ -470,6 +470,7 @@ export class Game implements ReplayHost, PhotoHost {
       bottlesFound: d.bottles[req.trackId] ?? 0,
       dynamicWeather: d.settings.dynamicWeather && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'battle' || req.mode === 'freeride'),
       traffic: d.settings.wildlife && req.mode !== 'timetrial' && req.mode !== 'tutorial' && req.mode !== 'stunt',
+      items: d.settings.items && (req.mode === 'quick' || req.mode === 'championship' || req.mode === 'career'),
     };
     this.screens.loading();
     this.state = 'race';

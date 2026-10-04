@@ -12,7 +12,7 @@ import { CAM_LABEL, type CamMode } from '../camera/cameraRig';
 import { DRIFT_TIER_AT } from '../boat/boatPhysics';
 import { keyLabel, type Bindings } from '../input/input';
 import type { Tutorial, TutorialStep } from '../race/tutorial';
-import { ITEM_LABEL, type ItemId } from '../race/items';
+import { ITEM_IDS, ITEM_LABEL, type ItemId } from '../race/items';
 
 interface Msg {
   el: HTMLElement;
@@ -48,6 +48,8 @@ export class Hud {
   private count: HTMLElement;
   private modebox: HTMLElement;
   private itemSlot: HTMLElement;
+  private heldItem: ItemId | null = null;
+  private roulette = 0;
   private dmg: HTMLElement;
   private lastHits = 0;
   private proxL: HTMLElement;
@@ -261,8 +263,7 @@ export class Hud {
         this.message('RESPAWN', 'small', 1);
         break;
       case 'itemPickup':
-        this.message(`GOT ${ITEM_LABEL[e.text as ItemId] ?? e.text}!`, 'gold small', 1);
-        break;
+        break; // the roulette in the item bubble announces it
       case 'itemHit':
         this.message(e.text === 'oil' ? 'SLIPPED ON OIL!' : e.text === 'wave' ? 'SWAMPED!' : 'HIT!', 'warn', 1.2);
         break;
@@ -339,9 +340,17 @@ export class Hud {
     // Battle item slot and hits landed.
     if (s.items) {
       const it = p.item as ItemId | null;
-      const key = (it ?? '-') + (b.shield > 0 ? 'S' : '');
+      // Kart-style roulette: a fresh item spins through the icons first.
+      if (it && !this.heldItem) this.roulette = 1.1;
+      this.heldItem = it;
+      if (this.roulette > 0) this.roulette = Math.max(0, this.roulette - dt);
+      const spinning = it !== null && this.roulette > 0;
+      const shown = spinning ? ITEM_IDS[Math.floor(this.roulette * 14) % ITEM_IDS.length] : it;
+      const key = (shown ?? '-') + (spinning ? 'R' : '') + (b.shield > 0 ? 'S' : '');
       this.set('item', key, () => {
-        this.itemSlot.innerHTML = `<b class="ic ic-${it ?? 'none'}"></b><span>${it ? ITEM_LABEL[it] : 'NO ITEM'}</span>${it ? `<em>${keyLabel(this.bindings.item[0])}</em>` : ''}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}`;
+        this.itemSlot.classList.toggle('spin', spinning);
+        this.itemSlot.classList.toggle('has', !!it && !spinning);
+        this.itemSlot.innerHTML = `<div class="bubble"><b class="ic ic-${shown ?? 'none'}"></b></div><div class="it-txt"><span>${spinning ? '???' : it ? ITEM_LABEL[it] : 'NO ITEM'}</span>${it && !spinning ? `<em>${keyLabel(this.bindings.item[0])}</em>` : ''}${b.shield > 0 ? '<span class="sh">SHIELD</span>' : ''}</div>`;
       });
       if (p.itemHits > this.lastHits) {
         this.lastHits = p.itemHits;

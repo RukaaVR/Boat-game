@@ -698,3 +698,22 @@ h1.h { text-shadow: 4px 4px 0 #ff4f8b, 7px 7px 0 #12306e; }
 .garage .pip { width: 20px; height: 12px; border-radius: 999px; transform: none; border: 2px solid #12306e; background: rgba(6,20,70,.6); }
 .garage .pip.on { background: linear-gradient(180deg, #d6ffb0, #7dff3a 50%, #4fd61e 52%); box-shadow: none; }
 @media (max-width: 860px) { .garage .g-stats { position: static; width: auto; margin-top: 10px; } }
+
+
+/* ── Kart-style item bubble (top-left under the standings) ── */
+.hud .itemslot { margin-top: 12px; display: flex; align-items: center; gap: 10px; background: none; padding: 0; transform: none; }
+.hud .itemslot > * { transform: none; }
+.itemslot .bubble {
+  width: 88px; height: 88px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 35% 28%, rgba(255,255,255,.9) 0 10%, rgba(255,255,255,.15) 26%, transparent 40%), linear-gradient(180deg, #4aa8ff, #1a5fd6 55%, #0e3a9e);
+  border: 5px solid #fff; box-shadow: 0 0 0 4px #12306e, 0 6px 0 4px #12306e;
+}
+.itemslot .bubble .ic { width: 58px; height: 58px; border-radius: 14px; border: 3px solid #12306e; background-size: 70%; }
+.itemslot .bubble .ic-none { background: transparent; border: 0; }
+.itemslot.spin .bubble .ic { animation: none; filter: brightness(1.15); }
+.itemslot.spin .bubble { box-shadow: 0 0 0 4px #12306e, 0 6px 0 4px #12306e, 0 0 24px #ffd93a; }
+.itemslot.has .bubble { animation: bubblePop .35s cubic-bezier(.2,.9,.3,1.5); }
+@keyframes bubblePop { from { transform: scale(.6); } to { transform: scale(1); } }
+.itemslot .it-txt { display: flex; flex-direction: column; gap: 4px; }
+.itemslot .it-txt span { font-family: var(--font); font-size: 22px; color: #fff; -webkit-text-stroke: 5px #12306e; paint-order: stroke fill; letter-spacing: 1px; }
+.itemslot em { font-family: var(--font2); font-weight: 900; font-style: normal; font-size: 12px; background: #fff; color: #12306e; border-radius: 999px; padding: 1px 8px; align-self: flex-start; }

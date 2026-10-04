@@ -257,6 +257,18 @@ function addHair(gb: GeoBuilder, liv: Livery) {
     const tone = new Color(col).multiplyScalar(0.86 + rnd() * 0.2);
     lock(gb, tone, base.addScaledVector(n, -0.03), dir, n, len, 0.07 + rnd() * 0.03, 0.04, curl);
   }
+  // Temple spikes poking out sideways, longest on the burst style.
+  for (const sd of [-1, 1])
+    for (const [el, az] of [
+      [0.55, 1.35],
+      [0.25, 1.55],
+      [0.85, 1.1],
+    ] as const) {
+      const base = onHead(el, sd * az, 1.0);
+      const n = normalAt(base);
+      const dir = n.clone().add(new Vector3(0, 0.15, -0.25));
+      lock(gb, new Color(col).multiplyScalar(0.9 + rnd() * 0.15), base, dir, n, (style === 0 ? 0.2 : 0.15) + rnd() * 0.05, 0.075, 0.04, new Vector3(0, -0.05, -0.1));
+    }
   // Nape points hanging down the back of the neck.
   for (let i = 0; i < 4; i++) {
     const az = Math.PI + (i / 3 - 0.5) * 1.6;

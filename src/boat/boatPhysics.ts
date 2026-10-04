@@ -26,6 +26,9 @@ import { clamp, clamp01, damp, smoothstep, wrapAngle } from '../core/mathx';
 import type { EventQueue } from '../core/events';
 import type { BoostPad, Controls, Ramp } from '../core/types';
 import { makeSample, oceanHeight, sampleOcean } from '../water/waves';
+import { rampFloat, rampSurfaceY, type RampFloat } from '../water/rampFloat';
+
+const _rf: RampFloat = { heave: 0, tilt: 0 };
 import { Boat, TRICK_NAMES, type TrickKind } from './boat';
 
 const G = 9.81;
@@ -253,8 +256,10 @@ export function stepBoat(b: Boat, c: Controls, env: PhysicsEnv, id: number, dt: 
     if (along < 0 || along > r.length || Math.abs(across) > r.width * 0.5 + 0.3) continue;
     const vAlong = b.velocity.x * sh + b.velocity.z * ch;
     if (vAlong < 3) continue;
-    const slope = r.height / r.length;
-    const rampY = -0.5 + along * slope + 0.12;
+    // Ramps float: heave and tilt with the swell (same maths as the drawn ramp).
+    rampFloat(r, env.time, _rf);
+    const slope = r.height / r.length + _rf.tilt;
+    const rampY = rampSurfaceY(r, along, _rf);
     const bottom = pos.y + PROBE_Y;
     if (bottom > rampY + 0.45) continue;
     b.onRamp = true;

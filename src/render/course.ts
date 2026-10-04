@@ -34,6 +34,9 @@ import { GeoBuilder } from './geo';
 import { bannerTexture, chevronTexture } from './textures';
 import { makeSample, oceanHeight, sampleOcean, WAVE_GLSL, waveUniforms } from '../water/waves';
 import type { TrackPoint } from '../race/track';
+import { rampFloat, type RampFloat } from '../water/rampFloat';
+
+const _rampF: RampFloat = { heave: 0, tilt: 0 };
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -716,21 +719,31 @@ export class CourseVisuals {
     this.add(this.bottleGlow, rg);
   }
 
+  /** Floating ramps: one pivot per ramp, moved every frame by rampFloat(). */
+  private floatRamps: { r: Ramp; pivot: Group; axis: Vector3 }[] = [];
+  private rampMats: [import('three').Material, import('three').Material] | null = null;
+
   /** Build ramp meshes (course ramps at construction, admin-spawned ramps later). */
   addRamps(ramps: readonly Ramp[]) {
-    const rampTex = chevronTexture('#ffffff', '#ff8a1e', 'ramp_chev');
-    const pos: number[] = [];
-    const uv: number[] = [];
-    const idx: number[] = [];
-    const side = new GeoBuilder();
+    if (!this.rampMats) {
+      const rampTex = chevronTexture('#ffffff', '#ff8a1e', 'ramp_chev');
+      this.rampMats = [cel('rampTop', { map: rampTex, emissive: 0x221100 }), cel('rampSide', { vertexColors: true })];
+    }
+    const [topMat, sideMat] = this.rampMats;
     for (const r of ramps) {
+      const pos: number[] = [];
+      const uv: number[] = [];
+      const idx: number[] = [];
+      const side = new GeoBuilder();
       const sh = Math.sin(r.heading);
       const ch = Math.cos(r.heading);
       const W2 = r.width / 2;
-      const toW = (along: number, across: number, y: number): [number, number, number] => [r.x + sh * along + ch * across, y, r.z + ch * along - sh * across];
+      // Geometry is built around the ramp's centre so the pivot can heave and tilt it.
+      const cx = r.x + sh * r.length * 0.5;
+      const cz = r.z + ch * r.length * 0.5;
+      const toW = (along: number, across: number, y: number): [number, number, number] => [r.x + sh * along + ch * across - cx, y, r.z + ch * along - sh * across - cz];
       const y0 = -0.5 + 0.12;
       const y1 = -0.5 + r.height + 0.12;
-      const base = pos.length / 3;
       for (const [al, ac, y, u, v] of [
         [0, -W2, y0, 1, 0],
         [0, W2, y0, 0, 0],
@@ -740,15 +753,15 @@ export class CourseVisuals {
         pos.push(...toW(al, ac, y));
         uv.push(v * 3, u);
       }
-      idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+      idx.push(0, 2, 1, 1, 2, 3);
       // Side skirts and the lip, as boxes oriented along the ramp.
       const ang = Math.atan2(r.height, r.length);
       const mid = r.length / 2;
       const cy = (y0 + y1) / 2 - 0.9;
-      for (const s of [-1, 1]) {
-        const [x, , z] = toW(mid, s * (W2 + 0.25), 0);
+      for (const sg of [-1, 1]) {
+        const [x, , z] = toW(mid, sg * (W2 + 0.25), 0);
         side.box(0.5, 2.2, Math.hypot(r.length, r.height), 0x3a8fe0, { x, y: cy + 0.75, z, ry: r.heading, rx: -ang });
-        const [x2, , z2] = toW(mid, s * (W2 + 0.3), 0);
+        const [x2, , z2] = toW(mid, sg * (W2 + 0.3), 0);
         side.box(0.45, 0.4, Math.hypot(r.length, r.height), 0xffffff, { x: x2, y: cy + 1.95, z: z2, ry: r.heading, rx: -ang });
       }
       const [lx, , lz] = toW(r.length - 0.2, 0, 0);
@@ -756,20 +769,35 @@ export class CourseVisuals {
       const [lx2, , lz2] = toW(r.length + 0.05, 0, 0);
       side.box(r.width + 1.1, 0.4, 0.6, 0xffffff, { x: lx2, y: y1 + 0.05, z: lz2, ry: r.heading });
       const [fx, , fz] = toW(r.length * 0.5, 0, 0);
-      side.box(r.width + 1.4, 1.2, r.length + 1, 0xffd21e, { x: fx, y: -0.9, z: fz, ry: r.heading });
+      // Buoyant base: deeper than before so a heaving ramp never shows its underside.
+      side.box(r.width + 1.4, 1.8, r.length + 1, 0xffd21e, { x: fx, y: -1.2, z: fz, ry: r.heading });
+      const geo = new BufferGeometry();
+      geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+      geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      const top = new Mesh(geo, topMat);
+      addOutline(top, 1.8);
+      const sGeo = side.build();
+      const sides = new Mesh(sGeo, sideMat);
+      addOutline(sides, 1.8);
+      const pivot = new Group();
+      pivot.position.set(cx, 0, cz);
+      pivot.add(top, sides);
+      pivot.name = 'ramp';
+      this.add(pivot, geo, sGeo);
+      // Tilt axis: horizontal, across the ramp. Negative angle lifts the lip.
+      this.floatRamps.push({ r, pivot, axis: new Vector3(ch, 0, -sh) });
     }
-    const geo = new BufferGeometry();
-    geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
-    geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    const top = new Mesh(geo, cel('rampTop', { map: rampTex, emissive: 0x221100 }));
-    addOutline(top, 1.8);
-    const sGeo = side.build();
-    const sides = new Mesh(sGeo, cel('rampSide', { vertexColors: true }));
-    addOutline(sides, 1.8);
-    this.add(top, geo);
-    this.add(sides, sGeo);
+    this.updateRamps(this.session.time);
+  }
+
+  private updateRamps(time: number) {
+    for (const fr of this.floatRamps) {
+      rampFloat(fr.r, time, _rampF);
+      fr.pivot.position.y = _rampF.heave;
+      fr.pivot.quaternion.setFromAxisAngle(fr.axis, -Math.atan(_rampF.tilt));
+    }
   }
 
   /** Optional racing-line assist ribbon. */
@@ -826,6 +854,7 @@ export class CourseVisuals {
 
   update(time: number, camX: number, camZ: number, nextGate: number, showGate: boolean) {
     this.frame++;
+    this.updateRamps(time);
     const s = this.session;
     // Buoys: near ones every frame, far ones every 4th.
     const buoys = s.buoys;

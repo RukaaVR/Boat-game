@@ -18,6 +18,7 @@ const angles = [
   ['side', Math.PI / 2, 5.2, 1.4],
   ['rear', Math.PI + 0.35, 5.4, 2.6],
   ['close', 0.55, 2.6, 1.9],
+  ['front', 0.15, 2.1, 1.75],
 ];
 for (const id of boats) {
   for (const [name, ang, dist, h] of angles) {

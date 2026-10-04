@@ -11,9 +11,9 @@
  * ball to fill the bend. Shoes stay in the boat's merged parts mesh.
  */
 
-import { BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, type Material, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, CanvasTexture, Color, Group, Matrix4, Mesh, type Material, SRGBColorSpace, Vector3 } from 'three';
 import { clamp, damp } from '../core/mathx';
-import { addOutline, cel } from '../render/cel';
+import { addOutline, cel, makeCel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
 import type { Boat } from './boat';
 import type { Livery } from './livery';
@@ -22,12 +22,11 @@ import MODEL from './riderModel.json';
 type PartName = keyof typeof MODEL.parts;
 
 /** Character palette — chosen per racer from the livery so the field varies. */
-const SKINS = ['#ffdcc0', '#f6c79e', '#e0a878', '#b97a4e', '#8a5634', '#ffe6d2'];
+const SKINS = ['#ffe3cf', '#ffd9bf', '#f6c9a6', '#ffe9da', '#e8b48c', '#c98d63', '#9c6644'];
 const TROUSERS = ['#2f3d63', '#3b3b46', '#5a4632', '#2f5a4a', '#f0e6cc'];
 const SHOES = ['#f6f3ea', '#2a2a32', '#c0392b', '#f2c94c'];
-const HAIRS = ['#2a1d14', '#f2c94c', '#d2532e', '#1e1e2a', '#7b4b2a', '#eef0f4', '#6a4fb5', '#2f9a74', '#3a7bd5', '#e86aa6'];
+const HAIRS = ['#2a1d14', '#f3e0a8', '#d2532e', '#1e1e2a', '#7b4b2a', '#eef0f4', '#6a4fb5', '#2f9a74', '#3a7bd5', '#e86aa6'];
 const WATCH = '#20242e';
-const EYE = '#1d2236';
 export const SUIT = 0x1d2030;
 
 /** Small stable hash of the livery so each racer gets the same look every race. */
@@ -129,16 +128,7 @@ function buildTorso(liv: Livery) {
 function buildHead(liv: Livery) {
   const gb = new GeoBuilder();
   const skin = pick(liv, SKINS, 1);
-  const head = part('head');
-  gb.add(cut(head, ALL, NECK_M, FWD, UP), skin);
-  // Simple painted eyes on the face, found from the mesh's front surface.
-  const pos = head.getAttribute('position');
-  for (const s of [-1, 1]) {
-    let zMax = -1;
-    for (let i = 0; i < pos.count; i++) if (Math.abs(pos.getX(i) - s * 0.08) < 0.05 && Math.abs(pos.getY(i) - 0.53) < 0.06) zMax = Math.max(zMax, pos.getZ(i));
-    gb.sphere(0.034, EYE, { x: s * 0.08, y: 0.53 - NECK_M.y, z: zMax - NECK_M.z - 0.008, sx: 0.8, sy: 1.3, sz: 0.4 }, 12, 8);
-    gb.sphere(0.011, '#ffffff', { x: s * 0.08 + 0.01, y: 0.55 - NECK_M.y, z: zMax - NECK_M.z + 0.004, sz: 0.5 }, 6, 4);
-  }
+  gb.add(cut(part('head'), ALL, NECK_M, FWD, UP), skin);
   addHair(gb, liv);
   return gb.build();
 }
@@ -159,7 +149,7 @@ function onHead(el: number, az: number, k = 1) {
  * tapers to a point along a gentle curve. `n` is the head normal at the
  * root; the blade lies flat against it like a real clump of hair.
  */
-function lock(gb: GeoBuilder, col: string, base: Vector3, dir: Vector3, n: Vector3, len: number, w: number, t: number, curl: Vector3) {
+function lock(gb: GeoBuilder, col: string | Color, base: Vector3, dir: Vector3, n: Vector3, len: number, w: number, t: number, curl: Vector3) {
   const S = 6;
   const pos: number[] = [];
   const idx: number[] = [];
@@ -240,7 +230,7 @@ function addHair(gb: GeoBuilder, liv: Livery) {
 
   // Main mass: locks spread evenly (golden spiral) over the crown, sides and
   // back, bursting outward with a lift, so the silhouette is a jagged star.
-  const N = 34;
+  const N = 64;
   const up = new Vector3(0, 1, 0);
   const back = new Vector3(0, 0, -1);
   for (let i = 0; i < N; i++) {
@@ -256,14 +246,16 @@ function addHair(gb: GeoBuilder, liv: Livery) {
     const base = onHead(el, az, 1.02);
     const n = normalAt(base);
     const dir = n.clone();
-    if (style === 0) dir.addScaledVector(up, 0.45).addScaledVector(back, 0.15);
+    if (style === 0) dir.addScaledVector(up, 0.2).addScaledVector(back, 0.05);
     else if (style === 1) dir.addScaledVector(up, 0.25).addScaledVector(back, 0.1);
     else dir.addScaledVector(back, 0.85).addScaledVector(up, 0.3);
     dir.x += (rnd() - 0.5) * 0.4;
     const lowBack = y < 0.1;
-    const len = (lowBack ? 0.17 : 0.22) + rnd() * (style === 0 ? 0.12 : 0.08);
+    const len = (lowBack ? 0.13 : 0.15) + rnd() * (style === 0 ? 0.13 : 0.1);
     const curl = style === 1 ? new Vector3((rnd() - 0.5) * 0.5, -0.25, -0.15) : new Vector3(0, lowBack ? -0.35 : -0.08, -0.12);
-    lock(gb, col, base.addScaledVector(n, -0.03), dir, n, len, 0.1 + rnd() * 0.03, 0.045, curl);
+    // Neighbouring locks alternate a touch lighter/darker so they read apart.
+    const tone = new Color(col).multiplyScalar(0.86 + rnd() * 0.2);
+    lock(gb, tone, base.addScaledVector(n, -0.03), dir, n, len, 0.07 + rnd() * 0.03, 0.04, curl);
   }
   // Nape points hanging down the back of the neck.
   for (let i = 0; i < 4; i++) {
@@ -280,16 +272,189 @@ function addHair(gb: GeoBuilder, liv: Livery) {
   }
   // Bangs: chunky jagged locks falling over the forehead, stopping above
   // the eyes, the outer ones sweeping out to the sides.
-  const bangs = style === 1 ? 6 : 5;
+  const bangs = style === 1 ? 8 : 7;
   for (let i = 0; i < bangs; i++) {
     const f = i / (bangs - 1) - 0.5;
     const az = f * 1.7;
     const base = onHead(0.72, az, 1.03);
     const n = normalAt(base);
     const dir = new Vector3(Math.sin(az) * 0.55 + (rnd() - 0.5) * 0.2, -1, 0.55);
-    const len = 0.15 + rnd() * 0.04 - Math.abs(f) * 0.03;
-    lock(gb, col, base, dir, n, len, 0.095, 0.04, new Vector3(Math.sin(az) * 0.15, 0, 0.2));
+    const len = 0.13 + rnd() * 0.05 - Math.abs(f) * 0.03;
+    lock(gb, col, base, dir, n, len, 0.07, 0.035, new Vector3(Math.sin(az) * 0.15, 0, 0.2));
   }
+}
+
+// ── Face ────────────────────────────────────────────────────────────────
+const IRIS = ['#3a7bd5', '#2f9a74', '#8a5a2b', '#c0392b', '#7b4fc9', '#e0a020', '#2b8fbf', '#5a3a22'];
+/** Face decal region in model space. */
+const FACE = { x0: -0.215, x1: 0.215, y0: 0.385, y1: 0.665 };
+const faceCache = new Map<string, CanvasTexture>();
+
+/** Anime face painted on a canvas: eyes, brows, nose, mouth, blush. */
+function faceTexture(iris: string, brow: string, mood: number) {
+  const key = `${iris}|${brow}|${mood}`;
+  const hit = faceCache.get(key);
+  if (hit) return hit;
+  const W = 512;
+  const H = 384;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const c = cv.getContext('2d')!;
+  const X = (x: number) => ((x - FACE.x0) / (FACE.x1 - FACE.x0)) * W;
+  const Y = (y: number) => (1 - (y - FACE.y0) / (FACE.y1 - FACE.y0)) * H;
+  const sx = W / (FACE.x1 - FACE.x0);
+  const sy = H / (FACE.y1 - FACE.y0);
+  const ink = '#1a1420';
+  for (const s of [-1, 1]) {
+    const ex = s * 0.09;
+    const ey = 0.508;
+    const ew = 0.056 * sx;
+    const eh = 0.074 * sy;
+    c.save();
+    c.translate(X(ex), Y(ey));
+    // Sclera: tall rounded eye, flatter on top under the lash.
+    c.beginPath();
+    c.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2);
+    c.fillStyle = '#ffffff';
+    c.fill();
+    c.clip();
+    // Iris: big, dark at the top fading to a bright lower half.
+    const ix = -s * ew * 0.08;
+    const iy = eh * 0.12;
+    const g = c.createLinearGradient(0, iy - eh, 0, iy + eh);
+    g.addColorStop(0, '#120c18');
+    g.addColorStop(0.45, iris);
+    g.addColorStop(1, '#ffffff');
+    c.beginPath();
+    c.ellipse(ix, iy, ew * 0.78, eh * 0.86, 0, 0, Math.PI * 2);
+    c.fillStyle = g;
+    c.fill();
+    c.lineWidth = 4;
+    c.strokeStyle = '#120c18';
+    c.stroke();
+    // Pupil.
+    c.beginPath();
+    c.ellipse(ix, iy - eh * 0.05, ew * 0.33, eh * 0.42, 0, 0, Math.PI * 2);
+    c.fillStyle = '#0c0810';
+    c.fill();
+    // Shine: a big glint up and out, a small one low and in.
+    c.fillStyle = '#ffffff';
+    c.beginPath();
+    c.ellipse(ix + s * ew * 0.32, iy - eh * 0.38, ew * 0.26, eh * 0.22, -0.4, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.arc(ix - s * ew * 0.3, iy + eh * 0.42, ew * 0.11, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    // Upper lash line: thick arc with an outer flick; a small lower lash.
+    c.save();
+    c.translate(X(ex), Y(ey));
+    c.fillStyle = ink;
+    c.beginPath();
+    c.moveTo(-s * ew * 1.08, -eh * 0.35);
+    c.quadraticCurveTo(-s * ew * 0.2, -eh * 1.32, s * ew * 1.15, -eh * 0.62);
+    c.lineTo(s * ew * 1.45, -eh * 0.42);
+    c.quadraticCurveTo(s * ew * 1.0, -eh * 0.78, s * ew * 0.6, -eh * 0.88);
+    c.quadraticCurveTo(-s * ew * 0.25, -eh * 1.05, -s * ew * 1.0, -eh * 0.18);
+    c.closePath();
+    c.fill();
+    c.lineWidth = 4;
+    c.strokeStyle = ink;
+    c.beginPath();
+    c.moveTo(s * ew * 0.95, eh * 0.5);
+    c.quadraticCurveTo(s * ew * 0.6, eh * 0.92, s * ew * 0.1, eh * 1.0);
+    c.stroke();
+    c.restore();
+    // Eyebrow: a tapered stroke, angled by mood (0 calm, 1 fierce).
+    c.save();
+    c.translate(X(ex), Y(ey + 0.096));
+    c.rotate(s * (mood ? 0.28 : -0.08));
+    c.fillStyle = brow;
+    c.beginPath();
+    c.moveTo(-s * ew * 1.1, 4);
+    c.quadraticCurveTo(0, -10, s * ew * 1.1, -2);
+    c.quadraticCurveTo(0, -1, -s * ew * 1.1, 8);
+    c.closePath();
+    c.fill();
+    c.restore();
+    // Blush with hatching.
+    c.save();
+    c.translate(X(s * 0.135), Y(0.452));
+    c.fillStyle = 'rgba(255,120,140,0.45)';
+    c.beginPath();
+    c.ellipse(0, 0, 0.028 * sx, 0.012 * sy, 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = 'rgba(230,80,100,0.7)';
+    c.lineWidth = 2.5;
+    for (let k = -1; k <= 1; k++) {
+      c.beginPath();
+      c.moveTo(k * 10 - 4, 5);
+      c.lineTo(k * 10 + 4, -5);
+      c.stroke();
+    }
+    c.restore();
+  }
+  // Nose: a small shade mark.
+  c.strokeStyle = 'rgba(150,80,60,0.75)';
+  c.lineWidth = 3;
+  c.beginPath();
+  c.moveTo(X(0.004), Y(0.452));
+  c.lineTo(X(-0.006), Y(0.441));
+  c.stroke();
+  // Mouth: a grin or a set line with a little open corner.
+  c.strokeStyle = ink;
+  c.lineWidth = 4;
+  c.lineCap = 'round';
+  c.beginPath();
+  if (mood) {
+    c.moveTo(X(-0.026), Y(0.414));
+    c.quadraticCurveTo(X(0), Y(0.418), X(0.026), Y(0.41));
+  } else {
+    c.moveTo(X(-0.028), Y(0.418));
+    c.quadraticCurveTo(X(0), Y(0.398), X(0.028), Y(0.418));
+  }
+  c.stroke();
+  const tex = new CanvasTexture(cv);
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 4;
+  faceCache.set(key, tex);
+  return tex;
+}
+
+/** Decal over the front of the head (head space), UVs projected flat. */
+function buildFaceGeo() {
+  const g = cut(
+    part('head'),
+    (c) => c.z > HEAD_C.z + 0.08 && c.x > FACE.x0 - 0.02 && c.x < FACE.x1 + 0.02 && c.y > FACE.y0 - 0.03 && c.y < FACE.y1 + 0.03,
+    NECK_M,
+    FWD,
+    UP,
+  );
+  const pos = g.getAttribute('position');
+  const nrm = g.getAttribute('normal');
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const mx = pos.getX(i) + NECK_M.x;
+    const my = pos.getY(i) + NECK_M.y;
+    uv[i * 2] = (mx - FACE.x0) / (FACE.x1 - FACE.x0);
+    uv[i * 2 + 1] = (my - FACE.y0) / (FACE.y1 - FACE.y0);
+    pos.setXYZ(i, pos.getX(i) + nrm.getX(i) * 0.004, pos.getY(i) + nrm.getY(i) * 0.004, pos.getZ(i) + nrm.getZ(i) * 0.004);
+  }
+  g.setAttribute('uv', new BufferAttribute(uv, 2));
+  return g;
+}
+let faceGeo: BufferGeometry | null = null;
+
+function buildFace(liv: Livery) {
+  faceGeo ??= buildFaceGeo();
+  const brow = new Color(pick(liv, HAIRS, 2)).multiplyScalar(0.55).getStyle();
+  const m = makeCel({ map: faceTexture(pick(liv, IRIS, 6), brow, pick(liv, [0, 1], 7)), transparent: true });
+  m.alphaTest = 0.35;
+  m.depthWrite = false;
+  m.polygonOffset = true;
+  m.polygonOffsetFactor = -2;
+  return new Mesh(faceGeo, m);
 }
 
 /** Upper arm (shoulder → elbow) for side 0 = left (+X), 1 = right. */
@@ -418,12 +583,14 @@ export class Rider {
     this.pelvis.add(this.torso);
     const headMesh = new Mesh(buildHead(liv), ghostMat ?? cel('riderHead', { vertexColors: true, gloss: 0.2 }));
     this.head.add(headMesh);
+    if (!ghostMat) this.head.add(buildFace(liv));
     this.head.position.copy(NECK);
     this.torso.add(this.head);
     this.arms = [0, 1].map((i) => [new Mesh(buildUpperArm(i, liv), mat), new Mesh(buildForearm(i, liv), mat)] as [Mesh, Mesh]);
     this.legs = [0, 1].map((i) => [new Mesh(buildThigh(i, liv), mat), new Mesh(buildShin(i, liv), mat)] as [Mesh, Mesh]);
     this.meshes.push(this.torso, headMesh, ...this.arms.flat(), ...this.legs.flat());
-    if (!ghostMat) for (const m of this.meshes) addOutline(m, 1.6);
+    // Bold ink like an anime cel.
+    if (!ghostMat) for (const m of this.meshes) addOutline(m, 2.8);
     this.root.add(this.pelvis, ...this.arms.flat(), ...this.legs.flat());
     this.pelvis.position.copy(at.hip);
   }

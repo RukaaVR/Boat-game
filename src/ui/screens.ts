@@ -38,6 +38,17 @@ function trackGeo(id: string) {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+/** Kart-style stats card: segmented bars, upgrades shown as a gold extension. */
+function statCard(name: string, sub: string, st: Record<string, number>, base: Record<string, number> | null, foot: string) {
+  const rows = Object.entries(st)
+    .map(([k, v]) => {
+      const b = base ? Math.min(v, base[k]) : v;
+      return `<span class="g-k">${k.toUpperCase()}</span><div class="g-bar"><div class="g-fill" style="width:${b * 10}%"></div>${base && v > b ? `<div class="g-up" style="left:${b * 10}%;width:${(v - b) * 10}%"></div>` : ''}<i></i></div>`;
+    })
+    .join('');
+  return `<div class="g-name">${name}</div><div class="g-sub">${sub}</div><div class="g-bars">${rows}</div>${foot ? `<div class="g-foot">${foot}</div>` : ''}`;
+}
+
 export class Screens {
   root: HTMLElement | null = null;
   private toastBox: HTMLElement;
@@ -771,14 +782,15 @@ export class Screens {
     this.garageTab = tab;
     this.mount(
       'garage',
-      `<h1 class="h">GARAGE</h1><div class="sub" id="gCredits"></div>
+      `<div class="g-banner"><h1 class="h">GARAGE</h1></div><div class="g-credits" id="gCredits"></div>
       <div class="tabs" id="gTabs"></div>
-      <div class="grid2"><div class="scroll" id="gBody"></div><div></div></div>
+      <div class="grid2"><div class="scroll" id="gBody"></div><div class="g-side"><div class="g-stats" id="gStats"></div></div></div>
       <div class="footer"><button class="btn" data-nav data-act="back"><span>BACK</span></button><span class="hint">Changes save automatically</span></div>`,
       () => {
         g.endGarage();
         g.enterMenu();
       },
+      'screen dim garage',
     );
     g.beginGarage(this.garageBoat);
     this.refreshGarage();
@@ -793,7 +805,7 @@ export class Screens {
     const cos = cosmeticUnlocks(lvl);
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
-    (this.root!.querySelector('#gCredits') as HTMLElement).innerHTML = `CREDITS <b class="cr" style="color:var(--yellow)">${d.credits.toLocaleString()}</b> · LEVEL ${lvl}`;
+    (this.root!.querySelector('#gCredits') as HTMLElement).innerHTML = `<span class="coin"></span><b>${d.credits.toLocaleString()}</b><small>LV ${lvl}</small>`;
     const tabs = ['boats', 'upgrades', 'paint', 'style', 'fx'];
     (this.root!.querySelector('#gTabs') as HTMLElement).innerHTML = tabs
       .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), paint: t2('paint'), style: t2('stripes'), fx: t2('trail') }[t]}</button>`)
@@ -801,6 +813,7 @@ export class Screens {
     const liv = g.save.livery(this.garageBoat);
     const spec = boatSpec(this.garageBoat);
     let html = '';
+    let side = statCard(spec.name, spec.tagline, boatStats(upgradedSpec(spec, g.save.upgrades(spec.id))), null, '');
     if (this.garageTab === 'boats') {
       html = BOATS.map((b) => {
         const owned = d.owned.includes(b.id);
@@ -811,10 +824,9 @@ export class Screens {
       const st = boatStats(spec);
       const owned = d.owned.includes(spec.id);
       const avail = lvl >= spec.unlockLevel;
-      html += `<div class="panel" style="margin-top:10px"><div style="font-family:var(--font);font-style:italic;font-size:20px">${spec.name}</div><div class="hint" style="margin-bottom:10px">${spec.tagline}</div>
-        <div class="statbars">${Object.entries(st).map(([k, v]) => `<span>${k.toUpperCase()}</span><div class="sbar"><div style="width:${v * 10}%"></div></div>`).join('')}</div>
-        <div class="hint" style="margin-top:8px">TOP ${Math.round(spec.topSpeed * 3.6)} KM/H · BOOST ${Math.round(spec.boostTopSpeed * 3.6)} KM/H · ${spec.length.toFixed(1)} M</div>
-        <div class="row" style="margin-top:12px">${
+      side = statCard(spec.name, spec.tagline, st, null, `TOP ${Math.round(spec.topSpeed * 3.6)} KM/H · BOOST ${Math.round(spec.boostTopSpeed * 3.6)} KM/H · ${spec.length.toFixed(1)} M`);
+      html += `<div class="panel" style="margin-top:10px">
+        <div class="row">${
           owned
             ? `<button class="btn small" data-nav data-act="gselect" data-arg="${spec.id}"><span>${d.selectedBoat === spec.id ? '✓ SELECTED' : 'SELECT'}</span></button>`
             : avail
@@ -836,8 +848,7 @@ export class Screens {
           <button class="btn small ${maxed ? '' : 'primary'} ${!owned || maxed || d.credits < cost ? 'disabled' : ''}" data-nav data-act="gup" data-arg="${k}"><span>${maxed ? 'MAXED' : `${cost.toLocaleString()} CR`}</span></button></div>
           <div class="hint">${UPGRADE_INFO[k].blurb}</div></div>`;
       }).join('');
-      html += `<div class="panel" style="margin-top:8px"><div class="statbars">${Object.entries(now).map(([k, v]) => `<span>${k.toUpperCase()}</span><div class="sbar"><div style="width:${v * 10}%"></div>${v > base[k as keyof typeof base] ? `<div class="sbar-up" style="left:${base[k as keyof typeof base] * 10}%;width:${(v - base[k as keyof typeof base]) * 10}%"></div>` : ''}</div>`).join('')}</div>
-        <div class="hint" style="margin-top:8px">TOP ${Math.round(upgradedSpec(spec, up).topSpeed * 3.6)} KM/H (stock ${Math.round(spec.topSpeed * 3.6)})</div></div>`;
+      side = statCard(spec.name, 'UPGRADED STATS', now, base, `TOP ${Math.round(upgradedSpec(spec, up).topSpeed * 3.6)} KM/H (stock ${Math.round(spec.topSpeed * 3.6)})`);
     } else if (this.garageTab === 'paint') {
       const sw = (field: 'hull' | 'accent', list: string[], n: number) =>
         `<div class="swatches">${list.map((c, i) => `<button class="sw ${liv[field] === c ? 'on' : ''} ${i >= n ? 'lk disabled' : ''}" style="background:${c}" data-nav data-act="gpaint" data-arg="${field}:${c}" title="${i >= n ? 'Unlocks at a higher level' : c}"></button>`).join('')}</div>`;
@@ -852,6 +863,8 @@ export class Screens {
       html = `<div class="label">Wake trail tint</div>${sw('trail', TRAILS, cos.trails)}<div class="label">Boost flame</div>${sw('boost', BOOSTS, cos.boosts)}<div class="hint" style="margin-top:12px">Locked swatches unlock as you level up.</div>`;
     }
     body.innerHTML = html;
+    const sideEl = this.root!.querySelector('#gStats');
+    if (sideEl) sideEl.innerHTML = side;
     const again = focusedAct ? (this.root!.querySelector(`[data-act="${focusedAct}"][data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
     if (again) g.nav.focus(again, false);
     else {

@@ -17,7 +17,8 @@ await page.evaluate(async () => {
   R.simulate(0.3, 1 / 30);
   R.game.pauseGame();
 });
-await page.waitForTimeout(1200);
+// Software rendering runs ~1 fps, so give the screen's fade-in time to finish.
+await page.waitForTimeout(5000);
 await page.screenshot({ path: `${out}_pause_countdown.png` });
 await page.evaluate(() => {
   const R = window.__RIPTIDE__;

@@ -2,6 +2,7 @@
 import '@fontsource/bangers/latin-400.css';
 import '@fontsource/m-plus-rounded-1c/latin-700.css';
 import '@fontsource/m-plus-rounded-1c/latin-800.css';
+import '@fontsource/m-plus-rounded-1c/latin-900.css';
 import './ui/style.css';
 import { Game } from './core/game';
 

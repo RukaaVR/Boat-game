@@ -1,0 +1,26 @@
+// Screenshots of the rider creator, cycling a few looks.
+import { launch, openGame } from './browser.mjs';
+const url = process.argv[2] ?? 'http://localhost:5173/?harness=1';
+const out = process.argv[3] ?? 'shots/creator';
+const b = await launch();
+const { page, errors } = await openGame(b, url);
+await page.keyboard.press('Enter');
+await page.waitForTimeout(1200);
+await page.evaluate(() => window.__RIPTIDE__.rider());
+await page.waitForTimeout(5000);
+await page.screenshot({ path: `${out}_1.png` });
+await page.click('[data-act=rset][data-arg="hair:messy"]');
+await page.click('[data-act=rset][data-arg="hairColor:#2f9a74"]');
+await page.click('[data-act=rset][data-arg="expression:determined"]');
+await page.waitForTimeout(4000);
+await page.screenshot({ path: `${out}_2.png` });
+await page.click('[data-act=rset][data-arg="hair:swept"]');
+await page.click('[data-act=rset][data-arg="hairColor:#e86aa6"]');
+await page.click('[data-act=rset][data-arg="skin:#9c6644"]');
+await page.click('[data-act=rset][data-arg="eyes:#3a7bd5"]');
+await page.waitForTimeout(4000);
+await page.screenshot({ path: `${out}_3.png` });
+const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('riptide.save.v1')).rider);
+console.log(JSON.stringify(saved));
+console.log(errors.slice(0, 5).join('\n'));
+await b.close();

@@ -5,6 +5,8 @@
  */
 
 import type { Game, EventRequest } from '../core/game';
+import { detectQuality } from '../render/graphics';
+import { EXPRESSIONS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, sanitizeLook, SKIN_TONES, type RiderLook } from '../boat/riderLook';
 import { BOATS, boatSpec, boatStats, type BoatId } from '../boat/specs';
 import { BOOSTS, DECALS, PAINTS, STRIPES, TRAILS, type Livery } from '../boat/livery';
 import { CUPS, CHAMP_POINTS, TRACKS, trackDef } from '../race/trackDefs';
@@ -124,6 +126,28 @@ export class Screens {
         a.click('select');
         this.garage();
         break;
+      case 'rider':
+        a.click('select');
+        this.rider(arg === 'garage' ? 'garage' : 'menu');
+        break;
+      case 'rset': {
+        const [field, value] = arg.split(':') as [keyof RiderLook, string];
+        a.click('move');
+        g.save.data.rider = sanitizeLook({ ...g.save.data.rider, [field]: value });
+        g.save.save();
+        g.refreshStage();
+        this.refreshRider();
+        break;
+      }
+      case 'rrandom': {
+        a.click('select');
+        const r = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+        g.save.data.rider = { hair: r(HAIR_STYLES).id, hairColor: r(HAIR_COLORS).id, skin: r(SKIN_TONES).id, eyes: r(EYE_COLORS).id, expression: r(EXPRESSIONS).id };
+        g.save.save();
+        g.refreshStage();
+        this.refreshRider();
+        break;
+      }
       case 'modes':
         a.click('select');
         this.modes();
@@ -294,6 +318,7 @@ export class Screens {
         <button class="btn" data-nav data-act="challenges"><span>${t('challenges')}</span><span class="k">${openCh ? `${openCh} NEW` : '✓'}</span></button>
         <button class="btn" data-nav data-act="modes"><span>MORE MODES</span><span class="k">BATTLE · 2P · STUNT · …</span></button>
         <button class="btn" data-nav data-act="garage"><span>${t('garage')}</span><span class="k">${t('boats')} · ${t('upgrades')}</span></button>
+        <button class="btn" data-nav data-act="rider" data-arg="menu"><span>RIDER</span><span class="k">HAIR · FACE · STYLE</span></button>
         <button class="btn" data-nav data-act="achievements"><span>${t('achievements')}</span><span class="k">${achN}/${ACHIEVEMENTS.length}</span></button>
         <button class="btn" data-nav data-act="settings"><span>${t('settings')}</span><span class="k"></span></button>
       </div>
@@ -776,6 +801,63 @@ export class Screens {
   private garageBoat: BoatId = 'speedster';
   private garageTab = 'boats';
 
+  // ── Rider (character creator) ──────────────────────────────────────────
+  private riderReturn: 'menu' | 'garage' = 'menu';
+  rider(from: 'menu' | 'garage' = 'menu') {
+    const g = this.game;
+    this.riderReturn = from;
+    if (from === 'garage') g.endGarage();
+    this.mount(
+      'rider',
+      `<div class="g-banner"><h1 class="h">RIDER</h1></div>
+      <div class="grid2"><div class="scroll" id="rBody"></div><div class="r-stage" id="rStage"><div class="r-hint">DRAG OR <b>Q</b>/<b>E</b> TO TURN</div></div></div>
+      <div class="footer"><button class="btn" data-nav data-act="rrandom"><span>RANDOMIZE</span></button><button class="btn primary" data-nav data-act="back"><span>DONE</span></button><span class="hint">Saved automatically · shown in races, replays and on the podium</span></div>`,
+      () => {
+        g.closeStage();
+        if (this.riderReturn === 'garage') this.garage('boats');
+        else g.enterMenu();
+      },
+      'screen dim garage rider',
+    );
+    g.openStage();
+    // Drag anywhere off the menu column to turn the rider.
+    const area = this.root!.querySelector('#rStage') as HTMLElement;
+    let last: number | null = null;
+    area.addEventListener('pointerdown', (e) => {
+      last = e.clientX;
+      area.setPointerCapture(e.pointerId);
+    });
+    area.addEventListener('pointermove', (e) => {
+      if (last === null) return;
+      g.stage?.drag(e.clientX - last);
+      last = e.clientX;
+    });
+    const end = () => (last = null);
+    area.addEventListener('pointerup', end);
+    area.addEventListener('pointercancel', end);
+    this.refreshRider();
+  }
+
+  private refreshRider() {
+    const body = this.root?.querySelector('#rBody');
+    if (!body) return;
+    const g = this.game;
+    const lk = g.save.data.rider;
+    const focusedArg = g.nav.current?.dataset.arg;
+    const opts = (field: keyof RiderLook, list: { id: string; name: string }[]) =>
+      `<div class="opts">${list.map((o) => `<button class="opt ${lk[field] === o.id ? 'on' : ''}" data-nav data-act="rset" data-arg="${field}:${o.id}">${o.name}</button>`).join('')}</div>`;
+    const sw = (field: keyof RiderLook, list: { id: string; name: string }[]) =>
+      `<div class="swatches">${list.map((o) => `<button class="sw ${lk[field] === o.id ? 'on' : ''}" style="background:${o.id}" title="${o.name}" aria-label="${o.name}" data-nav data-act="rset" data-arg="${field}:${o.id}"></button>`).join('')}</div>`;
+    const name = (list: { id: string; name: string }[], id: string) => list.find((o) => o.id === id)?.name ?? '';
+    body.innerHTML = `<div class="label">HAIRSTYLE</div>${opts('hair', HAIR_STYLES)}
+      <div class="label">HAIR COLOUR <span class="r-val">${name(HAIR_COLORS, lk.hairColor)}</span></div>${sw('hairColor', HAIR_COLORS)}
+      <div class="label">SKIN <span class="r-val">${name(SKIN_TONES, lk.skin)}</span></div>${sw('skin', SKIN_TONES)}
+      <div class="label">EYES <span class="r-val">${name(EYE_COLORS, lk.eyes)}</span></div>${sw('eyes', EYE_COLORS)}
+      <div class="label">EXPRESSION</div>${opts('expression', EXPRESSIONS)}`;
+    const again = focusedArg ? (this.root!.querySelector(`#rBody [data-arg="${focusedArg}"]`) as HTMLElement | null) : null;
+    g.nav.focus(again ?? (this.root!.querySelector('#rBody [data-nav]') as HTMLElement), false);
+  }
+
   garage(tab = 'boats') {
     const g = this.game;
     this.garageBoat = g.save.data.selectedBoat;
@@ -806,9 +888,9 @@ export class Screens {
     const focusedAct = g.nav.current?.dataset.act;
     const focusedArg = g.nav.current?.dataset.arg;
     (this.root!.querySelector('#gCredits') as HTMLElement).innerHTML = `<span class="coin"></span><b>${d.credits.toLocaleString()}</b><small>LV ${lvl}</small>`;
-    const tabs = ['boats', 'upgrades', 'paint', 'style', 'fx'];
+    const tabs = ['boats', 'upgrades', 'paint', 'style', 'fx', 'rider'];
     (this.root!.querySelector('#gTabs') as HTMLElement).innerHTML = tabs
-      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), paint: t2('paint'), style: t2('stripes'), fx: t2('trail') }[t]}</button>`)
+      .map((t) => `<button class="opt ${this.garageTab === t ? 'on' : ''}" data-nav data-act="gtab" data-arg="${t}">${{ boats: t2('boats'), upgrades: t2('upgrades'), paint: t2('paint'), style: t2('stripes'), fx: t2('trail'), rider: 'RIDER' }[t]}</button>`)
       .join('');
     const liv = g.save.livery(this.garageBoat);
     const spec = boatSpec(this.garageBoat);
@@ -886,6 +968,10 @@ export class Screens {
     switch (act) {
       case 'gtab':
         g.audio.click('move');
+        if (arg === 'rider') {
+          this.rider('garage');
+          return true;
+        }
         this.garageTab = arg;
         this.refreshGarage();
         return true;
@@ -1038,6 +1124,7 @@ export class Screens {
       case 'video':
         html =
           this.choice('quality', 'GRAPHICS QUALITY', [
+            ['auto', `AUTO (${detectQuality().toUpperCase()})`],
             ['low', 'LOW'],
             ['medium', 'MEDIUM'],
             ['high', 'HIGH'],

@@ -339,6 +339,11 @@ export class Renderer {
     return this.size.y;
   }
 
+  /** True when the adaptive controller has no resolution left to give. */
+  get atMinResolution() {
+    return !this.adaptive || this.pixelRatio <= 0.61;
+  }
+
   setMaxPixelRatio(v: number) {
     this.maxPixelRatio = v;
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, v);
@@ -352,13 +357,14 @@ export class Renderer {
     const ft = this.frameTimes;
     ft.push(frameMs);
     if (ft.length > 90) ft.shift();
-    if (ft.length < 60 || !this.adaptive) return;
+    if (ft.length < 60) return;
     const s = this.sorted;
     s.length = 0;
     for (let i = 0; i < ft.length; i++) s.push(ft[i]);
     s.sort(numeric);
     const med = s[s.length >> 1];
     this.stats.medianMs = med;
+    if (!this.adaptive) return;
     const cap = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
     if (now - this.lastAdjust < 1500) return;
     if (med > 19 && this.pixelRatio > 0.6) {

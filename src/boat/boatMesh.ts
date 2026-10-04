@@ -9,7 +9,9 @@
 
 import {
   type ColorRepresentation,
+  CatmullRomCurve3,
   LatheGeometry,
+  TubeGeometry,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -28,6 +30,7 @@ import { addOutline, cel, makeCel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
 import { paintDamage, paintLivery, shade } from '../render/textures';
 import type { Boat } from './boat';
+import type { RiderLook } from './riderLook';
 import { addBoots, foothold, Rider, type RiderAnchors } from './rider';
 import type { Livery } from './livery';
 import type { BoatSpec, HullStyle } from './specs';
@@ -231,15 +234,15 @@ function buildParts(spec: BoatSpec, liv: Livery, shapes: HullShape[]): { geo: Bu
   // Non-slip foot pads either side of the console.
   for (const s of [-1, 1]) gb.box(0.26, 0.025, 0.7, 0x2b2f38, { x: s * 0.22, y: deck + 0.0, z: zRider + 0.15 });
   // Anime trim: a white rub rail along the sheer of every hull, meeting at the bow.
+  // One swept tube per side (a few hundred triangles, not dozens of capsules).
   for (const h of shapes) {
     for (const sd of [-1, 1]) {
-      let prev: Vector3 | null = null;
-      for (let k = 0; k <= 22; k++) {
-        const t = 0.01 + (k / 22) * 0.975;
-        const pt = new Vector3(h.offsetX + sd * beamAt(h, t) * 1.01, sheerAt(h, t) - 0.015, (t - 0.5) * h.L);
-        if (prev) limb(gb, prev, pt, 0.034, 0xf8f6ee);
-        prev = pt;
+      const pts: Vector3[] = [];
+      for (let k = 0; k <= 12; k++) {
+        const t = 0.01 + (k / 12) * 0.975;
+        pts.push(new Vector3(h.offsetX + sd * beamAt(h, t) * 1.01, sheerAt(h, t) - 0.015, (t - 0.5) * h.L));
       }
+      gb.add(new TubeGeometry(new CatmullRomCurve3(pts), 24, 0.034, 5, false), 0xf8f6ee);
     }
   }
   // Bow tow eye.
@@ -379,7 +382,7 @@ export class BoatVisual {
   constructor(
     public spec: BoatSpec,
     public livery: Livery,
-    opts: { ghost?: boolean } = {},
+    opts: { ghost?: boolean; look?: RiderLook | null } = {},
   ) {
     this.ghost = !!opts.ghost;
     const shapes = hullShapes(spec);
@@ -394,7 +397,8 @@ export class BoatVisual {
     this.rig = rig;
     const partsMat = this.ghost ? hullMat : cel('boatParts', { vertexColors: true, gloss: 0.6 });
     this.parts = new Mesh(geo, partsMat);
-    this.rider = new Rider(livery, rig, this.ghost ? hullMat : null);
+    this.parts.name = 'boatParts';
+    this.rider = new Rider(livery, rig, this.ghost ? hullMat : null, opts.look ?? undefined);
     // Bold anime ink round the hull and fittings.
     if (!this.ghost) for (const m of [this.hull, this.parts]) addOutline(m, m === this.hull ? 3.6 : 2.8);
     // Nav lights: port red, starboard green, stern white, plus an accent strip.
@@ -439,6 +443,9 @@ export class BoatVisual {
   }
 
   private lod = 0;
+  get lodLevel() {
+    return this.lod;
+  }
   /**
    * Distance LOD: 0 = full detail; 1 = no outlines on limbs, no nav lights;
    * 2 = hull + rider torso only (beyond ~260 m the boat is a few pixels).
@@ -498,6 +505,7 @@ export class BoatVisual {
       const m = o as Mesh;
       if (m.isMesh && !o.userData.isOutline) m.geometry.dispose();
     });
+    this.rider.dispose();
     this.livTex.dispose();
     if (!this.ghost) (this.hull.material as { dispose(): void }).dispose();
   }

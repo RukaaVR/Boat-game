@@ -94,6 +94,11 @@ export class Input {
   lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
   private steerSmooth = 0;
   /** Menu navigation intents from the gamepad only (keyboard is handled by Nav directly). */
+  private padRightX = 0;
+  /** Turntable / camera turn from the pad: shoulders (LB −, RB +) or right stick. */
+  padTurn() {
+    return (this.padNow[5] ? 1 : 0) - (this.padNow[4] ? 1 : 0) + this.padRightX;
+  }
   readonly padNav: ('up' | 'down' | 'left' | 'right' | 'ok' | 'back')[] = [];
   private stickRepeat = 0;
   private stickDir = '';
@@ -177,6 +182,7 @@ export class Input {
     const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
     this.padAxes[0] = dz(gp.axes[0] ?? 0);
     this.padAxes[1] = dz(gp.axes[1] ?? 0);
+    this.padRightX = dz(gp.axes[2] ?? 0);
     this.padTriggers[0] = gp.buttons[6]?.value ?? 0;
     this.padTriggers[1] = gp.buttons[7]?.value ?? 0;
     if (any || Math.abs(this.padAxes[0]) > 0.3 || this.padTriggers[1] > 0.2) this.lastDevice = 'gamepad';

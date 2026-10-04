@@ -31,6 +31,7 @@ import {
 import type { Layout, Prop, PropKind } from './layout';
 import { THEME_STYLE, type ThemeStyle } from './weatherDefs';
 import * as P from './props';
+import { LOD, LodClock, LodInstances } from '../render/lod';
 import { addOutline, cel } from '../render/cel';
 import { GeoBuilder } from '../render/geo';
 import { Rng } from '../core/rng';
@@ -167,7 +168,12 @@ interface Mover {
   phase: number;
 }
 
+/** Props inside this distance get full geometry and ink (metres, × LOD.scale). */
+const PROP_NEAR = 150;
+
 export class Scenery {
+  private lods: { lod: LodInstances; xs: Float32Array; zs: Float32Array }[] = [];
+  private lodClock = new LodClock(14, 0.6);
   readonly group = new Group();
   readonly waterLights: WaterLight[] = [];
   readonly emitters: Emitter[] = [];
@@ -244,13 +250,14 @@ export class Scenery {
       const v = Number(vs);
       if (kind === 'palm') {
         const { trunk, fronds } = P.palmGeometry(v);
-        this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.4);
+        const low = P.palmGeometry(v, true);
+        this.instance(trunk, cel('palmTrunk', { vertexColors: true, wind: 0.0015 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.4, low.trunk);
         // Fronds are thin closed shells with hand-made outline normals, so they take clean ink.
-        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, rim: 0.6 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.3);
+        this.instance(fronds, cel('palmFronds', { vertexColors: true, wind: 0.0015, rim: 0.6 }), list, (p) => [p.x, this.ground(p.x, p.z) - 0.3, p.z, p.rot, p.scale], 1.3, low.fronds);
         continue;
       }
       if (kind === 'mine') {
-        const im = this.instance(P.mineGeometry(), cel('mine', { vertexColors: true, gloss: 0.8 }), list, (p) => [p.x, 0, p.z, p.rot, 1.3], 1.6);
+        const im = this.instanceRaw(P.mineGeometry(), cel('mine', { vertexColors: true, gloss: 0.8 }), list, (p) => [p.x, 0, p.z, p.rot, 1.3], 1.6);
         this.mines = { mesh: im, list };
         for (const p of list) glowPts.push({ x: p.x, y: 1.5, z: p.z, c: 0xff2a2a, s: 30, blink: true });
         continue;
@@ -463,7 +470,49 @@ export class Scenery {
     this.disposables.push(...d);
   }
 
-  private instance(geo: BufferGeometry, mat: import('three').Material, list: Prop[], tf: (p: Prop) => number[], outline: number) {
+  /**
+   * Static instanced props under distance LOD: full geometry + ink outline
+   * near the camera, `loGeo` (or the same geometry without ink) further out.
+   */
+  private instance(geo: BufferGeometry, mat: import('three').Material, list: Prop[], tf: (p: Prop) => number[], outline: number, loGeo?: BufferGeometry) {
+    const lod = new LodInstances(list.length, geo, mat, { name: 'props', loGeo, outline, near: PROP_NEAR });
+    const xs = new Float32Array(list.length);
+    const zs = new Float32Array(list.length);
+    list.forEach((p, i) => {
+      const [x, y, z, rot, s] = tf(p);
+      _q.setFromAxisAngle(_up, rot);
+      _m.compose(_p.set(x, y, z), _q, _s.set(s, s, s));
+      lod.setMatrixAt(i, _m);
+      xs[i] = x;
+      zs[i] = z;
+    });
+    lod.markDirty();
+    this.lods.push({ lod, xs, zs });
+    this.add(lod.group, geo);
+    if (loGeo) this.disposables.push(loGeo);
+    return lod;
+  }
+
+  /** Re-split LOD props around the camera (throttled internally). */
+  updateLod(camX: number, camZ: number, dt: number) {
+    if (!this.lodClock.due(camX, camZ, dt)) return;
+    let hi = 0;
+    let lo = 0;
+    for (const l of this.lods) {
+      l.lod.partition(camX, camZ, l.xs, l.zs);
+      hi += l.lod.counts.hi;
+      lo += l.lod.counts.lo;
+    }
+    LOD.hiCount = hi;
+    LOD.loCount = lo;
+  }
+  /** Force a repartition next frame (graphics preset changed). */
+  refreshLod() {
+    this.lodClock.reset();
+  }
+
+  /** Plain instancing (no LOD) for props that animate per instance. */
+  private instanceRaw(geo: BufferGeometry, mat: import('three').Material, list: Prop[], tf: (p: Prop) => number[], outline: number) {
     const im = new InstancedMesh(geo, mat, list.length);
     list.forEach((p, i) => {
       const [x, y, z, rot, s] = tf(p);

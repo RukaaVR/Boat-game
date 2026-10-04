@@ -7,7 +7,8 @@
 import type { Game } from '../core/game';
 import type { GameEvent } from '../core/events';
 import { oceanHeight, getSeaState } from '../water/waves';
-import { celShared } from '../render/cel';
+import { LOD } from '../render/lod';
+import { activeQuality } from '../render/graphics';
 import { WEATHER_IDS } from '../environment/weatherDefs';
 import type { ShaderMaterial } from 'three';
 
@@ -32,7 +33,7 @@ export class DebugOverlay {
       ['autopilot', () => game.session && (game.session.playerAutopilot = !game.session.playerAutopilot)],
       ['slow-mo', () => game.session && (game.session.timeScale = game.session.timeScale === 1 ? 0.25 : 1)],
       ['bloom', () => (game.renderer.bloomEnabled = !game.renderer.bloomEnabled)],
-      ['outlines', () => (celShared.uOutlineScale.value = celShared.uOutlineScale.value > 0 ? 0 : game.renderer.pixelRatio)],
+      ['outlines', () => (game.renderer.outlinesEnabled = !game.renderer.outlinesEnabled)],
       ['hud', () => (game.ui.style.visibility = game.ui.style.visibility === 'hidden' ? '' : 'hidden')],
       ['weather', () => game.world?.applyWeather(WEATHER_IDS[++this.weatherIdx % WEATHER_IDS.length])],
       ['wire', () => {
@@ -81,6 +82,8 @@ export class DebugOverlay {
       `draw calls ${r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  dpr ${g.renderer.pixelRatio.toFixed(2)}${g.renderer.adaptive ? ' (auto)' : ''}  q=${g.renderer.quality}`,
       `heap ${mem ? (mem.usedJSHeapSize / 1048576).toFixed(1) + ' MB' : 'n/a'}  geoms ${g.renderer.gl.info.memory.geometries} tex ${g.renderer.gl.info.memory.textures}`,
       `particles ${g.world?.particles.active ?? 0}  sea ${getSeaState().toFixed(2)}  state ${g.state}/${s?.phase ?? '-'}`,
+      `LOD props full ${LOD.hiCount} reduced ${LOD.loCount}  scale ${LOD.scale.toFixed(2)}  scenery ink ${LOD.outlines ? 'on' : 'off'}  preset ${g.save.data.settings.quality}→${activeQuality}  programs ${g.renderer.gl.info.programs?.length ?? 0}`,
+      `boat LOD ${g.world ? g.world.visuals.map((v) => v.lodLevel).join('') : '-'}`,
     ];
     if (s && p && b) {
       const surf = oceanHeight(b.position.x, b.position.z, s.time);

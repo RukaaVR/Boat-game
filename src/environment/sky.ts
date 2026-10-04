@@ -241,7 +241,7 @@ export class Sky {
  */
 function cumulusGeometry(rng: Rng, tower: boolean) {
   const gb = new GeoBuilder();
-  const puff = (r: number, x: number, y: number, z: number) => gb.add(new SphereGeometry(1, 12, 8), 0xffffff, { x, y, z, s: r });
+  const puff = (r: number, x: number, y: number, z: number) => gb.add(new SphereGeometry(1, 9, 6), 0xffffff, { x, y, z, s: r });
   if (!tower) {
     for (let i = 0; i < 5; i++) puff(rng.range(0.6, 0.8), -1.7 + i * 0.85, rng.range(0, 0.1), rng.range(-0.3, 0.3));
     for (let i = 0; i < 3; i++) puff(rng.range(0.85, 1.05), -0.9 + i * 0.9, rng.range(0.45, 0.7), rng.range(-0.2, 0.2));

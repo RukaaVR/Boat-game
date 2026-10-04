@@ -24,6 +24,7 @@ import { boatSpec } from '../boat/specs';
 import { BattleVisuals } from './battle';
 import { Wildlife } from './wildlife';
 import { BoatShadows } from './shadows';
+import { LOD } from './lod';
 import { Aurora } from '../environment/aurora';
 import { blendWeather, WEATHER } from '../environment/weatherDefs';
 
@@ -72,7 +73,7 @@ export class World {
     this.course = new CourseVisuals(session, !!opts.symbols);
     scene.add(this.course.group);
 
-    this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery));
+    this.visuals = session.racers.map((r) => new BoatVisual(r.boat.spec, r.livery, { look: r.look }));
     for (const v of this.visuals) scene.add(v.root);
     this.ghost = session.ghost ? new BoatVisual(boatSpec(session.ghost.boatId), session.player.livery, { ghost: true }) : null;
     if (this.ghost) {
@@ -155,7 +156,8 @@ export class World {
       this.visuals[i].update(r.boat, r.controls.steer, dt, time);
       const v = this.visuals[i];
       const d2 = (r.boat.position.x - cam.position.x) ** 2 + (r.boat.position.z - cam.position.z) ** 2;
-      v.setLod(d2 > 260 * 260 ? 2 : d2 > 110 * 110 ? 1 : 0);
+      const ls = LOD.scale * LOD.scale;
+      v.setLod(d2 > 260 * 260 * ls ? 2 : d2 > 110 * 110 * ls ? 1 : 0);
       v.setDamage(r.boat.damage, i * 17 + 3);
       // Ghosting after respawn: blink.
       this.visuals[i].root.visible = !this.hideBoats && (r.boat.ghostTime <= 0 || Math.floor(time * 12) % 2 === 0);
@@ -172,6 +174,7 @@ export class World {
     this.sky.update(cam.position, time);
     this.atmosphere.update(dt, cam, this.ocean);
     this.scenery.update(time, dt);
+    this.scenery.updateLod(cam.position.x, cam.position.z, dt);
     this.scenery.setPixelScale(this.renderer.drawingHeight);
     const pr = s.player;
     this.course.update(time, cam.position.x, cam.position.z, s.track.gateIndexFor(pr.checkpoints), s.hasLaps && (s.phase === 'racing' || s.phase === 'countdown'));
@@ -191,6 +194,10 @@ export class World {
     this.ocean.update(cam);
     this.sky.update(cam.position, time);
     this.atmosphere.followCamera(cam);
+  }
+
+  setShadows(on: boolean) {
+    this.shadows.mesh.visible = on;
   }
 
   dispose() {

@@ -231,12 +231,13 @@ export function lavarockGeometry(variant: number, style: ThemeStyle): BufferGeom
  * are thin *closed* shells with a hand-made `smoothNormal`, so the
  * inverted-hull ink outlines them cleanly. The trunk bends toward +X.
  */
-export function palmGeometry(variant: number): { trunk: BufferGeometry; fronds: BufferGeometry } {
+/** `low`: a cheap distant version with the same silhouette (fewer bands and frond segments). */
+export function palmGeometry(variant: number, low = false): { trunk: BufferGeometry; fronds: BufferGeometry } {
   const rng = new Rng(variant * 97 + 11);
   const H = 8.5 + variant * 1.4;
   const lean = 0.22 + variant * 0.07;
-  const RINGS = 8;
-  const SIDES = 9;
+  const RINGS = low ? 4 : 8;
+  const SIDES = low ? 5 : 9;
   const spine: [number, number, number, number][] = [];
   let sx = 0;
   let sy = 0;
@@ -309,7 +310,7 @@ export function palmGeometry(variant: number): { trunk: BufferGeometry; fronds: 
     else fIdx.push(a, c, b);
   };
   const LEAVES = 7;
-  const SEG = 9;
+  const SEG = low ? 4 : 9;
   for (let f = 0; f < LEAVES; f++) {
     const a = (f / LEAVES) * Math.PI * 2 + rng.range(-0.12, 0.12);
     const low = f % 3 === 0;

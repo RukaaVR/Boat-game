@@ -26,6 +26,9 @@ import { CAREER, type Challenge } from '../save/progress';
 import { RaceSession, type SessionConfig } from '../race/session';
 import { CUPS, trackDef } from '../race/trackDefs';
 import { BoatVisual } from '../boat/boatMesh';
+import { CharacterStage } from '../render/characterStage';
+import { applyPreset, AutoDowngrade, PRESETS, resolveQuality } from '../render/graphics';
+import type { Quality } from '../render/renderer';
 import { boatSpec, type BoatId } from '../boat/specs';
 import type { Livery } from '../boat/livery';
 import { Hud } from '../ui/hud';
@@ -68,6 +71,9 @@ type State = 'boot' | 'title' | 'menu' | 'race';
 const _listener: Listener = { x: 0, z: 0, rx: 1, rz: 0 };
 const _right = new Vector3();
 const _nearest: Boat[] = [];
+
+/** Post settings for the character stage when no world exists yet. */
+const STAGE_POST = { bloom: 0.25, exposure: 1, saturation: 1.1, contrast: 1, vignette: 0.15 };
 
 export class Game implements ReplayHost, PhotoHost {
   readonly renderer: Renderer;
@@ -142,7 +148,9 @@ export class Game implements ReplayHost, PhotoHost {
     const params = new URLSearchParams(location.search);
     this.harness = params.has('harness');
     const s = this.save.data.settings;
-    this.renderer = new Renderer(canvas, s.quality, s.pixelRatio);
+    const q0 = resolveQuality(s.quality);
+    applyPreset(q0);
+    this.renderer = new Renderer(canvas, q0, Math.min(s.pixelRatio, PRESETS[q0].maxPixelRatio));
     this.rig = new CameraRig(window.innerWidth / Math.max(1, window.innerHeight));
     this.music = new Music(this.audio);
     this.screens = new Screens(this, ui);
@@ -219,6 +227,41 @@ export class Game implements ReplayHost, PhotoHost {
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────
+  // ── Character creator stage ─────────────────────────────────────────────
+  stage: CharacterStage | null = null;
+  openStage() {
+    if (!this.stage) this.stage = new CharacterStage();
+    this.stage.setLook(this.save.data.rider, this.save.livery(this.save.data.selectedBoat), false);
+  }
+  /** Rebuild the stage rider after a look change (plays the happy reaction). */
+  refreshStage() {
+    this.stage?.setLook(this.save.data.rider, this.save.livery(this.save.data.selectedBoat), true);
+  }
+  closeStage() {
+    if (!this.stage) return;
+    this.stage.dispose();
+    this.stage = null;
+    // The menu backdrop's player boat picks up the new look.
+    if (this.state === 'menu' && this.session && this.world) this.previewBoat(this.save.data.selectedBoat, false);
+  }
+
+  /** Apply a concrete graphics preset everywhere it matters. */
+  private setGraphics(q: Quality) {
+    const s = this.save.data.settings;
+    applyPreset(q);
+    const cap = Math.min(s.pixelRatio, PRESETS[q].maxPixelRatio);
+    if (Math.abs(this.renderer.maxPixelRatio - cap) > 1e-3) this.renderer.setMaxPixelRatio(cap);
+    this.world?.scenery.refreshLod();
+    this.world?.setShadows(s.shadows && PRESETS[q].shadows);
+    if (this.renderer.quality !== q) {
+      this.renderer.setQuality(q);
+      // Geometry density depends on quality: rebuild the menu backdrop now; races pick it up next start.
+      if (this.state === 'menu') this.rebuildBackdrop();
+    }
+  }
+  private autoQuality: Quality | null = null;
+  private autoDown = new AutoDowngrade();
+
   applySettings() {
     const s = this.save.data.settings;
     if (getLang() !== s.lang) {
@@ -228,12 +271,10 @@ export class Game implements ReplayHost, PhotoHost {
     }
     this.audio.setVolumes(s.master, s.music, s.sfx);
     this.renderer.adaptive = s.autoRes;
-    if (Math.abs(this.renderer.maxPixelRatio - s.pixelRatio) > 1e-3) this.renderer.setMaxPixelRatio(s.pixelRatio);
-    if (this.renderer.quality !== s.quality) {
-      this.renderer.setQuality(s.quality);
-      // Geometry density depends on quality: rebuild the menu backdrop now; races pick it up next start.
-      if (this.state === 'menu') this.rebuildBackdrop();
-    }
+    // AUTO keeps any runtime step-down until the player picks another setting.
+    const q = s.quality === 'auto' && this.autoQuality ? this.autoQuality : resolveQuality(s.quality);
+    if (s.quality !== 'auto') this.autoQuality = null;
+    this.setGraphics(q);
     this.renderer.assist = s.assist;
     this.renderer.motionFx = s.motion;
     this.rig.motionScale = 0.35 + 0.65 * s.motion;
@@ -298,7 +339,7 @@ export class Game implements ReplayHost, PhotoHost {
   private build(cfg: SessionConfig, weather: WeatherId) {
     this.teardown();
     this.session = new RaceSession(cfg, this.events);
-    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows, symbols: this.save.data.settings.symbols });
+    this.world = new World(this.session, this.renderer, this.events, this.renderer.quality, weather, { wildlife: this.save.data.settings.wildlife, shadows: this.save.data.settings.shadows && PRESETS[this.renderer.quality].shadows, symbols: this.save.data.settings.symbols });
     this.rig.ramps = this.session.track.ramps;
     this.rig.boats = this.session.racers.map((r) => r.boat);
     const scenery = this.world.scenery;
@@ -317,6 +358,7 @@ export class Game implements ReplayHost, PhotoHost {
       difficulty: 'normal',
       playerBoat: d.selectedBoat,
       playerLivery: this.save.livery(d.selectedBoat),
+      playerLook: d.rider,
       playerName: d.playerName,
       opponents: 5,
       ghost: null,
@@ -405,7 +447,7 @@ export class Game implements ReplayHost, PhotoHost {
     const p = s.player;
     p.boat.spec = spec;
     (p as { livery: Livery }).livery = liv;
-    w.swapPlayerVisual(new BoatVisual(spec, liv));
+    w.swapPlayerVisual(new BoatVisual(spec, liv, { look: this.save.data.rider }));
     w.wake.setTrailColor(0, liv.trail);
     if (park) {
       // Park the boat on clear open water near the start, away from statics.
@@ -457,6 +499,7 @@ export class Game implements ReplayHost, PhotoHost {
       difficulty: stage ? stage.difficulty : req.difficulty,
       playerBoat: req.boat,
       playerLivery: this.save.livery(req.boat),
+      playerLook: this.save.data.rider,
       playerName: req.p2Boat ? 'P1' : d.playerName,
       opponents: req.opponents ?? 5,
       player2: req.p2Boat ? { name: 'P2', boat: req.p2Boat, livery: this.save.livery(req.p2Boat) } : undefined,
@@ -739,6 +782,14 @@ export class Game implements ReplayHost, PhotoHost {
       this.cpuMs = this.cpuMs * 0.95 + (performance.now() - t0) * 0.05;
     }
     this.renderer.sample(realMs, now);
+    if (this.save.data.settings.quality === 'auto' && this.state === 'race') {
+      const down = this.autoDown.update(realMs / 1000, this.renderer.stats.medianMs, this.renderer.atMinResolution, this.renderer.quality);
+      if (down) {
+        this.autoQuality = down;
+        this.setGraphics(down);
+        this.screens.toast(`DETAIL LOWERED TO ${down.toUpperCase()}`, 'GRAPHICS · AUTO');
+      }
+    }
     this.render(clamp(realMs / 1000, 0, 0.05));
   }
 
@@ -755,6 +806,13 @@ export class Game implements ReplayHost, PhotoHost {
       }
     }
     pn.length = 0;
+    if (this.stage) {
+      // Character creator: only the stage runs (the backdrop race is hidden).
+      const turn = (this.input.isDown('KeyE') || this.input.isDown('BracketRight') ? 1 : 0) - (this.input.isDown('KeyQ') || this.input.isDown('BracketLeft') ? 1 : 0) + this.input.padTurn();
+      if (turn) this.stage.nudge(turn, dt);
+      this.stage.update(dt, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight));
+      return;
+    }
     const s = this.session;
     const w = this.world;
     if (!s || !w) return;
@@ -946,6 +1004,10 @@ export class Game implements ReplayHost, PhotoHost {
 
   private render(dt: number) {
     const w = this.world;
+    if (this.stage) {
+      this.renderer.render(this.stage.scene, this.stage.camera, w?.atmosphere.post ?? STAGE_POST, dt);
+      return;
+    }
     if (!w) return;
     this.renderTime += dt;
     if (this.rig2 && this.state === 'race') {
@@ -1019,6 +1081,9 @@ export class Game implements ReplayHost, PhotoHost {
       },
       menu() {
         g.enterMenu();
+      },
+      rider() {
+        g.screens.rider();
       },
       garage() {
         g.screens.garage();

@@ -7,6 +7,7 @@
  * private mode) are reported once to the UI rather than thrown.
  */
 
+import { DEFAULT_LOOK, sanitizeLook, type RiderLook } from '../boat/riderLook';
 import { BOATS, type BoatId } from '../boat/specs';
 import { DECALS, defaultLivery, sanitizeLivery, STRIPES, type Livery } from '../boat/livery';
 import { ACTIONS, DEFAULT_BINDINGS, type Bindings } from '../input/input';
@@ -24,7 +25,8 @@ export interface Settings {
   sfx: number;
   shake: number;
   motion: number;
-  quality: 'low' | 'medium' | 'high';
+  /** Graphics preset; 'auto' resolves from the device at start-up. */
+  quality: 'auto' | 'low' | 'medium' | 'high';
   pixelRatio: number;
   autoRes: boolean;
   assist: number;
@@ -73,7 +75,8 @@ export interface ChampState {
 }
 
 export interface SaveData {
-  version: 1;
+  /** 2: adds the rider look. Older saves are migrated by sanitizeSave (missing fields → defaults). */
+  version: 2;
   playerName: string;
   xp: number;
   credits: number;
@@ -97,6 +100,8 @@ export interface SaveData {
   /** Completed challenge keys (daily `YYYY-MM-DD`, weekly `YYYY-Www`). */
   challengesDone: string[];
   career: { stage: number };
+  /** The player's rider (character creator). */
+  rider: RiderLook;
   /** Bitmask of message bottles found per track. */
   bottles: Record<string, number>;
 }
@@ -108,7 +113,7 @@ export function defaultSettings(): Settings {
     sfx: 0.85,
     shake: 1,
     motion: 1,
-    quality: 'high',
+    quality: 'auto',
     pixelRatio: 2,
     autoRes: true,
     assist: 0,
@@ -134,7 +139,7 @@ export function defaultSave(): SaveData {
   const liveries: SaveData['liveries'] = {};
   for (const b of BOATS) liveries[b.id] = defaultLivery(b.hullColor, b.accentColor, 7);
   return {
-    version: 1,
+    version: 2,
     playerName: 'YOU',
     xp: 0,
     credits: 500,
@@ -156,6 +161,7 @@ export function defaultSave(): SaveData {
     stats: emptyStats(),
     challengesDone: [],
     career: { stage: 0 },
+    rider: { ...DEFAULT_LOOK },
     bottles: {},
   };
 }
@@ -182,7 +188,7 @@ function sanitizeSettings(v: unknown): Settings {
     sfx: num(o.sfx, d.sfx, 0, 1),
     shake: num(o.shake, d.shake, 0, 1),
     motion: num(o.motion, d.motion, 0, 1),
-    quality: oneOf(o.quality, ['low', 'medium', 'high'] as const, d.quality),
+    quality: oneOf(o.quality, ['auto', 'low', 'medium', 'high'] as const, d.quality),
     pixelRatio: num(o.pixelRatio, d.pixelRatio, 0.5, 3),
     autoRes: bool(o.autoRes, d.autoRes),
     assist: Math.round(num(o.assist, d.assist, 0, 3)),
@@ -260,7 +266,7 @@ export function sanitizeSave(raw: unknown): SaveData {
     champ = { cupId: cup.id, round, points: ch.points.slice(0, 8).map((p) => num(p, 0, 0, 999)) };
   }
   return {
-    version: 1,
+    version: 2,
     playerName: str(o.playerName, d.playerName, 12).toUpperCase().replace(/[^A-Z0-9 _-]/g, '') || 'YOU',
     xp: num(o.xp, 0, 0, 1e7),
     credits: Math.round(num(o.credits, d.credits, 0, 1e8)),
@@ -282,6 +288,7 @@ export function sanitizeSave(raw: unknown): SaveData {
     stats: sanitizeStats(o.stats),
     challengesDone: Array.isArray(o.challengesDone) ? (o.challengesDone.filter((k) => typeof k === 'string' && /^\d{4}-(W\d{2}|\d{2}-\d{2})$/.test(k)) as string[]).slice(-60) : [],
     career: { stage: Math.round(num(obj(o.career).stage, 0, 0, CAREER.length)) },
+    rider: sanitizeLook(o.rider),
     bottles: sanitizeBottles(o.bottles),
   };
 }

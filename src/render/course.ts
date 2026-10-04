@@ -28,6 +28,7 @@ import {
 } from 'three';
 import type { RaceSession } from '../race/session';
 import { THEME_STYLE } from '../environment/weatherDefs';
+import { LodClock, LodInstances } from './lod';
 import { addOutline, cel, makeCel } from './cel';
 import { GeoBuilder } from './geo';
 import { bannerTexture, chevronTexture } from './textures';
@@ -112,7 +113,10 @@ void main() {
 
 export class CourseVisuals {
   readonly group = new Group();
-  private buoyMesh: InstancedMesh;
+  private buoyLod: LodInstances;
+  private buoyX: Float32Array;
+  private buoyZ: Float32Array;
+  private buoyClock = new LodClock(10, 0.4);
   private buoyLights: InstancedMesh;
   private gateHighlight: Mesh;
   private ringMesh: InstancedMesh | null = null;
@@ -152,22 +156,24 @@ export class CourseVisuals {
     tb.cyl(0.9, 0.9, 0.16, 0x2c3a5a, { y: -0.28 }, 12);
     const tgeo = tb.build();
     const buoys = session.buoys;
-    this.buoyMesh = new InstancedMesh(bgeo, cel('buoy', { vertexColors: true, gloss: 0.5 }), buoys.length);
+    // Far buoys: a low-poly silhouette with no trim and no outline.
+    const lb = new GeoBuilder();
+    lb.sphere(0.82, 0xffffff, { y: 0.2, sy: 0.85 }, 6, 4);
+    lb.cone(0.62, 1.15, 0xffffff, { y: 1.15 }, 6);
+    const lgeo = lb.build();
+    this.buoyLod = new LodInstances(buoys.length, bgeo, cel('buoy', { vertexColors: true, gloss: 0.5 }), { name: 'buoys', loGeo: lgeo, outline: 1.6, colors: true, near: 95 });
+    this.buoyLod.follow(tgeo, cel('buoyTrim', { vertexColors: true, gloss: 0.3 }), 'buoyTrim');
+    this.buoyX = new Float32Array(buoys.length);
+    this.buoyZ = new Float32Array(buoys.length);
     const col = new Color();
     for (let i = 0; i < buoys.length; i++) {
       const side = buoys[i].side;
       col.setHex(side === 0 ? style.buoyLeft : side === 1 ? style.buoyRight : 0xffd21e);
-      this.buoyMesh.setColorAt(i, col);
+      this.buoyLod.setColorAt(i, col);
+      this.buoyX[i] = buoys[i].x;
+      this.buoyZ[i] = buoys[i].z;
     }
-    this.buoyMesh.frustumCulled = false;
-    this.buoyMesh.name = 'buoys';
-    addOutline(this.buoyMesh, 1.6);
-    this.add(this.buoyMesh, bgeo);
-    const trim = new InstancedMesh(tgeo, cel('buoyTrim', { vertexColors: true, gloss: 0.3 }), buoys.length);
-    trim.instanceMatrix = this.buoyMesh.instanceMatrix;
-    trim.frustumCulled = false;
-    trim.name = 'buoyTrim';
-    this.add(trim, tgeo);
+    this.add(this.buoyLod.group, bgeo, tgeo, lgeo);
     // Little lamp on each buoy top (bright at night).
     const lg = new CylinderGeometry(0.16, 0.16, 0.3, 6);
     this.buoyLights = new InstancedMesh(lg, new MeshBasicMaterial({ color: 0xffffff, fog: true }), buoys.length);
@@ -592,7 +598,7 @@ export class CourseVisuals {
       }
       _p.set(b.x, _sample.height - 0.1, b.z);
       _m.compose(_p, _q, _s.set(1, 1, 1));
-      this.buoyMesh.setMatrixAt(i, _m);
+      this.buoyLod.setMatrixAt(i, _m);
       _p.set(0, 2.05, 0).applyQuaternion(_q);
       _p.x += b.x;
       _p.y += _sample.height - 0.1;
@@ -606,7 +612,8 @@ export class CourseVisuals {
         this.marks[mk].mesh.setMatrixAt(this.markSlot[i], _m);
       }
     }
-    this.buoyMesh.instanceMatrix.needsUpdate = true;
+    if (this.buoyClock.due(camX, camZ, 1 / 60)) this.buoyLod.partition(camX, camZ, this.buoyX, this.buoyZ);
+    else this.buoyLod.markDirty();
     this.buoyLights.instanceMatrix.needsUpdate = true;
     for (const m of this.marks) m.mesh.instanceMatrix.needsUpdate = true;
 

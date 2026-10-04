@@ -397,7 +397,7 @@ await test('corrupted save data is handled gracefully', async () => {
   await page.reload();
   await page.waitForFunction(() => window.__RIPTIDE__?.ready === true, null, { timeout: 120000 });
   const d2 = await page.evaluate(() => window.__RIPTIDE__.saveData());
-  assert(d2.xp === 0 && d2.credits <= 1e8 && !d2.owned.includes('hax') && d2.liveries.speedster.hull.startsWith('#') && d2.settings.quality === 'high' && d2.settings.laps === 9, JSON.stringify({ xp: d2.xp, q: d2.settings.quality }));
+  assert(d2.xp === 0 && d2.credits <= 1e8 && !d2.owned.includes('hax') && d2.liveries.speedster.hull.startsWith('#') && d2.settings.quality === 'auto' && d2.settings.laps === 9, JSON.stringify({ xp: d2.xp, q: d2.settings.quality }));
   const errs = errors.filter((e) => !e.includes('favicon'));
   assert(errs.length === 0, errs.join(' | '));
   await ctx.close();

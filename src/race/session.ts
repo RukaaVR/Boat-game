@@ -6,6 +6,7 @@
  * Presentation reads its state and drains `events`.
  */
 
+import type { RiderLook } from '../boat/riderLook';
 import { EventQueue } from '../core/events';
 import { clamp, clamp01, damp } from '../core/mathx';
 import { Rng } from '../core/rng';
@@ -68,7 +69,9 @@ export interface SessionConfig {
   /** Item boxes and power-ups (always on in battle). */
   items?: boolean;
   /** Split-screen second player. */
-  player2?: { name: string; boat: BoatId; livery: Livery };
+  player2?: { name: string; boat: BoatId; livery: Livery; look?: RiderLook };
+  /** The player's chosen rider look. */
+  playerLook?: RiderLook;
 }
 
 /** Per-event player counters (achievements, challenges). */
@@ -233,10 +236,12 @@ export class RaceSession {
 
     // Racers: player + rivals.
     this.player = new Racer(0, cfg.playerName, upgradedSpec(boatSpec(cfg.playerBoat), cfg.playerUpgrades), cfg.playerLivery, true, null);
+    this.player.look = cfg.playerLook ?? null;
     this.racers.push(this.player);
     this.humans.push(this.player);
     if (cfg.player2) {
       const p2 = new Racer(1, cfg.player2.name, boatSpec(cfg.player2.boat), cfg.player2.livery, true, null);
+      p2.look = cfg.player2.look ?? null;
       this.racers.push(p2);
       this.humans.push(p2);
     }

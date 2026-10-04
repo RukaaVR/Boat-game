@@ -99,8 +99,9 @@ await test('finishing a race unlocks achievements and records lifetime stats', a
 await test('replay plays the race back and returns to results', async () => {
   assert(await E(() => window.__RIPTIDE__.game.replayAvailable), 'no replay recorded');
   await P.click('[data-act=replay]');
-  const a = await E(() => { const R = window.__RIPTIDE__; const p = R.game.session.player.boat.position; const x0 = p.x, z0 = p.z; R.simulate(6, 1 / 30); return { moved: Math.hypot(p.x - x0, p.z - z0), t: R.game.replay.t }; });
-  assert(a.t > 5 && a.moved > 30, 'replay did not advance: ' + JSON.stringify(a));
+  // Measure inside the replay (from its first frame), not from wherever the boat stopped after the finish.
+  const a = await E(() => { const R = window.__RIPTIDE__; R.simulate(0.1, 1 / 30); const p = R.game.session.player.boat.position; const x0 = p.x, z0 = p.z; R.simulate(9, 1 / 30); return { moved: Math.hypot(p.x - x0, p.z - z0), t: R.game.replay.t }; });
+  assert(a.t > 8 && a.moved > 30, 'replay did not advance: ' + JSON.stringify(a));
   await P.click('.replaybar [data-r=photo]');
   await P.waitForSelector('.photopanel');
   const before = (await E(() => window.__RIPTIDE__.saveData())).stats.photos;
